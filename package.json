@@ -1,0 +1,52 @@
+{
+  "name": "@parifi/synthetix-sdk-ts",
+  "version": "0.1.0",
+  "description": "A Typescript SDK for interactions with the Synthetix protocol",
+  "files": [
+    "dist",
+    "package.json"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsup ./src",
+    "prepare": "npm run build",
+    "test": "jest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Parifi/synthetix-sdk-ts.git"
+  },
+  "keywords": [
+    "perpetuals",
+    "defi",
+    "web3"
+  ],
+  "author": "Parifi",
+  "bugs": {
+    "url": "https://github.com/Parifi/synthetix-sdk-ts/issues"
+  },
+  "homepage": "https://github.com/Parifi/synthetix-sdk-ts#readme",
+  "devDependencies": {
+    "@eslint/js": "^9.9.0",
+    "@types/jest": "^29.5.12",
+    "eslint": "^9.9.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.2.1",
+    "globals": "^15.9.0",
+    "jest": "^29.7.0",
+    "prettier": "^3.3.3",
+    "ts-jest": "^29.2.4",
+    "tsup": "^8.0.1",
+    "typescript": "^5.5.4",
+    "typescript-eslint": "^8.2.0"
+  }
+}
