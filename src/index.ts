@@ -79,4 +79,12 @@ export class SynthetixSdk {
 
     // Initialize Subgraph config
   }
+
+  public getProvider(): JsonRpcProvider | WebSocketProvider | IpcSocketProvider {
+    if (this.provider != undefined) {
+      return this.provider;
+    } else {
+      throw new Error('Provider not initialized');
+    }
+  }
 }

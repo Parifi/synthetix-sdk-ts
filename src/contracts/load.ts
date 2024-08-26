@@ -38,10 +38,10 @@ export const getCoreProxyInstance = async (
   chainId: number,
   provider: JsonRpcProvider | WebSocketProvider | IpcSocketProvider,
   preset: string = 'main',
-): Promise<Contract | undefined> => {
+): Promise<Contract> => {
   try {
     const meta = await dynamicImportMeta(chainId, preset);
-    const abi = await dynamicImportAbi(chainId, preset, meta.contracts.CoreProxy);
+    const abi = await dynamicImportAbi(chainId, preset, 'CoreProxy');
     return new ethers.Contract(meta.contracts.CoreProxy, abi, provider);
   } catch (error) {
     console.log(error);
