@@ -5,7 +5,6 @@ import { getCoreProxyInstance } from '../contracts';
  * Class for interacting with Synthetix V3 core contracts
  * @remarks
  *
-
  */
 export class Core {
   sdk: SynthetixSdk;
