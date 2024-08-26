@@ -1,6 +1,7 @@
 import { AccountConfig, PartnerConfig, PythConfig, RpcConfig, SubgraphConfig } from './interface/classConfigs';
 import { IpcSocketProvider, JsonRpcProvider, Wallet, WebSocketProvider } from 'ethers';
 import { getPublicRpcEndpoint } from './utils';
+import { Core } from './core';
 
 export class SynthetixSdk {
   accountConfig: AccountConfig;
@@ -12,6 +13,8 @@ export class SynthetixSdk {
   // Account
   provider?: JsonRpcProvider | WebSocketProvider | IpcSocketProvider;
   wallet?: Wallet;
+
+  core: Core;
 
   constructor(
     accountConfig: AccountConfig,
@@ -25,6 +28,8 @@ export class SynthetixSdk {
     this.pythConfig = pythConfig;
     this.rpcConfig = rpcConfig;
     this.subgraphConfig = subgraphConfig;
+
+    this.core = new Core(this);
   }
 
   async init() {
