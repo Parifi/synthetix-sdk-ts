@@ -1,3 +1,3 @@
-import { ethers } from 'ethers';
+import { Hex, zeroAddress } from 'viem';
 
-export const ZERO_ADDRESS = ethers.ZeroAddress;
+export const ZERO_ADDRESS: Hex = zeroAddress;

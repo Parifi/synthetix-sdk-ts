@@ -1,8 +1,8 @@
-import { Wallet } from 'ethers';
+import { WalletClient } from 'viem';
 
 export interface AccountConfig {
   address?: string;
-  wallet?: Wallet;
+  walletClient?: WalletClient;
   coreAccountId?: number;
   perpsAccountId?: number;
 }

@@ -27,7 +27,7 @@ export async function dynamicImportMeta(chainId: number, preset: string): Promis
 }
 
 export async function dynamicImportAbi(chainId: number, preset: string, contractName: string) {
-  const fileName = `@synthetixio/v3-contracts/${chainId}-${preset}/${contractName}.readable.json`;
+  const fileName = `@synthetixio/v3-contracts/${chainId}-${preset}/${contractName}.json`;
   const module = await import(fileName);
   return module.default;
 }

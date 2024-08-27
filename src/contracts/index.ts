@@ -1,5 +1,5 @@
-import { Contract, ethers, IpcSocketProvider, JsonRpcProvider, WebSocketProvider } from 'ethers';
 import { dynamicImportAbi, dynamicImportMeta } from './helpers';
+import { getContract, Hex, PublicClient, WalletClient } from 'viem';
 
 /**
  * The function returns an instance of the Core Proxy smart contract
@@ -10,13 +10,22 @@ import { dynamicImportAbi, dynamicImportMeta } from './helpers';
  */
 export const getCoreProxyInstance = async (
   chainId: number,
-  provider: JsonRpcProvider | WebSocketProvider | IpcSocketProvider,
+  publicClient: PublicClient,
+  walletClient?: WalletClient,
   preset: string = 'main',
-): Promise<Contract> => {
+) => {
   try {
     const meta = await dynamicImportMeta(chainId, preset);
     const abi = await dynamicImportAbi(chainId, preset, 'CoreProxy');
-    return new ethers.Contract(meta.contracts.CoreProxy, abi, provider);
+    const coreProxyInstance = getContract({
+      address: meta.contracts.CoreProxy as Hex,
+      abi: abi,
+      client: {
+        public: publicClient,
+        wallet: walletClient,
+      },
+    });
+    return coreProxyInstance;
   } catch (error) {
     console.log(error);
     throw new Error(`Unsupported chain ${chainId} or preset ${preset} for CoreProxy`);
@@ -32,13 +41,22 @@ export const getCoreProxyInstance = async (
  */
 export const getAccountProxyInstance = async (
   chainId: number,
-  provider: JsonRpcProvider | WebSocketProvider | IpcSocketProvider,
+  publicClient: PublicClient,
+  walletClient?: WalletClient,
   preset: string = 'main',
-): Promise<Contract> => {
+) => {
   try {
     const meta = await dynamicImportMeta(chainId, preset);
     const abi = await dynamicImportAbi(chainId, preset, 'AccountProxy');
-    return new ethers.Contract(meta.contracts.AccountProxy, abi, provider);
+    const accountProxyInstance = getContract({
+      address: meta.contracts.AccountProxy as Hex,
+      abi: abi,
+      client: {
+        public: publicClient,
+        wallet: walletClient,
+      },
+    });
+    return accountProxyInstance;
   } catch (error) {
     console.log(error);
     throw new Error(`Unsupported chain ${chainId} or preset ${preset} for AccountProxy`);

@@ -1,7 +1,9 @@
 import { AccountConfig, PartnerConfig, PythConfig, RpcConfig, SubgraphConfig } from './interface/classConfigs';
-import { IpcSocketProvider, JsonRpcProvider, Wallet, WebSocketProvider } from 'ethers';
 import { getPublicRpcEndpoint } from './utils';
 import { Core } from './core';
+import { createPublicClient, http, PublicClient, WalletClient, webSocket } from 'viem';
+import { ipc } from 'viem/node';
+import { ZERO_ADDRESS } from './constants/common';
 
 export class SynthetixSdk {
   accountConfig: AccountConfig;
@@ -10,9 +12,8 @@ export class SynthetixSdk {
   rpcConfig: RpcConfig;
   subgraphConfig: SubgraphConfig;
 
-  // Account
-  provider?: JsonRpcProvider | WebSocketProvider | IpcSocketProvider;
-  wallet?: Wallet;
+  publicClient?: PublicClient;
+  walletClient?: WalletClient;
 
   core: Core;
 
@@ -30,45 +31,70 @@ export class SynthetixSdk {
     this.subgraphConfig = subgraphConfig;
 
     this.core = new Core(this);
-  }
 
-  async init() {
-    // Initialize account config
+    /**
+     * Initialize Public client to RPC chain rpc
+     */
     if (this.rpcConfig) {
       const rpcEndpoint = this.rpcConfig.rpcEndpoint;
       if (rpcEndpoint?.startsWith('http')) {
-        this.provider = new JsonRpcProvider(this.rpcConfig.rpcEndpoint);
+        this.publicClient = createPublicClient({
+          transport: http(rpcEndpoint),
+        });
       } else if (rpcEndpoint?.startsWith('wss')) {
-        this.provider = new WebSocketProvider(rpcEndpoint);
+        this.publicClient = createPublicClient({
+          transport: webSocket(rpcEndpoint),
+        });
       } else if (rpcEndpoint?.endsWith('ipc')) {
-        this.provider = new IpcSocketProvider(rpcEndpoint);
+        this.publicClient = createPublicClient({
+          transport: ipc(rpcEndpoint),
+        });
       } else {
         // Use the default public RPC provider if rpcEndpoint is missing
         console.info('Using public RPC endpoint for chainId ', this.rpcConfig.chainId);
-        this.provider = new JsonRpcProvider(getPublicRpcEndpoint(this.rpcConfig.chainId));
+        const publicEndpoint = getPublicRpcEndpoint(this.rpcConfig.chainId);
+        this.publicClient = createPublicClient({
+          transport: http(publicEndpoint),
+        });
       }
     }
+  }
 
-    if (this.accountConfig.wallet) {
-      // Set the wallet in SDK if passed
-      this.wallet = this.accountConfig.wallet;
+  async init() {
+    /**
+     * Initialize Wallet client for users wallet
+     */
+    try {
+      if (this.accountConfig.walletClient != undefined) {
+        // Set the wallet in SDK if passed
+        this.walletClient = this.accountConfig.walletClient;
 
-      if (this.accountConfig.address == undefined) {
-        this.accountConfig.address = this.wallet.address;
-        console.info('Using address from wallet signer', this.wallet.address);
-      } else {
-        // Check the address matches the wallet signer address
-        if (this.accountConfig.address != this.wallet.address) {
-          throw new Error('Wallet signer does not match the provided address');
+        const addresses = await this.walletClient.getAddresses();
+        let address0 = ZERO_ADDRESS;
+        if (addresses.length > 0) {
+          address0 = addresses[0];
         }
-        console.info('Using address from wallet signer', this.wallet.address);
-      }
-    } else {
-      if (this.accountConfig.address == undefined) {
-        console.info('Wallet or Account address not provided');
+
+        if (this.accountConfig.address == undefined) {
+          this.accountConfig.address = address0;
+          console.info('Using address from walletClient signer', address0);
+        } else {
+          // Check the address matches the wallet signer address
+          if (this.accountConfig.address != address0) {
+            throw new Error('Wallet signer does not match the provided address');
+          }
+          console.info('Using address from wallet signer', address0);
+        }
       } else {
-        console.info('Using provided address without wallet signer: ', this.accountConfig.address);
+        if (this.accountConfig.address == undefined) {
+          console.info('Wallet or Account address not provided');
+        } else {
+          console.info('Using provided address without wallet signer: ', this.accountConfig.address);
+        }
       }
+    } catch (error) {
+      console.log('Error:', error);
+      throw error;
     }
 
     // Initialize partner config
@@ -80,11 +106,15 @@ export class SynthetixSdk {
     // Initialize Subgraph config
   }
 
-  public getProvider(): JsonRpcProvider | WebSocketProvider | IpcSocketProvider {
-    if (this.provider != undefined) {
-      return this.provider;
+  public getPublicClient(): PublicClient {
+    if (this.publicClient != undefined) {
+      return this.publicClient;
     } else {
-      throw new Error('Provider not initialized');
+      throw new Error('PublicCLient not initialized');
     }
+  }
+
+  public getWalletClient(): WalletClient | undefined {
+    return this.walletClient;
   }
 }
