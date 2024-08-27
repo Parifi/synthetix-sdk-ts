@@ -18,11 +18,16 @@ export class Core {
    * @returns string - Address of the account owning the accountId
    */
   public async getAccountOwner(accountId: number): Promise<string> {
-    console.log(accountId);
-    const provider = this.sdk.getProvider();
-    const coreProxy = await getCoreProxyInstance(this.sdk.rpcConfig.chainId, provider, this.sdk.rpcConfig.preset);
-    const resp = await coreProxy.getAccountOwner(accountId);
-    console.log(resp);
-    return resp;
+    const publicClient = this.sdk.getPublicClient();
+    const walletClient = this.sdk.getWalletClient();
+    const coreProxy = await getCoreProxyInstance(
+      this.sdk.rpcConfig.chainId,
+      publicClient,
+      walletClient,
+      this.sdk.rpcConfig.preset,
+    );
+    const resp = await coreProxy.read.getAccountOwner([accountId]);
+    console.log(`Core account Owner for id ${accountId} is ${resp}`);
+    return resp as string;
   }
 }
