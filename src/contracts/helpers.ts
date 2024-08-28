@@ -20,13 +20,13 @@ interface Meta {
   };
 }
 
-export async function dynamicImportMeta(chainId: number, preset: string): Promise<Meta> {
+export async function dynamicImportMeta(chainId: number, preset: string = 'main'): Promise<Meta> {
   const fileName = `@synthetixio/v3-contracts/${chainId}-${preset}/meta.json`;
   const module = await import(fileName);
   return module.default as Meta;
 }
 
-export async function dynamicImportAbi(chainId: number, preset: string, contractName: string) {
+export async function dynamicImportAbi(chainId: number, preset: string = 'main', contractName: string) {
   const fileName = `@synthetixio/v3-contracts/${chainId}-${preset}/${contractName}.json`;
   const module = await import(fileName);
   return module.default;
