@@ -4,6 +4,7 @@ import { Core } from './core';
 import { createPublicClient, http, PublicClient, WalletClient, webSocket } from 'viem';
 import { ipc } from 'viem/node';
 import { ZERO_ADDRESS } from './constants/common';
+import { Contracts } from './contracts';
 
 export class SynthetixSdk {
   accountConfig: AccountConfig;
@@ -12,10 +13,12 @@ export class SynthetixSdk {
   rpcConfig: RpcConfig;
   subgraphConfig: SubgraphConfig;
 
+  // Public client should always be defined either using the rpcConfig or using the public 
   publicClient?: PublicClient;
   walletClient?: WalletClient;
 
   core: Core;
+  contracts: Contracts;
 
   constructor(
     accountConfig: AccountConfig,
@@ -31,6 +34,7 @@ export class SynthetixSdk {
     this.subgraphConfig = subgraphConfig;
 
     this.core = new Core(this);
+    this.contracts = new Contracts(this);
 
     /**
      * Initialize Public client to RPC chain rpc
