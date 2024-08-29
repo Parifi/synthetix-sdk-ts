@@ -1,5 +1,6 @@
 import { Hex } from 'viem';
 import { SynthetixSdk } from '..';
+import { ZERO_ADDRESS } from '../constants/common';
 
 /**
  * Class for interacting with Synthetix V3 core contracts
@@ -50,12 +51,13 @@ export class Core {
     address: string | undefined = undefined,
     defaultAccountId: number | undefined = undefined,
   ) {
-    if (address == undefined) {
-      address = this.sdk.accountConfig.address;
+    const accountAddress: string = address !== undefined ? address : this.sdk.accountConfig.address || ZERO_ADDRESS;
+    if (accountAddress == ZERO_ADDRESS) {
+      throw new Error('Invalid address');
     }
 
     const accountProxy = await this.sdk.contracts.getAccountProxyInstance();
-    const balance = await accountProxy.read.balanceOf([address]);
+    const balance = await accountProxy.read.balanceOf([accountAddress]);
     console.log('balance', balance);
 
     const accountProxyContract = {
@@ -66,13 +68,12 @@ export class Core {
     const publicClient = this.sdk.publicClient;
 
     if (publicClient != undefined) {
-      console.log(publicClient);
       const accountIds = await publicClient.multicall({
         contracts: [
           {
             ...accountProxyContract,
             functionName: 'tokenOfOwnerByIndex',
-            args: [0n],
+            args: [accountAddress, 0n],
           },
         ],
       });
