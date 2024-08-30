@@ -14,9 +14,9 @@ describe('Core', () => {
     console.log('Account owner :', res);
   });
 
-  it.only('should return account balance of an address', async () => {
+  it('should return account balance of an address', async () => {
     const sdk = await getSdkInstanceForTesting();
-    const res = await sdk.core.getAccountIds(undefined, undefined);
-    console.log('Account owner :', res);
+    const res = await sdk.core.getAccountIds();
+    console.log('Accounts :', res);
   });
 });
