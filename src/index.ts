@@ -5,6 +5,7 @@ import { createPublicClient, http, PublicClient, WalletClient, webSocket } from 
 import { ipc } from 'viem/node';
 import { ZERO_ADDRESS } from './constants/common';
 import { Contracts } from './contracts';
+import { Pyth } from './pyth';
 
 export class SynthetixSdk {
   accountConfig: AccountConfig;
@@ -20,6 +21,7 @@ export class SynthetixSdk {
   core: Core;
   contracts: Contracts;
   utils: Utils;
+  pyth: Pyth;
 
   constructor(
     accountConfig: AccountConfig,
@@ -37,6 +39,7 @@ export class SynthetixSdk {
     this.core = new Core(this);
     this.contracts = new Contracts(this);
     this.utils = new Utils(this);
+    this.pyth = new Pyth(this);
 
     /**
      * Initialize Public client to RPC chain rpc
@@ -121,7 +124,8 @@ export class SynthetixSdk {
 
     // Initialize partner config
 
-    // Initialize Pyth config
+    // Initialize Pyth
+    await this.pyth.initPyth();
 
     // Initialize Rpc config
 
