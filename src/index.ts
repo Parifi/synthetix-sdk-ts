@@ -1,11 +1,12 @@
 import { AccountConfig, PartnerConfig, PythConfig, RpcConfig, SubgraphConfig } from './interface/classConfigs';
 import { getPublicRpcEndpoint, getViemChain, Utils } from './utils';
 import { Core } from './core';
-import { createPublicClient, http, PublicClient, WalletClient, webSocket } from 'viem';
+import { Address, createPublicClient, Hex, http, PublicClient, WalletClient, webSocket } from 'viem';
 import { ipc } from 'viem/node';
 import { ZERO_ADDRESS } from './constants/common';
 import { Contracts } from './contracts';
 import { Pyth } from './pyth';
+import { Perps } from './perps';
 
 export class SynthetixSdk {
   accountConfig: AccountConfig;
@@ -14,14 +15,18 @@ export class SynthetixSdk {
   rpcConfig: RpcConfig;
   subgraphConfig: SubgraphConfig;
 
-  // Public client should always be defined either using the rpcConfig or using the public
-  publicClient?: PublicClient;
+  // Account fields
+  accountAddress: Address = ZERO_ADDRESS;
+
+  // Public client should always be defined either using the rpcConfig or using the public endpoint
+  publicClient: PublicClient;
   walletClient?: WalletClient;
 
   core: Core;
   contracts: Contracts;
   utils: Utils;
   pyth: Pyth;
+  perps: Perps;
 
   constructor(
     accountConfig: AccountConfig,
@@ -40,48 +45,48 @@ export class SynthetixSdk {
     this.contracts = new Contracts(this);
     this.utils = new Utils(this);
     this.pyth = new Pyth(this);
+    this.perps = new Perps(this);
 
     /**
      * Initialize Public client to RPC chain rpc
      */
-    if (this.rpcConfig) {
-      // Get viem chain for client initialization
-      const viemChain = getViemChain(this.rpcConfig.chainId);
-      const rpcEndpoint = this.rpcConfig.rpcEndpoint;
 
-      if (rpcEndpoint?.startsWith('http')) {
-        this.publicClient = createPublicClient({
-          chain: viemChain,
-          transport: http(rpcEndpoint),
-          batch: {
-            multicall: true,
-          },
-        });
-      } else if (rpcEndpoint?.startsWith('wss')) {
-        this.publicClient = createPublicClient({
-          chain: viemChain,
-          transport: webSocket(rpcEndpoint),
-          batch: {
-            multicall: true,
-          },
-        });
-      } else if (rpcEndpoint?.endsWith('ipc')) {
-        this.publicClient = createPublicClient({
-          chain: viemChain,
-          transport: ipc(rpcEndpoint),
-          batch: {
-            multicall: true,
-          },
-        });
-      } else {
-        // Use the default public RPC provider if rpcEndpoint is missing
-        console.info('Using public RPC endpoint for chainId ', this.rpcConfig.chainId);
-        const publicEndpoint = getPublicRpcEndpoint(this.rpcConfig.chainId);
-        this.publicClient = createPublicClient({
-          chain: viemChain,
-          transport: http(publicEndpoint),
-        });
-      }
+    // Get viem chain for client initialization
+    const viemChain = getViemChain(this.rpcConfig.chainId);
+    const rpcEndpoint = this.rpcConfig.rpcEndpoint;
+
+    if (rpcEndpoint?.startsWith('http')) {
+      this.publicClient = createPublicClient({
+        chain: viemChain,
+        transport: http(rpcEndpoint),
+        batch: {
+          multicall: true,
+        },
+      });
+    } else if (rpcEndpoint?.startsWith('wss')) {
+      this.publicClient = createPublicClient({
+        chain: viemChain,
+        transport: webSocket(rpcEndpoint),
+        batch: {
+          multicall: true,
+        },
+      });
+    } else if (rpcEndpoint?.endsWith('ipc')) {
+      this.publicClient = createPublicClient({
+        chain: viemChain,
+        transport: ipc(rpcEndpoint),
+        batch: {
+          multicall: true,
+        },
+      });
+    } else {
+      // Use the default public RPC provider if rpcEndpoint is missing
+      console.info('Using public RPC endpoint for chainId ', this.rpcConfig.chainId);
+      const publicEndpoint = getPublicRpcEndpoint(this.rpcConfig.chainId);
+      this.publicClient = createPublicClient({
+        chain: viemChain,
+        transport: http(publicEndpoint),
+      });
     }
   }
 
@@ -117,6 +122,7 @@ export class SynthetixSdk {
           console.info('Using provided address without wallet signer: ', this.accountConfig.address);
         }
       }
+      this.accountAddress = this.accountConfig.address as Hex;
     } catch (error) {
       console.log('Error:', error);
       throw error;
