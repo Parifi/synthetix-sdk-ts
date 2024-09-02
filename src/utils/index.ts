@@ -1,18 +1,17 @@
 export * from './common';
 
 import {
+  Abi,
   Address,
+  ContractFunctionParameters,
   decodeAbiParameters,
   decodeErrorResult,
-  encodeFunctionData,
   Hex,
   parseAbiParameters,
-  TransactionRequest,
 } from 'viem';
 import { SynthetixSdk } from '..';
 import { dynamicImportAbi } from '../contracts/helpers';
 import { OracleDataRequiredError } from '../error';
-import { Multicall3Abi } from '../contracts/abis/Multicall3';
 import { IERC7412Abi } from '../contracts/abis/IERC7412';
 
 /**
@@ -78,76 +77,102 @@ export class Utils {
    * @param signedRequiredData Price Update data
    * @returns Transaction Request for Oracle price update
    */
-  public async generateDataVerificationTx(
-    oracleContract: Hex,
-    signedRequiredData: string[],
-  ): Promise<TransactionRequest> {
-    const txData = encodeFunctionData({
-      abi: IERC7412Abi,
+  public generateDataVerificationTx(oracleContract: Hex, signedRequiredData: string[]): ContractFunctionParameters {
+    const priceUpdateTx: ContractFunctionParameters = {
+      address: oracleContract,
+      abi: IERC7412Abi as unknown as Abi,
       functionName: 'fulfillOracleQuery',
       args: [signedRequiredData],
-    });
-
-    const priceUpdatTx: TransactionRequest = {
-      from: this.sdk.accountAddress,
-      to: oracleContract,
-      data: txData,
     };
-    return priceUpdatTx;
+    return priceUpdateTx;
   }
 
+  // /**
+  //  * Encoded calls using the Multicall contract implementation
+  //  * @param tx Transaction(s) object to be called
+  //  * @returns Response of tx execution
+  //  */
+  // public async callErc7412Encoded(tx: TransactionRequest | TransactionRequest[]) {
+  //   const multicallTxs: TransactionRequest[] = Array.isArray(tx) ? tx : [tx];
+
+  //   const publicClient = this.sdk.getPublicClient();
+
+  //   while (true) {
+  //     try {
+  //       const multicallData = encodeFunctionData({
+  //         abi: Multicall3Abi,
+  //         functionName: 'aggregate3Value',
+  //         args: [
+  //           multicallTxs.map((tx) => ({
+  //             target: tx.to,
+  //             callData: tx.data,
+  //             value: tx.value || 0n,
+  //             allowFailure: false,
+  //           })),
+  //         ],
+  //       });
+
+  //       let totalValue = 0n;
+  //       for (const tx of multicallTxs) {
+  //         totalValue += tx.value || 0n;
+  //       }
+
+  //       const finalTx = {
+  //         account: this.sdk.accountAddress,
+  //         to: publicClient.chain?.contracts?.multicall3?.address,
+  //         data: multicallData,
+  //         value: totalValue,
+  //       };
+  //       const response = await publicClient.call(finalTx);
+  //       return response;
+  //     } catch (error) {
+  //       console.log('error', error);
+
+  //       if (error instanceof OracleDataRequiredError) {
+  //         const signedRequiredData = await this.fetchOffchainData(error.oracleQuery as Hex);
+  //         const dataVerificationTx = await this.generateDataVerificationTx(
+  //           error.oracleContract as Hex,
+  //           signedRequiredData,
+  //         );
+  //         multicallTxs.unshift(dataVerificationTx);
+  //         console.log(dataVerificationTx);
+  //         this.callErc7412Encoded(multicallTxs);
+  //       }
+  //       return;
+  //     }
+  //   }
+  // }
+
   /**
-   *
-   * @param tx Transaction(s) object to be called
+   * Multicall ERC7412
+   * @param multicallTxs Transaction objects to be called
    * @returns Response of tx execution
    */
-  public async callErc7412(tx: TransactionRequest | TransactionRequest[]) {
-    const multicallTxs: TransactionRequest[] = Array.isArray(tx) ? tx : [tx];
-
+  public async multicallErc7412(multicallTxs: ContractFunctionParameters[]) {
     const publicClient = this.sdk.getPublicClient();
-    console.log('Public client account', publicClient.account);
 
     while (true) {
       try {
-        const multicallData = encodeFunctionData({
-          abi: Multicall3Abi,
-          functionName: 'aggregate3Value',
-          args: [
-            multicallTxs.map((tx) => ({
-              target: tx.to,
-              callData: tx.data,
-              value: tx.value || 0n,
-              allowFailure: false,
-            })),
-          ],
+        const response = await publicClient.multicall({
+          contracts: multicallTxs,
+          allowFailure: false,
         });
 
-        let totalValue = 0n;
-        for (const tx of multicallTxs) {
-          totalValue += tx.value || 0n;
-        }
-
-        const finalTx = {
-          account: this.sdk.accountAddress,
-          to: publicClient.chain?.contracts?.multicall3?.address,
-          data: multicallData,
-          value: totalValue,
-        };
-
-        const response = await publicClient.call(finalTx);
-        console.log(response);
-        return finalTx;
+        console.log('response from erc7412 execution: ', response);
+        return response;
       } catch (error) {
+        console.log('error', error);
+
         if (error instanceof OracleDataRequiredError) {
           const signedRequiredData = await this.fetchOffchainData(error.oracleQuery as Hex);
           const dataVerificationTx = await this.generateDataVerificationTx(
             error.oracleContract as Hex,
             signedRequiredData,
           );
-          multicallTxs.unshift(dataVerificationTx);
-          console.log(dataVerificationTx);
-          this.callErc7412(multicallTxs);
+          const updateMulticallTxs = [dataVerificationTx, ...multicallTxs];
+          this.multicallErc7412(updateMulticallTxs);
         }
+        return;
       }
     }
   }

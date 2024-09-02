@@ -1,4 +1,4 @@
-import { Hex } from 'viem';
+import { ContractFunctionParameters, Hex } from 'viem';
 import { SynthetixSdk } from '..';
 import { ZERO_ADDRESS } from '../constants/common';
 
@@ -51,7 +51,7 @@ export class Core {
     address: string | undefined = undefined,
     defaultAccountId: number | undefined = undefined,
   ) {
-    const accountAddress: string = address !== undefined ? address : this.sdk.accountConfig.address || ZERO_ADDRESS;
+    const accountAddress: string = address !== undefined ? address : this.sdk.accountAddress || ZERO_ADDRESS;
     if (accountAddress == ZERO_ADDRESS) {
       throw new Error('Invalid address');
     }
@@ -60,27 +60,21 @@ export class Core {
     const balance = await accountProxy.read.balanceOf([accountAddress]);
     console.log('balance', balance);
 
-    const accountProxyContract = {
-      address: accountProxy.address,
-      abi: accountProxy.abi,
-    } as const;
-
-    const publicClient = this.sdk.publicClient;
-
-    if (publicClient != undefined) {
-      const accountIds = await publicClient.multicall({
-        contracts: [
-          {
-            ...accountProxyContract,
-            functionName: 'tokenOfOwnerByIndex',
-            args: [accountAddress, 0n],
-          },
-        ],
-      });
-
-      console.log('accountIds', accountIds);
+    // Encode txs
+    const txs: ContractFunctionParameters[] = [];
+    for (let index = 0; index < Number(balance); index++) {
+      const tx = {
+        address: accountProxy.address,
+        abi: accountProxy.abi,
+        functionName: 'tokenOfOwnerByIndex',
+        args: [accountAddress, index],
+        value: 0n,
+      };
+      txs.push(tx);
     }
 
-    console.log(defaultAccountId);
+    const res = await this.sdk.utils.multicallErc7412(txs);
+    console.log('res', res);
+    console.log('defaultAccountId', defaultAccountId);
   }
 }

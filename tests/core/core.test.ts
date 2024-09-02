@@ -17,6 +17,6 @@ describe('Core', () => {
   it('should return account balance of an address', async () => {
     const sdk = await getSdkInstanceForTesting();
     const res = await sdk.core.getAccountIds();
-    console.log('Accounts :', res);
+    console.log('Account Ids :', res);
   });
 });
