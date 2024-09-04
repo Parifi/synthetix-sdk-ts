@@ -1,7 +1,17 @@
 import { AccountConfig, PartnerConfig, PythConfig, RpcConfig, SubgraphConfig } from './interface/classConfigs';
 import { getPublicRpcEndpoint, getViemChain, Utils } from './utils';
 import { Core } from './core';
-import { Address, createPublicClient, Hex, http, PublicClient, WalletClient, webSocket } from 'viem';
+import {
+  Address,
+  CallParameters,
+  createPublicClient,
+  Hex,
+  http,
+  PublicClient,
+  Transaction,
+  WalletClient,
+  webSocket,
+} from 'viem';
 import { ipc } from 'viem/node';
 import { ZERO_ADDRESS } from './constants/common';
 import { Contracts } from './contracts';
@@ -17,6 +27,8 @@ export class SynthetixSdk {
 
   // Account fields
   accountAddress: Address = ZERO_ADDRESS;
+  accountIds?: bigint[];
+  defaultAccountId?: bigint;
 
   // Public client should always be defined either using the rpcConfig or using the public endpoint
   publicClient: PublicClient;
@@ -142,11 +154,16 @@ export class SynthetixSdk {
     if (this.publicClient != undefined) {
       return this.publicClient;
     } else {
-      throw new Error('PublicCLient not initialized');
+      throw new Error('PublicClient not initialized');
     }
   }
 
-  public getWalletClient(): WalletClient | undefined {
-    return this.walletClient;
+  public getWalletClient(): WalletClient {
+    if (this.walletClient != undefined) {
+      return this.walletClient;
+    } else {
+      throw new Error('Wallet not initialized');
+    }
   }
+
 }

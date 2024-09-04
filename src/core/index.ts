@@ -1,4 +1,4 @@
-import { ContractFunctionParameters, Hex } from 'viem';
+import { CallParameters, formatEther, Hex, parseUnits, SendTransactionParameters } from 'viem';
 import { SynthetixSdk } from '..';
 import { ZERO_ADDRESS } from '../constants/common';
 
@@ -20,9 +20,10 @@ export class Core {
    */
   public async getAccountOwner(accountId: number): Promise<Hex> {
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
-    const resp = await coreProxy.read.getAccountOwner([accountId]);
-    console.log(`Core account Owner for id ${accountId} is ${resp}`);
-    return resp as Hex;
+    const response = await this.sdk.utils.callErc7412(coreProxy.address, coreProxy.abi, 'getAccountOwner', [accountId]);
+
+    console.log(`Core account Owner for id ${accountId} is ${response}`);
+    return response as Hex;
   }
 
   /**
@@ -32,7 +33,8 @@ export class Core {
    */
   public async getUsdToken(): Promise<Hex> {
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
-    const response = await coreProxy.read.getUsdToken([]);
+    const response = await this.sdk.utils.callErc7412(coreProxy.address, coreProxy.abi, 'getUsdToken', []);
+
     console.log('USD Token address: ', response);
     return response as Hex;
   }
@@ -49,8 +51,8 @@ export class Core {
 
   public async getAccountIds(
     address: string | undefined = undefined,
-    defaultAccountId: number | undefined = undefined,
-  ) {
+    defaultAccountId: bigint | undefined = undefined,
+  ): Promise<bigint[]> {
     const accountAddress: string = address !== undefined ? address : this.sdk.accountAddress || ZERO_ADDRESS;
     if (accountAddress == ZERO_ADDRESS) {
       throw new Error('Invalid address');
@@ -60,21 +62,230 @@ export class Core {
     const balance = await accountProxy.read.balanceOf([accountAddress]);
     console.log('balance', balance);
 
-    // Encode txs
-    const txs: ContractFunctionParameters[] = [];
+    const argsList = [];
+
     for (let index = 0; index < Number(balance); index++) {
-      const tx = {
-        address: accountProxy.address,
-        abi: accountProxy.abi,
-        functionName: 'tokenOfOwnerByIndex',
-        args: [accountAddress, index],
-        value: 0n,
-      };
-      txs.push(tx);
+      argsList.push([accountAddress, index]);
+    }
+    const accountIds = await this.sdk.utils.multicallErc7412(
+      accountProxy.address,
+      accountProxy.abi,
+      'tokenOfOwnerByIndex',
+      argsList,
+    );
+
+    console.log('accountIds', accountIds);
+    this.sdk.accountIds = accountIds as bigint[];
+    if (defaultAccountId) {
+      this.sdk.defaultAccountId = defaultAccountId;
+    } else if (this.sdk.accountIds.length > 0) {
+      this.sdk.defaultAccountId = this.sdk.accountIds[0];
+    }
+    console.log('Using default account id as ', this.sdk.defaultAccountId);
+    return accountIds as bigint[];
+  }
+
+  /**
+   * Get the available collateral for an account for a specified collateral type
+   * of ``token_address``
+   * Fetches the amount of undelegated collateral available for withdrawal
+   * for a given token and account.
+   * @param tokenAddress The address of the collateral token
+   * @param accountId The ID of the account to check. Uses default if not provided.
+   * @returns The available collateral as an ether value.
+   */
+  public async getAvailableCollateral(
+    tokenAddress: string,
+    accountId: bigint | undefined = undefined,
+  ): Promise<string> {
+    if (accountId == undefined) {
+      console.log('Using default account ID value :', this.sdk.defaultAccountId);
+      accountId = this.sdk.defaultAccountId;
     }
 
-    const res = await this.sdk.utils.multicallErc7412(txs);
-    console.log('res', res);
-    console.log('defaultAccountId', defaultAccountId);
+    const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
+
+    const availableCollateral = await this.sdk.utils.callErc7412(
+      coreProxy.address,
+      coreProxy.abi,
+      'getAccountAvailableCollateral',
+      [accountId, tokenAddress],
+    );
+
+    console.log(availableCollateral);
+    return formatEther(availableCollateral as bigint);
+  }
+
+  public async createAccount(accountId: bigint | undefined = undefined, submit: boolean = false) {
+    const txArgs = [];
+    if (accountId != undefined) {
+      txArgs.push(accountId);
+    }
+
+    const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
+
+    const tx: CallParameters = await this.sdk.utils.writeErc7412(
+      coreProxy.address,
+      coreProxy.abi,
+      'createAccount',
+      txArgs,
+    );
+
+    if (submit) {
+      const walletClient = await this.sdk.getWalletClient();
+      const txHash = await walletClient?.sendTransaction(tx as SendTransactionParameters);
+      console.log('Creating account for ', this.sdk.accountAddress);
+      console.log('Create Account tx hash', txHash);
+
+      await this.sdk.publicClient.waitForTransactionReceipt({
+        hash: txHash,
+      });
+      await this.getAccountIds();
+      return txHash;
+    } else {
+      return tx;
+    }
+  }
+
+  public async deposit(
+    tokenAddress: string,
+    amount: number,
+    decimals: number = 18,
+    accountId: bigint | undefined = undefined,
+    submit: boolean = false,
+  ) {
+    if (accountId == undefined) {
+      accountId = this.sdk.defaultAccountId;
+    }
+
+    const amountInWei = parseUnits(amount.toString(), decimals);
+    const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
+
+    const tx: CallParameters = await this.sdk.utils.writeErc7412(coreProxy.address, coreProxy.abi, 'deposit', [
+      accountId,
+      tokenAddress,
+      amountInWei,
+    ]);
+
+    if (submit) {
+      const walletClient = await this.sdk.getWalletClient();
+      const txHash = await walletClient?.sendTransaction(tx as SendTransactionParameters);
+      console.log(`Depositing ${amount} for account ${accountId}`);
+      console.log('Deposit tx hash', txHash);
+      await this.sdk.publicClient.waitForTransactionReceipt({
+        hash: txHash,
+      });
+      return txHash;
+    } else {
+      return tx;
+    }
+  }
+
+  public async withdraw(
+    tokenAddress: string,
+    amount: number,
+    decimals: number = 18,
+    accountId: bigint | undefined,
+    submit: boolean = false,
+  ) {
+    if (accountId == undefined) {
+      accountId = this.sdk.defaultAccountId;
+    }
+
+    const amountInWei = parseUnits(amount.toString(), decimals);
+    const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
+
+    const tx: CallParameters = await this.sdk.utils.writeErc7412(coreProxy.address, coreProxy.abi, 'withdraw', [
+      accountId,
+      tokenAddress,
+      amountInWei,
+    ]);
+
+    if (submit) {
+      const walletClient = await this.sdk.getWalletClient();
+      const txHash = await walletClient?.sendTransaction(tx as SendTransactionParameters);
+      console.log(`Withdrawing ${amount} ${tokenAddress} from account ${accountId}`);
+      console.log('Withdraw tx hash', txHash);
+      await this.sdk.publicClient.waitForTransactionReceipt({
+        hash: txHash,
+      });
+      return txHash;
+    } else {
+      return tx;
+    }
+  }
+
+  public async delegateCollateral(
+    tokenAddress: string,
+    amount: number,
+    poolId: number,
+    leverage: number,
+    accountId: bigint | undefined = undefined,
+    submit: boolean = false,
+  ) {
+    if (accountId == undefined) {
+      accountId = this.sdk.defaultAccountId;
+    }
+
+    const amountInWei = parseUnits(amount.toString(), 18);
+    const leverageInWei = parseUnits(leverage.toString(), 18);
+    const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
+
+    const tx: CallParameters = await this.sdk.utils.writeErc7412(
+      coreProxy.address,
+      coreProxy.abi,
+      'delegateCollateral',
+      [accountId, poolId, tokenAddress, amountInWei, leverageInWei],
+    );
+
+    if (submit) {
+      const walletClient = await this.sdk.getWalletClient();
+      const txHash = await walletClient?.sendTransaction(tx as SendTransactionParameters);
+      console.log(`Delegating ${amount} ${tokenAddress} to pool id ${poolId} for account ${accountId}`);
+      console.log('Delegate tx hash', txHash);
+      await this.sdk.publicClient.waitForTransactionReceipt({
+        hash: txHash,
+      });
+      return txHash;
+    } else {
+      return tx;
+    }
+  }
+
+  public async mintUsd(
+    tokenAddress: string,
+    amount: number,
+    poolId: number,
+    accountId: bigint | undefined,
+    submit: boolean = false,
+  ) {
+    if (accountId == undefined) {
+      accountId = this.sdk.defaultAccountId;
+    }
+
+    const amountInWei = parseUnits(amount.toString(), 18);
+    const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
+
+    const tx: CallParameters = await this.sdk.utils.writeErc7412(coreProxy.address, coreProxy.abi, 'mintUsd', [
+      accountId,
+      poolId,
+      tokenAddress,
+      amountInWei,
+    ]);
+
+    if (submit) {
+      const walletClient = await this.sdk.getWalletClient();
+      const txHash = await walletClient?.sendTransaction(tx as SendTransactionParameters);
+      console.log(
+        `Minting ${amount} sUSD with ${tokenAddress} collateral against pool id ${poolId} for account ${accountId}`,
+      );
+      console.log('Mint tx hash', txHash);
+      await this.sdk.publicClient.waitForTransactionReceipt({
+        hash: txHash,
+      });
+      return txHash;
+    } else {
+      return tx;
+    }
   }
 }

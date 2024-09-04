@@ -1,4 +1,3 @@
-import { ContractFunctionParameters } from 'viem';
 import { SynthetixSdk } from '..';
 /**
  * Class for interacting with Synthetix V3 core contracts
@@ -11,17 +10,21 @@ export class Perps {
     this.sdk = synthetixSdk;
   }
 
-  public async canLiquidate(accountId: bigint) {
+  public async canLiquidate(accountId: bigint | undefined = undefined): Promise<boolean> {
+    if (accountId == undefined) {
+      console.log('Using default account ID value :', this.sdk.defaultAccountId);
+      accountId = this.sdk.defaultAccountId;
+    }
+
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
-    const tx: ContractFunctionParameters = {
-      address: perpsMarketProxy.address,
-      abi: perpsMarketProxy.abi,
-      functionName: 'canLiquidate',
-      args: [accountId],
-    };
-
-    const resp = await this.sdk.utils.multicallErc7412([tx]);
-    console.log(resp);
+    const canBeLiquidated = await this.sdk.utils.callErc7412(
+      perpsMarketProxy.address,
+      perpsMarketProxy.abi,
+      'canLiquidate',
+      [accountId],
+    );
+    console.log('canBeLiquidated', canBeLiquidated);
+    return canBeLiquidated as boolean;
   }
 }
