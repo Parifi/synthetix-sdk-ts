@@ -6,14 +6,17 @@ import { SynthetixSdk } from '..';
  */
 export class Perps {
   sdk: SynthetixSdk;
+  defaultAccountId?: bigint;
+
   constructor(synthetixSdk: SynthetixSdk) {
     this.sdk = synthetixSdk;
+    this.defaultAccountId = process.env.PERPS_ACCOUNT_ID == undefined ? undefined : BigInt(process.env.PERPS_ACCOUNT_ID);
   }
 
   public async canLiquidate(accountId: bigint | undefined = undefined): Promise<boolean> {
     if (accountId == undefined) {
-      console.log('Using default account ID value :', this.sdk.defaultAccountId);
-      accountId = this.sdk.defaultAccountId;
+      console.log('Using default account ID value :', this.defaultAccountId);
+      accountId = this.defaultAccountId;
     }
 
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();

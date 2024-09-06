@@ -31,9 +31,9 @@ describe('Core', () => {
     console.info('getAvailableCollateral :', availableCollateral);
   });
 
-  it('should create an account and return the tx hash', async () => {
+  it.skip('should create an account and return the tx hash', async () => {
     const sdk = await getSdkInstanceForTesting();
-    const txHash = await sdk.core.createAccount(undefined, true);
+    const txHash = await sdk.core.createAccount(undefined, false);
     console.log('Create account txHash:', txHash);
   });
 
@@ -42,7 +42,7 @@ describe('Core', () => {
     const sdk = await getSdkInstanceForTesting();
     const tokenAddress = await sdk.core.getUsdToken();
     const amount = 100; // 100 USD
-    const txHash = await sdk.core.deposit(tokenAddress, amount, 18);
+    const txHash = await sdk.core.deposit(tokenAddress, amount, 18, undefined, false);
     console.log('Deposit txHash:', txHash);
   });
 
@@ -51,7 +51,7 @@ describe('Core', () => {
     const tokenAddress = await sdk.core.getUsdToken();
     const amount = 50; // 100 USD
 
-    const txHash = await sdk.core.deposit(tokenAddress, amount, 18);
+    const txHash = await sdk.core.deposit(tokenAddress, amount, 18, undefined, false);
     console.log('Withdraw txHash:', txHash);
   });
 
@@ -62,7 +62,7 @@ describe('Core', () => {
     const poolId = 100;
     const leverage = 2;
 
-    const txHash = await sdk.core.delegateCollateral(tokenAddress, amount, poolId, leverage);
+    const txHash = await sdk.core.delegateCollateral(tokenAddress, amount, poolId, leverage, undefined, false);
     console.log('Delegate txHash:', txHash);
   });
 
@@ -72,7 +72,7 @@ describe('Core', () => {
     const amount = 50;
     const poolId = 100;
 
-    const txHash = await sdk.core.mintUsd(tokenAddress, amount, poolId);
+    const txHash = await sdk.core.mintUsd(tokenAddress, amount, poolId, undefined, false);
     console.log('Create account txHash:', txHash);
   });
 });

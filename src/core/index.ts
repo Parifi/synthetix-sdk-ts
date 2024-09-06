@@ -9,8 +9,11 @@ import { ZERO_ADDRESS } from '../constants/common';
  */
 export class Core {
   sdk: SynthetixSdk;
+  defaultAccountId?: bigint;
+
   constructor(synthetixSdk: SynthetixSdk) {
     this.sdk = synthetixSdk;
+    this.defaultAccountId = process.env.CORE_ACCOUNT_ID == undefined ? undefined : BigInt(process.env.CORE_ACCOUNT_ID);
   }
 
   /**
@@ -77,11 +80,11 @@ export class Core {
     console.log('accountIds', accountIds);
     this.sdk.accountIds = accountIds as bigint[];
     if (defaultAccountId) {
-      this.sdk.defaultAccountId = defaultAccountId;
+      this.defaultAccountId = defaultAccountId;
     } else if (this.sdk.accountIds.length > 0) {
-      this.sdk.defaultAccountId = this.sdk.accountIds[0];
+      this.defaultAccountId = this.sdk.accountIds[0];
     }
-    console.log('Using default account id as ', this.sdk.defaultAccountId);
+    console.log('Using default account id as ', this.defaultAccountId);
     return accountIds as bigint[];
   }
 
@@ -99,8 +102,8 @@ export class Core {
     accountId: bigint | undefined = undefined,
   ): Promise<string> {
     if (accountId == undefined) {
-      console.log('Using default account ID value :', this.sdk.defaultAccountId);
-      accountId = this.sdk.defaultAccountId;
+      console.log('Using default account ID value :', this.defaultAccountId);
+      accountId = this.defaultAccountId;
     }
 
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
@@ -131,14 +134,8 @@ export class Core {
     );
 
     if (submit) {
-      const walletClient = await this.sdk.getWalletClient();
-      const txHash = await walletClient?.sendTransaction(tx as SendTransactionParameters);
-      console.log('Creating account for ', this.sdk.accountAddress);
-      console.log('Create Account tx hash', txHash);
-
-      await this.sdk.publicClient.waitForTransactionReceipt({
-        hash: txHash,
-      });
+      const txHash = await this.sdk.executeTransaction(tx);
+      console.log("Transaction hash: ", txHash)
       await this.getAccountIds();
       return txHash;
     } else {
@@ -154,7 +151,7 @@ export class Core {
     submit: boolean = false,
   ) {
     if (accountId == undefined) {
-      accountId = this.sdk.defaultAccountId;
+      accountId = this.defaultAccountId;
     }
 
     const amountInWei = parseUnits(amount.toString(), decimals);
@@ -167,13 +164,8 @@ export class Core {
     ]);
 
     if (submit) {
-      const walletClient = await this.sdk.getWalletClient();
-      const txHash = await walletClient?.sendTransaction(tx as SendTransactionParameters);
-      console.log(`Depositing ${amount} for account ${accountId}`);
+      const txHash = await this.sdk.executeTransaction(tx);
       console.log('Deposit tx hash', txHash);
-      await this.sdk.publicClient.waitForTransactionReceipt({
-        hash: txHash,
-      });
       return txHash;
     } else {
       return tx;
@@ -188,7 +180,7 @@ export class Core {
     submit: boolean = false,
   ) {
     if (accountId == undefined) {
-      accountId = this.sdk.defaultAccountId;
+      accountId = this.defaultAccountId;
     }
 
     const amountInWei = parseUnits(amount.toString(), decimals);
@@ -201,13 +193,9 @@ export class Core {
     ]);
 
     if (submit) {
-      const walletClient = await this.sdk.getWalletClient();
-      const txHash = await walletClient?.sendTransaction(tx as SendTransactionParameters);
       console.log(`Withdrawing ${amount} ${tokenAddress} from account ${accountId}`);
+      const txHash = await this.sdk.executeTransaction(tx);
       console.log('Withdraw tx hash', txHash);
-      await this.sdk.publicClient.waitForTransactionReceipt({
-        hash: txHash,
-      });
       return txHash;
     } else {
       return tx;
@@ -223,7 +211,7 @@ export class Core {
     submit: boolean = false,
   ) {
     if (accountId == undefined) {
-      accountId = this.sdk.defaultAccountId;
+      accountId = this.defaultAccountId;
     }
 
     const amountInWei = parseUnits(amount.toString(), 18);
@@ -238,13 +226,9 @@ export class Core {
     );
 
     if (submit) {
-      const walletClient = await this.sdk.getWalletClient();
-      const txHash = await walletClient?.sendTransaction(tx as SendTransactionParameters);
       console.log(`Delegating ${amount} ${tokenAddress} to pool id ${poolId} for account ${accountId}`);
+      const txHash = await this.sdk.executeTransaction(tx);
       console.log('Delegate tx hash', txHash);
-      await this.sdk.publicClient.waitForTransactionReceipt({
-        hash: txHash,
-      });
       return txHash;
     } else {
       return tx;
@@ -259,7 +243,7 @@ export class Core {
     submit: boolean = false,
   ) {
     if (accountId == undefined) {
-      accountId = this.sdk.defaultAccountId;
+      accountId = this.defaultAccountId;
     }
 
     const amountInWei = parseUnits(amount.toString(), 18);
@@ -273,15 +257,11 @@ export class Core {
     ]);
 
     if (submit) {
-      const walletClient = await this.sdk.getWalletClient();
-      const txHash = await walletClient?.sendTransaction(tx as SendTransactionParameters);
       console.log(
         `Minting ${amount} sUSD with ${tokenAddress} collateral against pool id ${poolId} for account ${accountId}`,
       );
+      const txHash = await this.sdk.executeTransaction(tx);
       console.log('Mint tx hash', txHash);
-      await this.sdk.publicClient.waitForTransactionReceipt({
-        hash: txHash,
-      });
       return txHash;
     } else {
       return tx;

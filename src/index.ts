@@ -2,9 +2,11 @@ import { AccountConfig, PartnerConfig, PythConfig, RpcConfig, SubgraphConfig } f
 import { getPublicRpcEndpoint, getViemChain, Utils } from './utils';
 import { Core } from './core';
 import {
+  Account,
   Address,
   CallParameters,
   createPublicClient,
+  createWalletClient,
   Hex,
   http,
   PublicClient,
@@ -17,6 +19,7 @@ import { ZERO_ADDRESS } from './constants/common';
 import { Contracts } from './contracts';
 import { Pyth } from './pyth';
 import { Perps } from './perps';
+import { privateKeyToAccount } from 'viem/accounts';
 
 export class SynthetixSdk {
   accountConfig: AccountConfig;
@@ -28,11 +31,15 @@ export class SynthetixSdk {
   // Account fields
   accountAddress: Address = ZERO_ADDRESS;
   accountIds?: bigint[];
-  defaultAccountId?: bigint;
+  defaultCoreAccountId?: bigint;
+  defaultPerpsAccountId?: bigint;
+
+
 
   // Public client should always be defined either using the rpcConfig or using the public endpoint
   publicClient: PublicClient;
   walletClient?: WalletClient;
+  account?: Account;
 
   core: Core;
   contracts: Contracts;
@@ -110,6 +117,7 @@ export class SynthetixSdk {
       if (this.accountConfig.walletClient != undefined) {
         // Set the wallet in SDK if passed
         this.walletClient = this.accountConfig.walletClient;
+        this.account = this.walletClient.account;
 
         const addresses = await this.walletClient.getAddresses();
         let address0 = ZERO_ADDRESS;
@@ -135,6 +143,8 @@ export class SynthetixSdk {
         }
       }
       this.accountAddress = this.accountConfig.address as Hex;
+      this.defaultCoreAccountId = process.env.CORE_ACCOUNT_ID == undefined ? undefined : BigInt(process.env.CORE_ACCOUNT_ID);
+      this.defaultPerpsAccountId = process.env.PERPS_ACCOUNT_ID == undefined ? undefined : BigInt(process.env.PERPS_ACCOUNT_ID);
     } catch (error) {
       console.log('Error:', error);
       throw error;
@@ -166,4 +176,33 @@ export class SynthetixSdk {
     }
   }
 
+  public async executeTransaction(tx: CallParameters) {
+    if (process.env.PRIVATE_KEY != undefined) {
+
+      const viemChain = getViemChain(this.rpcConfig.chainId);
+      const account = privateKeyToAccount(process.env.PRIVATE_KEY as Hex);
+
+      const wClient = createWalletClient({
+        chain: viemChain,
+        transport: http(this.rpcConfig.rpcEndpoint)
+      })
+
+
+      const request = await wClient.prepareTransactionRequest({
+        account: account,
+        to: tx.to,
+        data: tx.data,
+        value: tx.value
+      });
+
+      const serializedTransaction = await wClient.signTransaction(request)
+      const txHash = await wClient.sendRawTransaction({ serializedTransaction });
+      await this.publicClient.waitForTransactionReceipt({
+        hash: txHash,
+      });
+      return txHash;
+    } else {
+      throw new Error("Invalid account signer")
+    }
+  }
 }
