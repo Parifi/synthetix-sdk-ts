@@ -16,7 +16,6 @@ import { SynthetixSdk } from '..';
 import { dynamicImportAbi } from '../contracts/helpers';
 import { OracleDataRequiredError } from '../error';
 import { IERC7412Abi } from '../contracts/abis/IERC7412';
-import { Multicall3Abi } from '../contracts/abis/Multicall3';
 import { Call3Value, Result } from '../interface/contractTypes';
 
 /**
@@ -114,6 +113,7 @@ export class Utils {
     args: unknown[],
     calls: Call3Value[] = [],
   ) {
+    const multicallInstance = await this.sdk.contracts.getMulticallInstance();
     const currentCall: Call3Value = {
       target: contractAddress,
       callData: encodeFunctionData({
@@ -122,7 +122,7 @@ export class Utils {
         args: args,
       }),
       value: 0n,
-      allowFailure: false,
+      requireSuccess: true,
     };
 
     calls.push(currentCall);
@@ -132,7 +132,7 @@ export class Utils {
     while (true) {
       try {
         const multicallData = encodeFunctionData({
-          abi: Multicall3Abi,
+          abi: multicallInstance.abi,
           functionName: 'aggregate3Value',
           args: [calls],
         });
@@ -144,34 +144,40 @@ export class Utils {
 
         const finalTx = {
           account: this.sdk.accountAddress,
-          to: publicClient.chain?.contracts?.multicall3?.address,
+          to: multicallInstance.address,
           data: multicallData,
           value: totalValue,
         };
 
         const response = await publicClient.call(finalTx);
+        console.log("Response: ", response)
+        if (response.data != undefined) {
+          const multicallResult: Result[] = this.decodeResponse(
+            multicallInstance.abi,
+            'aggregate3Value',
+            response.data as Hex,
+          ) as unknown as Result[];
 
-        const multicallResult: Result[] = this.decodeResponse(
-          Multicall3Abi,
-          'aggregate3Value',
-          response.data as Hex,
-        ) as unknown as Result[];
-
-        const returnData = multicallResult.at(-1)?.returnData;
-
-        if (returnData != undefined) {
-          const decodedResult = this.decodeResponse(abi, functionName, returnData);
-          return decodedResult;
+          const returnData = multicallResult.at(-1);
+          console.log("Return data", returnData)
+          if (returnData?.success && returnData.returnData != undefined) {
+            const decodedResult = this.decodeResponse(abi, functionName, returnData.returnData);
+            return decodedResult;
+          } else {
+            throw new Error('Error decoding call data');
+          }
         } else {
-          throw new Error('Error decoding call data');
+          throw new Error("Invalid response from function call");
+
         }
       } catch (error) {
         console.log('error', error);
 
-        if (error instanceof OracleDataRequiredError) {
-          // @todo Add updated Pyth contract logic
-        }
-        return;
+        // if (error instanceof OracleDataRequiredError) {
+        //   // @todo Add updated Pyth contract logic
+        // }
+        throw error;
+
       }
     }
   }
@@ -188,9 +194,12 @@ export class Utils {
     argsList: unknown[],
     calls: Call3Value[] = [],
   ) {
+    const multicallInstance = await this.sdk.contracts.getMulticallInstance();
+
     // Format the args to the required array format
     argsList = argsList.map((args) => (Array.isArray(args) ? args : [args]));
     const numPrependedCalls = calls.length;
+
 
     argsList.forEach((args) => {
       const currentCall: Call3Value = {
@@ -201,7 +210,7 @@ export class Utils {
           args: args as unknown[],
         }),
         value: 0n,
-        allowFailure: false,
+        requireSuccess: true,
       };
       calls.push(currentCall);
     });
@@ -212,7 +221,7 @@ export class Utils {
     while (true) {
       try {
         const multicallData = encodeFunctionData({
-          abi: Multicall3Abi,
+          abi: multicallInstance.abi,
           functionName: 'aggregate3Value',
           args: [calls],
         });
@@ -232,7 +241,7 @@ export class Utils {
         const response = await publicClient.call(finalTx);
 
         const multicallResult: Result[] = this.decodeResponse(
-          Multicall3Abi,
+          multicallInstance.abi,
           'aggregate3Value',
           response.data as Hex,
         ) as unknown as Result[];
@@ -247,7 +256,7 @@ export class Utils {
         if (error instanceof OracleDataRequiredError) {
           // @todo Add updated Pyth contract logic
         }
-        return;
+        throw error;
       }
     }
   }
@@ -264,6 +273,8 @@ export class Utils {
     args: unknown[],
     calls: Call3Value[] = [],
   ): Promise<CallParameters> {
+    const multicallInstance = await this.sdk.contracts.getMulticallInstance();
+
     const currentCall: Call3Value = {
       target: contractAddress,
       callData: encodeFunctionData({
@@ -272,17 +283,15 @@ export class Utils {
         args: args,
       }),
       value: 0n,
-      allowFailure: false,
+      requireSuccess: true,
     };
-
     calls.push(currentCall);
-
     const publicClient = this.sdk.getPublicClient();
 
     while (true) {
       try {
         const multicallData = encodeFunctionData({
-          abi: Multicall3Abi,
+          abi: multicallInstance.abi,
           functionName: 'aggregate3Value',
           args: [calls],
         });
@@ -294,20 +303,13 @@ export class Utils {
 
         const finalTx: CallParameters = {
           account: this.sdk.accountAddress,
-          to: publicClient.chain?.contracts?.multicall3?.address,
+          to: multicallInstance.address,
           data: multicallData,
           value: totalValue,
         };
 
-        const response = await publicClient.call(finalTx);
-        const multicallResult: Result[] = this.decodeResponse(
-          Multicall3Abi,
-          'aggregate3Value',
-          response.data as Hex,
-        ) as unknown as Result[];
-        console.log('multicallResult', multicallResult);
-
         // If the call is successful, return the final tx
+        await publicClient.call(finalTx);
         return finalTx;
       } catch (error) {
         console.log('error', error);
@@ -315,6 +317,7 @@ export class Utils {
         if (error instanceof OracleDataRequiredError) {
           // @todo Add updated Pyth contract logic
         }
+        throw error;
       }
     }
   }

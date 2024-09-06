@@ -28,6 +28,29 @@ export class Contracts {
       };
     }
   }
+
+  /**
+   * The function returns an instance of the Core Proxy smart contract
+   * @returns Contract - Instance of Core Proxy smart contract
+   */
+  public async getMulticallInstance() {
+    try {
+      const meta = await dynamicImportMeta(this.sdk.rpcConfig.chainId, this.sdk.rpcConfig.preset);
+      const abi = await dynamicImportAbi(this.sdk.rpcConfig.chainId, this.sdk.rpcConfig.preset, 'TrustedMulticallForwarder');
+      const multicallInstance = getContract({
+        address: meta.contracts.TrustedMulticallForwarder as Hex,
+        abi: abi,
+        client: this.getClientsForContractInstance(),
+      });
+      return multicallInstance;
+    } catch (error) {
+      console.log(error);
+      throw new Error(
+        `Unsupported chain ${this.sdk.rpcConfig.chainId} or preset ${this.sdk.rpcConfig.preset} for MulticallInstance`,
+      );
+    }
+  }
+
   /**
    * The function returns an instance of the Core Proxy smart contract
    * @returns Contract - Instance of Core Proxy smart contract

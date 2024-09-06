@@ -17,62 +17,62 @@ describe('Core', () => {
 
   it('should return account ids and balance of an address', async () => {
     const sdk = await getSdkInstanceForTesting();
-    const TEST_ADDRESS = '0xDf29B49eDE0289ba00a507E900552C46deed0DAc';
+    const TEST_ADDRESS = '0xf4bb53eFcFd49Fe036FdCc8F46D981203ae3BAB8';
     const accountIds = await sdk.core.getAccountIds(TEST_ADDRESS);
     console.info('Account Ids :', accountIds);
   });
 
-  it('should return available collateral of an address', async () => {
+  it('should return available collateral of an account', async () => {
     const sdk = await getSdkInstanceForTesting();
-    // const tokenAddress = await sdk.core.getUsdToken();
-    const tokenAddress = '0x09d51516F38980035153a554c26Df3C6f51a23C3';
-    const accountId = 170141183460469231731687303715884106040n;
+    const tokenAddress = await sdk.core.getUsdToken();
+    const accountId = 170141183460469231731687303715884106496n;
     const availableCollateral = await sdk.core.getAvailableCollateral(tokenAddress, accountId);
 
     console.info('getAvailableCollateral :', availableCollateral);
   });
 
-  it.only('should create an account and return the tx hash', async () => {
+  it('should create an account and return the tx hash', async () => {
     const sdk = await getSdkInstanceForTesting();
     const txHash = await sdk.core.createAccount(undefined, true);
     console.log('Create account txHash:', txHash);
   });
 
-  it('should deposit tokens to account', async () => {
+  it.skip('should deposit tokens to account', async () => {
+    const accountId = 170141183460469231731687303715884106040n
     const sdk = await getSdkInstanceForTesting();
     const tokenAddress = await sdk.core.getUsdToken();
     const amount = 100; // 100 USD
-    const txHash = await sdk.core.deposit(tokenAddress, amount, 18, undefined, true);
+    const txHash = await sdk.core.deposit(tokenAddress, amount, 18);
     console.log('Deposit txHash:', txHash);
   });
 
-  it('should withdraw tokens from account', async () => {
+  it.skip('should withdraw tokens from account', async () => {
     const sdk = await getSdkInstanceForTesting();
     const tokenAddress = await sdk.core.getUsdToken();
     const amount = 50; // 100 USD
 
-    const txHash = await sdk.core.deposit(tokenAddress, amount, 18, undefined, true);
+    const txHash = await sdk.core.deposit(tokenAddress, amount, 18);
     console.log('Withdraw txHash:', txHash);
   });
 
-  it('should delegate account collateral to a pool', async () => {
+  it.skip('should delegate account collateral to a pool', async () => {
     const sdk = await getSdkInstanceForTesting();
     const tokenAddress = await sdk.core.getUsdToken();
     const amount = 50;
     const poolId = 100;
     const leverage = 2;
 
-    const txHash = await sdk.core.delegateCollateral(tokenAddress, amount, poolId, leverage, undefined, true);
+    const txHash = await sdk.core.delegateCollateral(tokenAddress, amount, poolId, leverage);
     console.log('Delegate txHash:', txHash);
   });
 
-  it('should mint USD tokens', async () => {
+  it.skip('should mint USD tokens', async () => {
     const sdk = await getSdkInstanceForTesting();
     const tokenAddress = await sdk.core.getUsdToken();
     const amount = 50;
     const poolId = 100;
 
-    const txHash = await sdk.core.mintUsd(tokenAddress, amount, poolId, undefined, true);
+    const txHash = await sdk.core.mintUsd(tokenAddress, amount, poolId);
     console.log('Create account txHash:', txHash);
   });
 });

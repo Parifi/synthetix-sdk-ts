@@ -123,7 +123,6 @@ export class Core {
     }
 
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
-
     const tx: CallParameters = await this.sdk.utils.writeErc7412(
       coreProxy.address,
       coreProxy.abi,
@@ -256,7 +255,7 @@ export class Core {
     tokenAddress: string,
     amount: number,
     poolId: number,
-    accountId: bigint | undefined,
+    accountId: bigint | undefined = undefined,
     submit: boolean = false,
   ) {
     if (accountId == undefined) {
