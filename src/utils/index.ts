@@ -3,11 +3,13 @@ export * from './common';
 import {
   Abi,
   Address,
+  CallExecutionError,
   CallParameters,
   ContractFunctionParameters,
   decodeAbiParameters,
   decodeErrorResult,
   decodeFunctionResult,
+  encodeAbiParameters,
   encodeFunctionData,
   Hex,
   parseAbiParameters,
@@ -17,6 +19,7 @@ import { dynamicImportAbi } from '../contracts/helpers';
 import { OracleDataRequiredError } from '../error';
 import { IERC7412Abi } from '../contracts/abis/IERC7412';
 import { Call3Value, Result } from '../interface/contractTypes';
+import { parseError } from './parseError';
 
 /**
  * Utility class
@@ -38,6 +41,13 @@ export class Utils {
     return values[2] as Hex[];
   }
 
+  /**
+   * Decodes the response from a Smart contract function call
+   * @param abi Contract ABI
+   * @param functionName Function name to decode
+   * @param result Response from function call that needs to be decoded
+   * @returns Decoded result
+   */
   public decodeResponse(abi: unknown, functionName: string, result: Hex) {
     const decodedResult = decodeFunctionResult({
       abi: abi as Abi,
@@ -48,63 +58,139 @@ export class Utils {
     return decodedResult;
   }
 
-  public async decodeErc7412Error(errorData: Hex) {
-    try {
-      const oracleManagerAbi = await dynamicImportAbi(
-        this.sdk.rpcConfig.chainId,
-        this.sdk.rpcConfig.preset,
-        'OracleManagerProxy',
+  /**
+   * Determines the type of Error emitted by ERC7412 contract and prepares signed update data
+   * @param data Error data emitted from ERC7412 contract
+   * @returns Encoded data for oracle price update transaction
+   */
+  public async fetchOracleUpdateData(
+    data: Hex
+  ): Promise<Hex> {
+    const [updateType] = decodeAbiParameters(
+      [{ name: 'updateType', type: 'uint8' }],
+      data
+    );
+    if (updateType === 1) {
+      const [updateType, stalenessOrTime, priceIds] = decodeAbiParameters(
+        [
+          { name: 'updateType', type: 'uint8' },
+          { name: 'stalenessTolerance', type: 'uint64' },
+          { name: 'priceIds', type: 'bytes32[]' },
+        ],
+        data
       );
-      const response = decodeErrorResult({
-        abi: oracleManagerAbi,
-        data: errorData,
+
+      const stalenessTolerance = stalenessOrTime;
+      let updateData = await this.fetchPriceUpdateData([...priceIds])
+      return encodeAbiParameters(
+        [
+          { type: 'uint8', name: 'updateType' },
+          { type: 'uint64', name: 'stalenessTolerance' },
+          { type: 'bytes32[]', name: 'priceIds' },
+          { type: 'bytes[]', name: 'updateData' },
+        ],
+        [updateType, stalenessTolerance, priceIds, updateData]
+      );
+    } else if (updateType === 2) {
+      const [updateType, requestedTime, priceId] = decodeAbiParameters(
+        [
+          { name: 'updateType', type: 'uint8' },
+          { name: 'requestedTime', type: 'uint64' },
+          { name: 'priceIds', type: 'bytes32' },
+        ],
+        data
+      );
+
+      let updateData = await this.fetchPriceUpdateData([priceId])
+      return encodeAbiParameters(
+        [
+          { type: 'uint8', name: 'updateType' },
+          { type: 'uint64', name: 'timestamp' },
+          { type: 'bytes32[]', name: 'priceIds' },
+          { type: 'bytes[]', name: 'updateData' },
+        ],
+        [updateType, requestedTime, [priceId], updateData]
+      );
+    } else {
+      throw new Error(`Error encoding/decoding data`);
+    }
+  }
+
+  /**
+   * Handles ERC7412 error by creating a price update tx which is prepended to the existing calls
+   * @param error Error thrown by the call function
+   * @param calls Multicall call data
+   * @returns call array with ERC7412 fulfillOracleQuery transaction
+   */
+  public async handleErc7412Error(error: unknown, calls: Call3Value[]): Promise<Call3Value[]> {
+    let err: any;
+
+    try {
+      err = decodeErrorResult({
+        abi: IERC7412Abi,
+        data: parseError(error as CallExecutionError),
       });
+    } catch (decodeErr) {
+      console.log("Decode Error: ", decodeErr);
+      throw new Error("Handle ERC7412 error")
+    }
 
-      if (response.errorName == 'OracleDataRequired') {
-        const oracleAddress = response.args[0] as Address;
-        const oracleQuery = response.args[1] as Hex;
+    if (err?.errorName === 'OracleDataRequired') {
+      const oracleAddress = err.args![0] as Address;
+      const oracleQuery = err.args![1] as Hex;
 
-        console.log('oracleAddress', oracleAddress);
-        console.log('oracleQuery', oracleQuery);
-      }
-    } catch (error) {
-      console.log('Error decoding revert data', error);
+      const signedRequiredData = await this.fetchOracleUpdateData(oracleQuery);
+      const dataVerificationTx = await this.generateDataVerificationTx(
+        oracleAddress,
+        signedRequiredData,
+      );
+      calls.unshift(dataVerificationTx);
+      return calls;
+    } else {
+      throw new Error("Handle ERC7412 error");
     }
   }
 
   /**
    * Fetches off-chain price update data for ERC7412 Oracle contract
-   * @param oracleQuery Encoded revert data from ERC7412 Oracle contract with more details about the error
+   * @param priceIds Pyth price ids array
    * @returns Pyth Price update data
    */
-  public async fetchOffchainData(oracleQuery: Hex): Promise<Hex> {
-    const priceIds = this.getPythPriceIdsFromOracleQuery(oracleQuery as Hex);
-
+  public async fetchPriceUpdateData(priceIds: Hex[]): Promise<Hex[]> {
     const priceUpdateData = await this.sdk.pyth.getVaaPriceUpdateData(priceIds);
     console.log('priceUpdateData', priceUpdateData);
-    return priceUpdateData.toString() as Hex;
+    return priceUpdateData as Hex[];
   }
 
   /**
-   * Generates Tx for Price update data of Oracle
+   * Generates Call3Value tx for Price update data of Oracle
    * @param oracleContract Oracle Contract address
-   * @param signedRequiredData Price Update data
+   * @param signedRequiredData Encoded Price Update data
    * @returns Transaction Request for Oracle price update
    */
-  public generateDataVerificationTx(oracleContract: Hex, signedRequiredData: string): ContractFunctionParameters {
-    const priceUpdateTx: ContractFunctionParameters = {
-      address: oracleContract,
-      abi: IERC7412Abi as unknown as Abi,
-      functionName: 'fulfillOracleQuery',
-      args: [signedRequiredData],
+  public generateDataVerificationTx(oracleContract: Hex, signedRequiredData: string): Call3Value {
+    const priceUpdateCall: Call3Value = {
+      target: oracleContract,
+      callData: encodeFunctionData({
+        abi: IERC7412Abi as unknown as Abi,
+        functionName: 'fulfillOracleQuery',
+        args: [signedRequiredData],
+      }),
+      value: 0n,
+      requireSuccess: true
     };
-    return priceUpdateTx;
+    return priceUpdateCall;
   }
 
   /**
-   * Encoded calls using the Multicall contract implementation
-   * @param tx Transaction(s) object to be called
-   * @returns Response of tx execution
+   * Calls the `functionName` on `contractAddress` target using the Multicall contract. If the call requires
+   * a price update, ERC7412 price update tx is prepended to the tx.
+   * @param contractAddress Target contract address for the call
+   * @param abi Contract ABI
+   * @param functionName Function to be called on the contract
+   * @param args Arguments list for the function call
+   * @param calls Array of Call3Value calls for Multicall contract
+   * @returns Response from the contract function call
    */
   public async callErc7412(
     contractAddress: Address,
@@ -171,21 +257,20 @@ export class Utils {
 
         }
       } catch (error) {
-        console.log('error', error);
-
-        // if (error instanceof OracleDataRequiredError) {
-        //   // @todo Add updated Pyth contract logic
-        // }
-        throw error;
-
+        calls = await this.handleErc7412Error(error, calls);
       }
     }
   }
 
   /**
-   * Encoded calls using the Multicall contract implementation
-   * @param tx Transaction(s) object to be called
-   * @returns Response of tx execution
+   * Calls the `functionName` on `contractAddress` target using the Multicall contract. If the call requires
+   * a price update, ERC7412 price update tx is prepended to the tx.
+   * @param contractAddress Target contract address for the call
+   * @param abi Contract ABI
+   * @param functionName Function to be called on the contract
+   * @param args Array of arguments list for the function call
+   * @param calls Array of Call3Value calls for Multicall contract
+   * @returns Array of responses from the contract function call for the multicalls
    */
   public async multicallErc7412(
     contractAddress: Address,
@@ -199,7 +284,6 @@ export class Utils {
     // Format the args to the required array format
     argsList = argsList.map((args) => (Array.isArray(args) ? args : [args]));
     const numPrependedCalls = calls.length;
-
 
     argsList.forEach((args) => {
       const currentCall: Call3Value = {
@@ -251,20 +335,20 @@ export class Utils {
         const decodedResult = callsToDecode.map((result) => this.decodeResponse(abi, functionName, result.returnData));
         return decodedResult;
       } catch (error) {
-        console.log('error', error);
-
-        if (error instanceof OracleDataRequiredError) {
-          // @todo Add updated Pyth contract logic
-        }
-        throw error;
+        calls = await this.handleErc7412Error(error, calls);
       }
     }
   }
 
   /**
-   * Encoded calls using the Multicall contract implementation
-   * @param tx Transaction(s) object to be called
-   * @returns Response of tx execution
+   * Simulates the `functionName` on `contractAddress` target using the Multicall contract and returns the 
+   * final transaction call with ERC7412 price update data if required
+   * @param contractAddress Target contract address for the call
+   * @param abi Contract ABI
+   * @param functionName Function to be called on the contract
+   * @param args Arguments list for the function call
+   * @param calls Array of Call3Value calls for Multicall contract
+   * @returns Final transaction with ERC7412 tx data (if necessary)
    */
   public async writeErc7412(
     contractAddress: Address,
@@ -312,12 +396,7 @@ export class Utils {
         await publicClient.call(finalTx);
         return finalTx;
       } catch (error) {
-        console.log('error', error);
-
-        if (error instanceof OracleDataRequiredError) {
-          // @todo Add updated Pyth contract logic
-        }
-        throw error;
+        calls = await this.handleErc7412Error(error, calls);
       }
     }
   }

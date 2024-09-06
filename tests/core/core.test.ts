@@ -31,7 +31,7 @@ describe('Core', () => {
     console.info('getAvailableCollateral :', availableCollateral);
   });
 
-  it.skip('should create an account and return the tx hash', async () => {
+  it('should create an account and return the tx hash', async () => {
     const sdk = await getSdkInstanceForTesting();
     const txHash = await sdk.core.createAccount(undefined, false);
     console.log('Create account txHash:', txHash);
