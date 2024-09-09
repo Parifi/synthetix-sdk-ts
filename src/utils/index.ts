@@ -20,6 +20,7 @@ import { OracleDataRequiredError } from '../error';
 import { IERC7412Abi } from '../contracts/abis/IERC7412';
 import { Call3Value, Result } from '../interface/contractTypes';
 import { parseError } from './parseError';
+import { SIG_ORACLE_DATA_REQUIRED } from '../constants';
 
 /**
  * Utility class
@@ -63,13 +64,8 @@ export class Utils {
    * @param data Error data emitted from ERC7412 contract
    * @returns Encoded data for oracle price update transaction
    */
-  public async fetchOracleUpdateData(
-    data: Hex
-  ): Promise<Hex> {
-    const [updateType] = decodeAbiParameters(
-      [{ name: 'updateType', type: 'uint8' }],
-      data
-    );
+  public async fetchOracleUpdateData(data: Hex): Promise<Hex> {
+    const [updateType] = decodeAbiParameters([{ name: 'updateType', type: 'uint8' }], data);
     if (updateType === 1) {
       const [updateType, stalenessOrTime, priceIds] = decodeAbiParameters(
         [
@@ -77,11 +73,11 @@ export class Utils {
           { name: 'stalenessTolerance', type: 'uint64' },
           { name: 'priceIds', type: 'bytes32[]' },
         ],
-        data
+        data,
       );
 
       const stalenessTolerance = stalenessOrTime;
-      let updateData = await this.fetchPriceUpdateData([...priceIds])
+      let updateData = await this.fetchPriceUpdateData([...priceIds]);
       return encodeAbiParameters(
         [
           { type: 'uint8', name: 'updateType' },
@@ -89,7 +85,7 @@ export class Utils {
           { type: 'bytes32[]', name: 'priceIds' },
           { type: 'bytes[]', name: 'updateData' },
         ],
-        [updateType, stalenessTolerance, priceIds, updateData]
+        [updateType, stalenessTolerance, priceIds, updateData],
       );
     } else if (updateType === 2) {
       const [updateType, requestedTime, priceId] = decodeAbiParameters(
@@ -98,10 +94,10 @@ export class Utils {
           { name: 'requestedTime', type: 'uint64' },
           { name: 'priceIds', type: 'bytes32' },
         ],
-        data
+        data,
       );
 
-      let updateData = await this.fetchPriceUpdateData([priceId])
+      let updateData = await this.fetchPriceUpdateData([priceId]);
       return encodeAbiParameters(
         [
           { type: 'uint8', name: 'updateType' },
@@ -109,7 +105,7 @@ export class Utils {
           { type: 'bytes32[]', name: 'priceIds' },
           { type: 'bytes[]', name: 'updateData' },
         ],
-        [updateType, requestedTime, [priceId], updateData]
+        [updateType, requestedTime, [priceId], updateData],
       );
     } else {
       throw new Error(`Error encoding/decoding data`);
@@ -123,16 +119,23 @@ export class Utils {
    * @returns call array with ERC7412 fulfillOracleQuery transaction
    */
   public async handleErc7412Error(error: unknown, calls: Call3Value[]): Promise<Call3Value[]> {
+    const parsedError = parseError(error as CallExecutionError);
+
+    if (!parsedError.startsWith(SIG_ORACLE_DATA_REQUIRED)) {
+      console.log('Error details: ', error);
+      console.log('Parsed Error details: ', parsedError);
+      throw new Error('Error is not related to Oracle data');
+    }
     let err: any;
 
     try {
       err = decodeErrorResult({
         abi: IERC7412Abi,
-        data: parseError(error as CallExecutionError),
+        data: parsedError,
       });
     } catch (decodeErr) {
-      console.log("Decode Error: ", decodeErr);
-      throw new Error("Handle ERC7412 error")
+      console.log('Decode Error: ', decodeErr);
+      throw new Error('Handle ERC7412 error');
     }
 
     if (err?.errorName === 'OracleDataRequired') {
@@ -140,14 +143,11 @@ export class Utils {
       const oracleQuery = err.args![1] as Hex;
 
       const signedRequiredData = await this.fetchOracleUpdateData(oracleQuery);
-      const dataVerificationTx = await this.generateDataVerificationTx(
-        oracleAddress,
-        signedRequiredData,
-      );
+      const dataVerificationTx = await this.generateDataVerificationTx(oracleAddress, signedRequiredData);
       calls.unshift(dataVerificationTx);
       return calls;
     } else {
-      throw new Error("Handle ERC7412 error");
+      throw new Error('Handle ERC7412 error');
     }
   }
 
@@ -177,7 +177,7 @@ export class Utils {
         args: [signedRequiredData],
       }),
       value: 0n,
-      requireSuccess: true
+      requireSuccess: true,
     };
     return priceUpdateCall;
   }
@@ -236,7 +236,7 @@ export class Utils {
         };
 
         const response = await publicClient.call(finalTx);
-        console.log("Response: ", response)
+        console.log('Response: ', response);
         if (response.data != undefined) {
           const multicallResult: Result[] = this.decodeResponse(
             multicallInstance.abi,
@@ -245,7 +245,7 @@ export class Utils {
           ) as unknown as Result[];
 
           const returnData = multicallResult.at(-1);
-          console.log("Return data", returnData)
+          console.log('Return data', returnData);
           if (returnData?.success && returnData.returnData != undefined) {
             const decodedResult = this.decodeResponse(abi, functionName, returnData.returnData);
             return decodedResult;
@@ -253,8 +253,7 @@ export class Utils {
             throw new Error('Error decoding call data');
           }
         } else {
-          throw new Error("Invalid response from function call");
-
+          throw new Error('Invalid response from function call');
         }
       } catch (error) {
         calls = await this.handleErc7412Error(error, calls);
@@ -341,7 +340,7 @@ export class Utils {
   }
 
   /**
-   * Simulates the `functionName` on `contractAddress` target using the Multicall contract and returns the 
+   * Simulates the `functionName` on `contractAddress` target using the Multicall contract and returns the
    * final transaction call with ERC7412 price update data if required
    * @param contractAddress Target contract address for the call
    * @param abi Contract ABI
