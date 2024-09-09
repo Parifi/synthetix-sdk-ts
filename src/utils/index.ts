@@ -20,7 +20,7 @@ import { OracleDataRequiredError } from '../error';
 import { IERC7412Abi } from '../contracts/abis/IERC7412';
 import { Call3Value, Result } from '../interface/contractTypes';
 import { parseError } from './parseError';
-import { SIG_ORACLE_DATA_REQUIRED } from '../constants';
+import { SIG_FEE_REQUIRED, SIG_ORACLE_DATA_REQUIRED } from '../constants';
 
 /**
  * Utility class
@@ -119,26 +119,22 @@ export class Utils {
    * @returns call array with ERC7412 fulfillOracleQuery transaction
    */
   public async handleErc7412Error(error: unknown, calls: Call3Value[]): Promise<Call3Value[]> {
-    const parsedError = parseError(error as CallExecutionError);
-
-    if (!parsedError.startsWith(SIG_ORACLE_DATA_REQUIRED)) {
-      console.log('Error details: ', error);
-      console.log('Parsed Error details: ', parsedError);
-      throw new Error('Error is not related to Oracle data');
-    }
     let err: any;
 
     try {
       err = decodeErrorResult({
         abi: IERC7412Abi,
-        data: parsedError,
+        data: parseError(error as CallExecutionError),
       });
     } catch (decodeErr) {
       console.log('Decode Error: ', decodeErr);
       throw new Error('Handle ERC7412 error');
     }
 
+    console.log('Error name = ', err?.errorName);
+
     if (err?.errorName === 'OracleDataRequired') {
+      console.log('Oracle Data Required error, adding price update data to tx');
       const oracleAddress = err.args![0] as Address;
       const oracleQuery = err.args![1] as Hex;
 
@@ -146,6 +142,14 @@ export class Utils {
       const dataVerificationTx = await this.generateDataVerificationTx(oracleAddress, signedRequiredData);
       calls.unshift(dataVerificationTx);
       return calls;
+    } else if (err.errorName === 'FeeRequired') {
+      console.log('Fee Required oracle error. Adding fee to tx.value');
+      if (calls.length > 0) {
+        calls[0].value = err.args[0] as bigint;
+        return calls;
+      } else {
+        throw new Error('Handle ERC7412 error: Calls.length == 0');
+      }
     } else {
       throw new Error('Handle ERC7412 error');
     }
@@ -256,7 +260,18 @@ export class Utils {
           throw new Error('Invalid response from function call');
         }
       } catch (error) {
+        const parsedError = parseError(error as CallExecutionError);
+
+        const isErc7412Error =
+          parsedError.startsWith(SIG_ORACLE_DATA_REQUIRED) || parsedError.startsWith(SIG_FEE_REQUIRED);
+        if (!isErc7412Error) {
+          console.log('Error details: ', error);
+          console.log('Parsed Error details: ', parsedError);
+          throw new Error('Error is not related to Oracle data');
+        }
+
         calls = await this.handleErc7412Error(error, calls);
+        console.log('Calls array after handleErc7412Error', calls);
       }
     }
   }
@@ -334,7 +349,18 @@ export class Utils {
         const decodedResult = callsToDecode.map((result) => this.decodeResponse(abi, functionName, result.returnData));
         return decodedResult;
       } catch (error) {
+        const parsedError = parseError(error as CallExecutionError);
+
+        const isErc7412Error =
+          parsedError.startsWith(SIG_ORACLE_DATA_REQUIRED) || parsedError.startsWith(SIG_FEE_REQUIRED);
+        if (!isErc7412Error) {
+          console.log('Error details: ', error);
+          console.log('Parsed Error details: ', parsedError);
+          throw new Error('Error is not related to Oracle data');
+        }
+
         calls = await this.handleErc7412Error(error, calls);
+        console.log('Calls array after handleErc7412Error', calls);
       }
     }
   }
@@ -391,11 +417,24 @@ export class Utils {
           value: totalValue,
         };
 
+        console.log('Final tx: ', finalTx);
+
         // If the call is successful, return the final tx
         await publicClient.call(finalTx);
         return finalTx;
       } catch (error) {
+        const parsedError = parseError(error as CallExecutionError);
+
+        const isErc7412Error =
+          parsedError.startsWith(SIG_ORACLE_DATA_REQUIRED) || parsedError.startsWith(SIG_FEE_REQUIRED);
+        if (!isErc7412Error) {
+          console.log('Error details: ', error);
+          console.log('Parsed Error details: ', parsedError);
+          throw new Error('Error is not related to Oracle data');
+        }
+
         calls = await this.handleErc7412Error(error, calls);
+        console.log('Calls array after handleErc7412Error', calls);
       }
     }
   }

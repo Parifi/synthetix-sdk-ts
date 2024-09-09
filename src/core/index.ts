@@ -119,6 +119,19 @@ export class Core {
     return formatEther(availableCollateral as bigint);
   }
 
+  /**
+   * Retrieves the unique system preferred pool
+   * @returns poolId The id of the pool that is currently set as preferred in the system.
+   */
+  public async getPreferredPool(): Promise<bigint> {
+    const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
+
+    const preferredPool = await this.sdk.utils.callErc7412(coreProxy.address, coreProxy.abi, 'getPreferredPool', []);
+
+    console.log(preferredPool);
+    return preferredPool as bigint;
+  }
+
   public async createAccount(accountId: bigint | undefined = undefined, submit: boolean = false) {
     const txArgs = [];
     if (accountId != undefined) {
@@ -135,7 +148,7 @@ export class Core {
 
     if (submit) {
       const txHash = await this.sdk.executeTransaction(tx);
-      console.log("Transaction hash: ", txHash)
+      console.log('Transaction hash: ', txHash);
       await this.getAccountIds();
       return txHash;
     } else {
@@ -205,7 +218,7 @@ export class Core {
   public async delegateCollateral(
     tokenAddress: string,
     amount: number,
-    poolId: number,
+    poolId: bigint,
     leverage: number,
     accountId: bigint | undefined = undefined,
     submit: boolean = false,
@@ -238,7 +251,7 @@ export class Core {
   public async mintUsd(
     tokenAddress: string,
     amount: number,
-    poolId: number,
+    poolId: bigint,
     accountId: bigint | undefined = undefined,
     submit: boolean = false,
   ) {

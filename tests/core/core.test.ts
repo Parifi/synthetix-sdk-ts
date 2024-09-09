@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { getSdkInstanceForTesting } from '..';
-import { erc20Abi, getContract, parseUnits } from 'viem';
+import { decodeErrorResult, erc20Abi, getContract, parseUnits } from 'viem';
+import { IERC7412Abi } from '../../src/contracts/abis/IERC7412';
 
 describe('Core', () => {
   it('should return response for a get call on Core proxy contract', async () => {
@@ -76,31 +77,46 @@ describe('Core', () => {
     console.log('Deposit tx data:', tx);
   });
 
-  it.skip('should withdraw tokens from account', async () => {
+  it('should withdraw tokens from account', async () => {
     const sdk = await getSdkInstanceForTesting();
+    const accountId = sdk.defaultCoreAccountId;
     const tokenAddress = await sdk.core.getUsdToken();
-    const amount = 50; // 100 USD
+    const amount = 5; // 5 USD
+    const amountInWei = parseUnits(amount.toString(), 18);
+    const coreProxy = await sdk.contracts.getCoreProxyInstance();
 
-    const txHash = await sdk.core.deposit(tokenAddress, amount, 18, undefined, false);
-    console.log('Withdraw txHash:', txHash);
+    const availableCollateral = await sdk.core.getAvailableCollateral(tokenAddress, accountId);
+    const collateralInWei = parseUnits(availableCollateral, 18);
+
+    if (amountInWei >= collateralInWei) {
+      console.log('Available collateral not available, unable to withdraw');
+      return;
+    } else {
+      const tx = await sdk.core.withdraw(tokenAddress, amount, 18, accountId, true);
+      console.log('Withdraw tx data:', tx);
+    }
   });
 
   it.skip('should delegate account collateral to a pool', async () => {
     const sdk = await getSdkInstanceForTesting();
+    const accountId = sdk.defaultCoreAccountId;
     const tokenAddress = await sdk.core.getUsdToken();
-    const amount = 50;
-    const poolId = 100;
-    const leverage = 2;
+    const amount = 60; // 5 usd
+    const poolId = await sdk.core.getPreferredPool();
+    console.log('Preferred pool id :', poolId);
+    const leverage = 1; // 1x leverage
 
-    const txHash = await sdk.core.delegateCollateral(tokenAddress, amount, poolId, leverage, undefined, false);
+    const txHash = await sdk.core.delegateCollateral(tokenAddress, amount, poolId, leverage, accountId, false);
     console.log('Delegate txHash:', txHash);
   });
 
   it.skip('should mint USD tokens', async () => {
     const sdk = await getSdkInstanceForTesting();
+    const coreProxy = await sdk.contracts.getCoreProxyInstance();
     const tokenAddress = await sdk.core.getUsdToken();
-    const amount = 50;
-    const poolId = 100;
+    const amount = 5; // 5 usd
+    const poolId = await sdk.core.getPreferredPool();
+    console.log('Preferred pool id :', poolId);
 
     const txHash = await sdk.core.mintUsd(tokenAddress, amount, poolId, undefined, false);
     console.log('Create account txHash:', txHash);
