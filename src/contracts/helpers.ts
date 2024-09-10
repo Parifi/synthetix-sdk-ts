@@ -10,13 +10,19 @@ interface Meta {
     AccountProxy: string;
     USDProxy: string;
     OracleManagerProxy: string;
-    LegacyMarketProxy: string;
-    V2x: string;
-    V2xUsd: string;
     TrustedMulticallForwarder: string;
     SpotMarketProxy: string;
-    CollateralToken_SNX: string;
-    SynthToken_snxUSDe: string;
+    PerpsMarketProxy: string;
+    PerpsAccountProxy: string;
+    PythERC7412Wrapper: string;
+    CollateralToken_USDC: string;
+    CollateralToken_sUSDC: string;
+    CollateralToken_stataBasUSDC: string;
+    CollateralToken_sStataUSDC: string;
+    SynthToken_sUSDC: string;
+    SynthToken_sStataUSDC: string;
+    RewardsDistributor_1_sUSDC_USDC: string;
+    RewardsDistributor_1_sUSDC_SNX: string;
   };
 }
 

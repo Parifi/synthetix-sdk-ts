@@ -1,10 +1,25 @@
 import { AccountConfig, PartnerConfig, PythConfig, RpcConfig, SubgraphConfig } from './interface/classConfigs';
-import { getPublicRpcEndpoint } from './utils';
+import { getPublicRpcEndpoint, getChain, Utils } from './utils';
 import { Core } from './core';
-import { createPublicClient, http, PublicClient, WalletClient, webSocket } from 'viem';
+import {
+  Account,
+  Address,
+  CallParameters,
+  createPublicClient,
+  createWalletClient,
+  Hex,
+  http,
+  PublicClient,
+  Transaction,
+  WalletClient,
+  webSocket,
+} from 'viem';
 import { ipc } from 'viem/node';
 import { ZERO_ADDRESS } from './constants/common';
 import { Contracts } from './contracts';
+import { Pyth } from './pyth';
+import { Perps } from './perps';
+import { privateKeyToAccount } from 'viem/accounts';
 
 export class SynthetixSdk {
   accountConfig: AccountConfig;
@@ -13,12 +28,24 @@ export class SynthetixSdk {
   rpcConfig: RpcConfig;
   subgraphConfig: SubgraphConfig;
 
-  // Public client should always be defined either using the rpcConfig or using the public 
-  publicClient?: PublicClient;
+  // Account fields
+  accountAddress: Address = ZERO_ADDRESS;
+  accountIds?: bigint[];
+  defaultCoreAccountId?: bigint;
+  defaultPerpsAccountId?: bigint;
+
+
+
+  // Public client should always be defined either using the rpcConfig or using the public endpoint
+  publicClient: PublicClient;
   walletClient?: WalletClient;
+  account?: Account;
 
   core: Core;
   contracts: Contracts;
+  utils: Utils;
+  pyth: Pyth;
+  perps: Perps;
 
   constructor(
     accountConfig: AccountConfig,
@@ -35,32 +62,50 @@ export class SynthetixSdk {
 
     this.core = new Core(this);
     this.contracts = new Contracts(this);
+    this.utils = new Utils(this);
+    this.pyth = new Pyth(this);
+    this.perps = new Perps(this);
 
     /**
      * Initialize Public client to RPC chain rpc
      */
-    if (this.rpcConfig) {
-      const rpcEndpoint = this.rpcConfig.rpcEndpoint;
-      if (rpcEndpoint?.startsWith('http')) {
-        this.publicClient = createPublicClient({
-          transport: http(rpcEndpoint),
-        });
-      } else if (rpcEndpoint?.startsWith('wss')) {
-        this.publicClient = createPublicClient({
-          transport: webSocket(rpcEndpoint),
-        });
-      } else if (rpcEndpoint?.endsWith('ipc')) {
-        this.publicClient = createPublicClient({
-          transport: ipc(rpcEndpoint),
-        });
-      } else {
-        // Use the default public RPC provider if rpcEndpoint is missing
-        console.info('Using public RPC endpoint for chainId ', this.rpcConfig.chainId);
-        const publicEndpoint = getPublicRpcEndpoint(this.rpcConfig.chainId);
-        this.publicClient = createPublicClient({
-          transport: http(publicEndpoint),
-        });
-      }
+
+    // Get viem chain for client initialization
+    const viemChain = getChain(this.rpcConfig.chainId);
+    const rpcEndpoint = this.rpcConfig.rpcEndpoint;
+
+    if (rpcEndpoint?.startsWith('http')) {
+      this.publicClient = createPublicClient({
+        chain: viemChain,
+        transport: http(rpcEndpoint),
+        batch: {
+          multicall: true,
+        },
+      });
+    } else if (rpcEndpoint?.startsWith('wss')) {
+      this.publicClient = createPublicClient({
+        chain: viemChain,
+        transport: webSocket(rpcEndpoint),
+        batch: {
+          multicall: true,
+        },
+      });
+    } else if (rpcEndpoint?.endsWith('ipc')) {
+      this.publicClient = createPublicClient({
+        chain: viemChain,
+        transport: ipc(rpcEndpoint),
+        batch: {
+          multicall: true,
+        },
+      });
+    } else {
+      // Use the default public RPC provider if rpcEndpoint is missing
+      console.info('Using public RPC endpoint for chainId ', this.rpcConfig.chainId);
+      const publicEndpoint = getPublicRpcEndpoint(this.rpcConfig.chainId);
+      this.publicClient = createPublicClient({
+        chain: viemChain,
+        transport: http(publicEndpoint),
+      });
     }
   }
 
@@ -72,6 +117,7 @@ export class SynthetixSdk {
       if (this.accountConfig.walletClient != undefined) {
         // Set the wallet in SDK if passed
         this.walletClient = this.accountConfig.walletClient;
+        this.account = this.walletClient.account;
 
         const addresses = await this.walletClient.getAddresses();
         let address0 = ZERO_ADDRESS;
@@ -96,6 +142,9 @@ export class SynthetixSdk {
           console.info('Using provided address without wallet signer: ', this.accountConfig.address);
         }
       }
+      this.accountAddress = this.accountConfig.address as Hex;
+      this.defaultCoreAccountId = process.env.CORE_ACCOUNT_ID == undefined ? undefined : BigInt(process.env.CORE_ACCOUNT_ID);
+      this.defaultPerpsAccountId = process.env.PERPS_ACCOUNT_ID == undefined ? undefined : BigInt(process.env.PERPS_ACCOUNT_ID);
     } catch (error) {
       console.log('Error:', error);
       throw error;
@@ -103,7 +152,8 @@ export class SynthetixSdk {
 
     // Initialize partner config
 
-    // Initialize Pyth config
+    // Initialize Pyth
+    await this.pyth.initPyth();
 
     // Initialize Rpc config
 
@@ -114,11 +164,45 @@ export class SynthetixSdk {
     if (this.publicClient != undefined) {
       return this.publicClient;
     } else {
-      throw new Error('PublicCLient not initialized');
+      throw new Error('PublicClient not initialized');
     }
   }
 
-  public getWalletClient(): WalletClient | undefined {
-    return this.walletClient;
+  public getWalletClient(): WalletClient {
+    if (this.walletClient != undefined) {
+      return this.walletClient;
+    } else {
+      throw new Error('Wallet not initialized');
+    }
+  }
+
+  public async executeTransaction(tx: CallParameters) {
+    if (process.env.PRIVATE_KEY != undefined) {
+
+      const viemChain = getChain(this.rpcConfig.chainId);
+      const account = privateKeyToAccount(process.env.PRIVATE_KEY as Hex);
+
+      const wClient = createWalletClient({
+        chain: viemChain,
+        transport: http(this.rpcConfig.rpcEndpoint)
+      })
+
+
+      const request = await wClient.prepareTransactionRequest({
+        account: account,
+        to: tx.to,
+        data: tx.data,
+        value: tx.value
+      });
+
+      const serializedTransaction = await wClient.signTransaction(request)
+      const txHash = await wClient.sendRawTransaction({ serializedTransaction });
+      await this.publicClient.waitForTransactionReceipt({
+        hash: txHash,
+      });
+      return txHash;
+    } else {
+      throw new Error("Invalid account signer")
+    }
   }
 }
