@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import { SynthetixSdk } from '..';
 import { DEFAULT_PYTH_TIMEOUT, PUBLIC_PYTH_ENDPOINT } from '../constants';
+import { EvmPriceServiceConnection } from '@pythnetwork/pyth-evm-js';
 
 /**
  * Pyth class
@@ -8,14 +9,23 @@ import { DEFAULT_PYTH_TIMEOUT, PUBLIC_PYTH_ENDPOINT } from '../constants';
 export class Pyth {
   sdk: SynthetixSdk;
   pythClient: AxiosInstance;
+  pythConnection: EvmPriceServiceConnection;
 
   constructor(synthetixSdk: SynthetixSdk) {
     this.sdk = synthetixSdk;
     this.pythClient = {} as AxiosInstance;
+    if (synthetixSdk.pythConfig.pythEndpoint) {
+      this.pythConnection = new EvmPriceServiceConnection(synthetixSdk.pythConfig.pythEndpoint);
+    } else {
+      this.pythConnection = new EvmPriceServiceConnection(PUBLIC_PYTH_ENDPOINT);
+    }
   }
 
   async initPyth() {
     this.pythClient = await this.getPythClient();
+    // if (!this.pythConnection && this.sdk.pythConfig.pythEndpoint) {
+    //   this.pythConnection = new EvmPriceServiceConnection(this.sdk.pythConfig.pythEndpoint);
+    // }
   }
 
   /**

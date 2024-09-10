@@ -12,4 +12,4 @@ export const DEFAULT_GQL_ENDPOINT_RATES = {
 };
 
 export const PUBLIC_PYTH_ENDPOINT = 'https://hermes.pyth.network';
-export const DEFAULT_PYTH_TIMEOUT = 5000; // 5 sec
+export const DEFAULT_PYTH_TIMEOUT = 15000; // 15 sec

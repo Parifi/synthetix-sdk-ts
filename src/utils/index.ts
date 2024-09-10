@@ -66,6 +66,8 @@ export class Utils {
    */
   public async fetchOracleUpdateData(data: Hex): Promise<Hex> {
     const [updateType] = decodeAbiParameters([{ name: 'updateType', type: 'uint8' }], data);
+    console.log('Update Type: ', updateType);
+
     if (updateType === 1) {
       const [updateType, stalenessOrTime, priceIds] = decodeAbiParameters(
         [
@@ -77,7 +79,11 @@ export class Utils {
       );
 
       const stalenessTolerance = stalenessOrTime;
-      let updateData = await this.fetchPriceUpdateData([...priceIds]);
+      // let updateData = await this.fetchPriceUpdateData([...priceIds]);
+      let updateData = (await this.sdk.pyth.pythConnection.getPriceFeedsUpdateData(
+        priceIds as string[],
+      )) as unknown as Address[];
+
       return encodeAbiParameters(
         [
           { type: 'uint8', name: 'updateType' },
@@ -97,7 +103,13 @@ export class Utils {
         data,
       );
 
-      let updateData = await this.fetchPriceUpdateData([priceId]);
+      // let updateData = await this.fetchPriceUpdateData([priceId]);
+      const [priceFeedUpdateVaa] = await this.sdk.pyth.pythConnection.getVaa(
+        priceId as string,
+        Number((requestedTime as unknown as bigint).toString()),
+      );
+      const priceFeedUpdate = '0x' + Buffer.from(priceFeedUpdateVaa, 'base64').toString('hex');
+
       return encodeAbiParameters(
         [
           { type: 'uint8', name: 'updateType' },
@@ -105,7 +117,7 @@ export class Utils {
           { type: 'bytes32[]', name: 'priceIds' },
           { type: 'bytes[]', name: 'updateData' },
         ],
-        [updateType, requestedTime, [priceId], updateData],
+        [updateType, requestedTime, [priceId], [priceFeedUpdate as Address]],
       );
     } else {
       throw new Error(`Error encoding/decoding data`);
@@ -430,7 +442,17 @@ export class Utils {
         if (!isErc7412Error) {
           console.log('Error details: ', error);
           console.log('Parsed Error details: ', parsedError);
-          throw new Error('Error is not related to Oracle data');
+          try {
+            let err = decodeErrorResult({
+              abi: abi as Abi,
+              data: parsedError,
+            });
+            console.log('Decoded error:', err);
+            throw new Error('Error is not related to Oracle data');
+          } catch (e) {
+            console.log('Error is not related to Oracle data');
+            throw e;
+          }
         }
 
         calls = await this.handleErc7412Error(error, calls);
