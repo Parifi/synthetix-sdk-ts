@@ -3,7 +3,7 @@ import { SynthetixSdk } from '../src/index';
 import { AccountConfig, PartnerConfig, PythConfig, RpcConfig, SubgraphConfig } from '../src/interface/classConfigs';
 import { createWalletClient, Hex, http } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { getPublicRpcEndpoint, getViemChain } from '../src/utils';
+import { getPublicRpcEndpoint, getChain } from '../src/utils';
 
 import { DEFAULT_REFERRER, DEFAULT_TRACKING_CODE } from '../src/constants';
 
@@ -25,7 +25,7 @@ export const getSdkInstanceForTesting = async (): Promise<SynthetixSdk> => {
 
     walletClient = createWalletClient({
       account: viemAccount,
-      chain: getViemChain(rpcConfig.chainId),
+      chain: getChain(rpcConfig.chainId),
       transport: http(rpcConfig.rpcEndpoint || getPublicRpcEndpoint(chainId)),
     });
   }

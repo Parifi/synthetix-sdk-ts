@@ -12,7 +12,7 @@ export function getPublicRpcEndpoint(chainId: number) {
  * @param chainId - Chain id of the target EVM chain.
  * @returns Viem's chain object.
  */
-export function getViemChain(chainId: number): Chain {
+export function getChain(chainId: number): Chain {
   const chains = [mainnet, base, optimism, arbitrum, baseSepolia, arbitrumSepolia];
   for (const chain of Object.values(chains)) {
     if (chain.id === chainId) {
@@ -22,19 +22,3 @@ export function getViemChain(chainId: number): Chain {
   throw new Error(`Chain with id ${chainId} not found`);
 }
 
-// /**
-//  * Gets the chain object for the given chain id.
-//  * @param chainId - Chain id of the target EVM chain.
-//  * @returns Viem's chain object.
-//  */
-// export function getViemChain(chainId: Chain['id']) {
-//   try {
-//     return extractChain({
-//       chains: [mainnet, base, optimism, arbitrum, baseSepolia, arbitrumSepolia],
-//       id: chainId,
-//     });
-//   } catch (error) {
-//     console.log(error);
-//     throw new Error(`Chain with id ${chainId} not found`);
-//   }
-// }

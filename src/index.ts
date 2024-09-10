@@ -1,5 +1,5 @@
 import { AccountConfig, PartnerConfig, PythConfig, RpcConfig, SubgraphConfig } from './interface/classConfigs';
-import { getPublicRpcEndpoint, getViemChain, Utils } from './utils';
+import { getPublicRpcEndpoint, getChain, Utils } from './utils';
 import { Core } from './core';
 import {
   Account,
@@ -71,7 +71,7 @@ export class SynthetixSdk {
      */
 
     // Get viem chain for client initialization
-    const viemChain = getViemChain(this.rpcConfig.chainId);
+    const viemChain = getChain(this.rpcConfig.chainId);
     const rpcEndpoint = this.rpcConfig.rpcEndpoint;
 
     if (rpcEndpoint?.startsWith('http')) {
@@ -179,7 +179,7 @@ export class SynthetixSdk {
   public async executeTransaction(tx: CallParameters) {
     if (process.env.PRIVATE_KEY != undefined) {
 
-      const viemChain = getViemChain(this.rpcConfig.chainId);
+      const viemChain = getChain(this.rpcConfig.chainId);
       const account = privateKeyToAccount(process.env.PRIVATE_KEY as Hex);
 
       const wClient = createWalletClient({
