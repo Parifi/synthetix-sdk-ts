@@ -10,10 +10,11 @@ describe('Core', () => {
     console.info('Account owner :', res);
   });
 
-  it.skip('should wrap sUSDC tokens', async () => {
+  it('should wrap sUSDC tokens', async () => {
     const sdk = await getSdkInstanceForTesting();
     const spotMarketProxy = await sdk.contracts.getSpotMarketProxyInstance();
-    const tokenAddress = await sdk.core.getUsdToken();
+    // const tokenAddress = await sdk.core.getUsdToken();
+    const tokenAddress = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913';
 
     const size = '10';
     const sizeInWei = parseUnits(size, 6);
@@ -32,6 +33,7 @@ describe('Core', () => {
       sdk.accountAddress,
       spotMarketProxy.address,
     ])) as bigint;
+    console.log('balanceApproved: ', formatUnits(balanceApproved, 6));
 
     if (balanceApproved < sizeInWei) {
       const approvalTx: CallParameters = {
@@ -47,7 +49,7 @@ describe('Core', () => {
       console.log('Approval txHash:', approvalHash);
     }
 
-    const txHash = await sdk.spot.wrap(size, 1, true);
+    const txHash = await sdk.spot.wrap(size, 1, false);
     console.log('Wrap txHash:', txHash);
   });
 });

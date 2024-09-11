@@ -10,10 +10,16 @@ import { ZERO_ADDRESS } from '../constants/common';
 export class Core {
   sdk: SynthetixSdk;
   defaultAccountId?: bigint;
+  accountIds: bigint[];
 
   constructor(synthetixSdk: SynthetixSdk) {
     this.sdk = synthetixSdk;
     this.defaultAccountId = process.env.CORE_ACCOUNT_ID == undefined ? undefined : BigInt(process.env.CORE_ACCOUNT_ID);
+    if (this.defaultAccountId == undefined) {
+      this.accountIds = [];
+    } else {
+      this.accountIds = [this.defaultAccountId];
+    }
   }
 
   /**
@@ -85,6 +91,7 @@ export class Core {
       this.defaultAccountId = this.sdk.accountIds[0];
     }
     console.log('Using default account id as ', this.defaultAccountId);
+    this.accountIds = accountIds as bigint[];
     return accountIds as bigint[];
   }
 
