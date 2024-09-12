@@ -98,9 +98,9 @@ export class Pyth {
     return priceUpdateData.map((vaa) => '0x' + Buffer.from(vaa, 'base64').toString('hex'));
   };
 
-  public updatePriceFeedIds(updatedPriceFeeds: [string, string][]) {
-    updatedPriceFeeds.forEach(([symbol, feedId]) => {
-      this.priceFeedIds.set(symbol, feedId);
+  public updatePriceFeedIds(updatedPriceFeeds: { symbol: string; feedId: string }[]) {
+    updatedPriceFeeds.forEach((feed) => {
+      this.priceFeedIds.set(feed.symbol, feed.feedId);
     });
   }
 }
