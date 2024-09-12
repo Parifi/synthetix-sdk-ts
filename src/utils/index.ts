@@ -66,7 +66,6 @@ export class Utils {
    */
   public async fetchOracleUpdateData(data: Hex): Promise<Hex> {
     const [updateType] = decodeAbiParameters([{ name: 'updateType', type: 'uint8' }], data);
-    console.log('Update Type: ', updateType);
 
     if (updateType === 1) {
       const [updateType, stalenessOrTime, priceIds] = decodeAbiParameters(
@@ -143,8 +142,6 @@ export class Utils {
       throw new Error('Handle ERC7412 error');
     }
 
-    console.log('Error name = ', err?.errorName);
-
     if (err?.errorName === 'OracleDataRequired') {
       console.log('Oracle Data Required error, adding price update data to tx');
       const oracleAddress = err.args![0] as Address;
@@ -174,7 +171,6 @@ export class Utils {
    */
   public async fetchPriceUpdateData(priceIds: Hex[]): Promise<Hex[]> {
     const priceUpdateData = await this.sdk.pyth.getVaaPriceUpdateData(priceIds);
-    console.log('priceUpdateData', priceUpdateData);
     return priceUpdateData as Hex[];
   }
 
@@ -252,7 +248,6 @@ export class Utils {
         };
 
         const response = await publicClient.call(finalTx);
-        console.log('Response: ', response);
         if (response.data != undefined) {
           const multicallResult: Result[] = this.decodeResponse(
             multicallInstance.abi,
@@ -261,7 +256,6 @@ export class Utils {
           ) as unknown as Result[];
 
           const returnData = multicallResult.at(-1);
-          console.log('Return data', returnData);
           if (returnData?.success && returnData.returnData != undefined) {
             const decodedResult = this.decodeResponse(abi, functionName, returnData.returnData);
             return decodedResult;
@@ -283,7 +277,6 @@ export class Utils {
         }
 
         calls = await this.handleErc7412Error(error, calls);
-        console.log('Calls array after handleErc7412Error', calls);
       }
     }
   }
@@ -372,7 +365,7 @@ export class Utils {
         }
 
         calls = await this.handleErc7412Error(error, calls);
-        console.log('Calls array after handleErc7412Error', calls);
+        // console.log('Calls array after handleErc7412Error', calls);
       }
     }
   }
@@ -429,7 +422,7 @@ export class Utils {
           value: totalValue,
         };
 
-        console.log('Final tx: ', finalTx);
+        // console.log('Final tx: ', finalTx);
 
         // If the call is successful, return the final tx
         await publicClient.call(finalTx);
@@ -447,7 +440,7 @@ export class Utils {
               abi: abi as Abi,
               data: parsedError,
             });
-            console.log('Decoded error:', err);
+            // console.log('Decoded error:', err);
             throw new Error('Error is not related to Oracle data');
           } catch (e) {
             console.log('Error is not related to Oracle data');
@@ -456,7 +449,7 @@ export class Utils {
         }
 
         calls = await this.handleErc7412Error(error, calls);
-        console.log('Calls array after handleErc7412Error', calls);
+        // console.log('Calls array after handleErc7412Error', calls);
       }
     }
   }

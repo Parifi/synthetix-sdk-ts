@@ -20,6 +20,7 @@ export interface MarketMetadata {
 export interface MarketData {
   marketId?: number;
   marketName?: string;
+  symbol?: string;
   feedId?: string;
   skew?: number;
   size?: number;
@@ -49,7 +50,18 @@ export interface SettlementStrategy {
 }
 
 export interface FundingParameters {
-  marketId?: number,
+  marketId?: number;
   skewScale?: number;
   maxFundingVelocity?: number;
+}
+
+export interface OrderFees {
+  marketId?: number;
+  makerFeeRatio?: number;
+  takerFeeRatio?: number;
+}
+
+export interface MaxMarketValue {
+  marketId?: number;
+  maxMarketValue?: number;
 }

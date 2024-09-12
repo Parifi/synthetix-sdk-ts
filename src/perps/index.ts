@@ -1,7 +1,15 @@
 import { CallParameters, formatEther } from 'viem';
 import { SynthetixSdk } from '..';
 import { ZERO_ADDRESS } from '../constants';
-import { FundingParameters, MarketData, MarketMetadata, MarketSummary, SettlementStrategy } from './interface';
+import {
+  FundingParameters,
+  MarketData,
+  MarketMetadata,
+  MarketSummary,
+  MaxMarketValue,
+  OrderFees,
+  SettlementStrategy,
+} from './interface';
 
 /**
  * Class for interacting with Synthetix V3 core contracts
@@ -155,42 +163,37 @@ export class Perps {
    * information about the market's price, open interest, funding rate, and skew
    */
   // @todo Add logic for disabled markets
-  public async getMarkets() {
+  public async getMarkets(): Promise<{ marketsById: Map<number, MarketData>; marketsByName: Map<string, MarketData> }> {
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
     const marketIds: number[] = (await perpsMarketProxy.read.getMarkets([])) as number[];
     console.log('marketIds', marketIds);
 
     // Response type from metadata smart contract call
-    interface MetadataResponse {
-      name: string;
-      symbol: string;
-    }
+    type MetadataResponse = [string, string];
 
-    const marketMetadata = (await this.sdk.utils.multicallErc7412(
+    const marketMetadataResponse = (await this.sdk.utils.multicallErc7412(
       perpsMarketProxy.address,
       perpsMarketProxy.abi,
       'metadata',
       marketIds as unknown[],
     )) as MetadataResponse[];
 
-    console.log('marketMetadata', marketMetadata);
-
     const settlementStrategies = await this.getSettlementStrategies(marketIds);
-    console.log('settlementStrategies', settlementStrategies);
-
     const pythPriceIds: { symbol: string; feedId: string }[] = [];
 
     // Set market metadata for all markets and populate Pyth price ids
-    marketMetadata.forEach((market, index) => {
-      const settlementStrategy = settlementStrategies.find((strategy) => strategy.marketName == market.name);
+    marketMetadataResponse.forEach((market, index) => {
+      const marketName = market[0];
+      const marketSymbol = market[1];
+      const settlementStrategy = settlementStrategies.find((strategy) => strategy.marketName == marketName);
       this.marketMetadata.set(marketIds[index], {
-        marketName: market.name,
-        symbol: market.symbol,
+        marketName: marketName,
+        symbol: marketSymbol,
         feedId: settlementStrategy?.feedId ?? '0x',
       });
 
       pythPriceIds.push({
-        symbol: market.symbol,
+        symbol: marketSymbol,
         feedId: settlementStrategy?.feedId ?? '0x',
       });
     });
@@ -199,10 +202,41 @@ export class Perps {
     this.sdk.pyth.updatePriceFeedIds(pythPriceIds);
 
     const marketSummaries = await this.getMarketSummaries(marketIds);
-    console.log('marketSummaries', marketSummaries);
-
     const fundingParameters = await this.getFundingParameters(marketIds);
-    console.log('fundingParameters', fundingParameters);
+    const orderFees = await this.getOrderFees(marketIds);
+    const maxMarketValues = await this.getMaxMarketValues(marketIds);
+
+    marketIds.forEach((marketId) => {
+      const marketSummary = marketSummaries.find((summary) => summary.marketId == marketId);
+      const fundingParam = fundingParameters.find((fundingParam) => fundingParam.marketId == marketId);
+      const orderFee = orderFees.find((orderFee) => orderFee.marketId == marketId);
+      const maxMarketValue = maxMarketValues.find((maxMarketValue) => maxMarketValue.marketId == marketId);
+
+      const marketName = this.marketMetadata.get(marketId)?.marketName ?? '0x';
+      const marketData = {
+        marketId: marketId,
+        marketName: marketName,
+        symbol: this.marketMetadata.get(marketId)?.symbol,
+        feedId: this.marketMetadata.get(marketId)?.feedId,
+        skew: marketSummary?.skew,
+        size: marketSummary?.size,
+        maxOpenInterest: marketSummary?.maxOpenInterest,
+        interestRate: marketSummary?.interestRate,
+        currentFundingRate: marketSummary?.currentFundingRate,
+        currentFundingVelocity: marketSummary?.currentFundingVelocity,
+        indexPrice: marketSummary?.indexPrice,
+        skewScale: fundingParam?.skewScale,
+        maxFundingVelocity: fundingParam?.maxFundingVelocity,
+        makerFee: orderFee?.makerFeeRatio,
+        takerFee: orderFee?.takerFeeRatio,
+        maxMarketValue: maxMarketValue?.maxMarketValue,
+      };
+
+      this.marketsById.set(marketId, marketData);
+      this.marketsByName.set(marketName, marketData);
+    });
+
+    return { marketsById: this.marketsById, marketsByName: this.marketsByName };
   }
 
   /**
@@ -458,5 +492,59 @@ export class Perps {
       });
     });
     return fundingParams;
+  }
+
+  /**
+   * Gets the order fees of a market.
+   * @param marketIds Array of market ids.
+   * @return Order fees array for markets
+   */
+  public async getOrderFees(marketIds: number[]): Promise<OrderFees[]> {
+    const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+
+    type OrderFeesResponse = [bigint, bigint];
+    const orderFees: OrderFees[] = [];
+
+    const orderFeesResponse = (await this.sdk.utils.multicallErc7412(
+      perpsMarketProxy.address,
+      perpsMarketProxy.abi,
+      'getOrderFees',
+      marketIds,
+    )) as OrderFeesResponse[];
+
+    orderFeesResponse.forEach((param, index) => {
+      orderFees.push({
+        marketId: marketIds[index],
+        makerFeeRatio: Number(formatEther(param[0])),
+        takerFeeRatio: Number(formatEther(param[1])),
+      });
+    });
+    return orderFees;
+  }
+
+  /**
+   * Gets the max size (in value) of an array of marketIds.
+   * @param marketIds Array of market ids.
+   * @return Max market size in market USD value for each market
+   */
+  public async getMaxMarketValues(marketIds: number[]): Promise<MaxMarketValue[]> {
+    const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+
+    const maxMarketValues: MaxMarketValue[] = [];
+
+    const maxMarketValuesResponse = (await this.sdk.utils.multicallErc7412(
+      perpsMarketProxy.address,
+      perpsMarketProxy.abi,
+      'getMaxMarketValue',
+      marketIds,
+    )) as bigint[];
+
+    maxMarketValuesResponse.forEach((maxMarketValue, index) => {
+      maxMarketValues.push({
+        marketId: marketIds[index],
+        maxMarketValue: Number(formatEther(maxMarketValue)),
+      });
+    });
+    return maxMarketValues;
   }
 }
