@@ -36,7 +36,11 @@ export class Contracts {
   public async getMulticallInstance() {
     try {
       const meta = await dynamicImportMeta(this.sdk.rpcConfig.chainId, this.sdk.rpcConfig.preset);
-      const abi = await dynamicImportAbi(this.sdk.rpcConfig.chainId, this.sdk.rpcConfig.preset, 'TrustedMulticallForwarder');
+      const abi = await dynamicImportAbi(
+        this.sdk.rpcConfig.chainId,
+        this.sdk.rpcConfig.preset,
+        'TrustedMulticallForwarder',
+      );
       const multicallInstance = getContract({
         address: meta.contracts.TrustedMulticallForwarder as Hex,
         abi: abi,
@@ -157,6 +161,28 @@ export class Contracts {
       console.log(error);
       throw new Error(
         `Unsupported chain ${this.sdk.rpcConfig.chainId} or preset ${this.sdk.rpcConfig.preset} for PythERC7412Wrapper`,
+      );
+    }
+  }
+
+  /**
+   * The function returns an instance of the SpotMarket Proxy smart contract
+   * @returns Contract - Instance of SpotMarket Proxy smart contract
+   */
+  public async getSpotMarketProxyInstance() {
+    try {
+      const meta = await dynamicImportMeta(this.sdk.rpcConfig.chainId, this.sdk.rpcConfig.preset);
+      const abi = await dynamicImportAbi(this.sdk.rpcConfig.chainId, this.sdk.rpcConfig.preset, 'SpotMarketProxy');
+      const spotMarketProxyInstance = getContract({
+        address: meta.contracts.SpotMarketProxy as Hex,
+        abi: abi,
+        client: this.getClientsForContractInstance(),
+      });
+      return spotMarketProxyInstance;
+    } catch (error) {
+      console.log(error);
+      throw new Error(
+        `Unsupported chain ${this.sdk.rpcConfig.chainId} or preset ${this.sdk.rpcConfig.preset} for SpotMarketProxy`,
       );
     }
   }

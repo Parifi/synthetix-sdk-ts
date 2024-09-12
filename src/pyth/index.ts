@@ -11,6 +11,9 @@ export class Pyth {
   pythClient: AxiosInstance;
   pythConnection: EvmPriceServiceConnection;
 
+  // To store Market Symbol to Pyth Price ID mapping
+  priceFeedIds: Map<string, string>;
+
   constructor(synthetixSdk: SynthetixSdk) {
     this.sdk = synthetixSdk;
     this.pythClient = {} as AxiosInstance;
@@ -19,6 +22,9 @@ export class Pyth {
     } else {
       this.pythConnection = new EvmPriceServiceConnection(PUBLIC_PYTH_ENDPOINT);
     }
+
+    // Initialize empty priceIds data
+    this.priceFeedIds = new Map<string, string>();
   }
 
   async initPyth() {
@@ -91,4 +97,10 @@ export class Pyth {
 
     return priceUpdateData.map((vaa) => '0x' + Buffer.from(vaa, 'base64').toString('hex'));
   };
+
+  public updatePriceFeedIds(updatedPriceFeeds: { symbol: string; feedId: string }[]) {
+    updatedPriceFeeds.forEach((feed) => {
+      this.priceFeedIds.set(feed.symbol, feed.feedId);
+    });
+  }
 }

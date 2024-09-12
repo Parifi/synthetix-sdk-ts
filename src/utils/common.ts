@@ -21,4 +21,3 @@ export function getChain(chainId: number): Chain {
   }
   throw new Error(`Chain with id ${chainId} not found`);
 }
-
