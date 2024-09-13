@@ -16,6 +16,20 @@ describe('Perps', () => {
     console.log('settlementStrategy :', settlementStrategy);
   });
 
+  it('should return account ids and balance of an address', async () => {
+    const sdk = await getSdkInstanceForTesting();
+    const defaultAddress = process.env.DEFAULT_ADDRESS;
+    const accountIds = await sdk.perps.getAccountIds(defaultAddress);
+    console.info('Account Ids :', accountIds);
+  });
+
+  it('should commit an order for settlement', async () => {
+    const sdk = await getSdkInstanceForTesting();
+    const accountId: bigint = BigInt(process.env.PERPS_ACCOUNT_ID || '0');
+    const tx = await sdk.perps.commitOrder(0.001, 0, 100, undefined, accountId, undefined, 1, false);
+    console.log(tx);
+  });
+
   it('should test erc7412 call', async () => {
     const sdk = await getSdkInstanceForTesting();
     const accountId: bigint = BigInt(process.env.PERPS_ACCOUNT_ID || '0');

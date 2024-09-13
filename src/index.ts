@@ -21,6 +21,7 @@ import { Pyth } from './pyth';
 import { Perps } from './perps';
 import { privateKeyToAccount } from 'viem/accounts';
 import { Spot } from './spot';
+import { DEFAULT_REFERRER, DEFAULT_TRACKING_CODE } from './constants';
 
 export class SynthetixSdk {
   accountConfig: AccountConfig;
@@ -39,6 +40,10 @@ export class SynthetixSdk {
   publicClient: PublicClient;
   walletClient?: WalletClient;
   account?: Account;
+
+  // Partner config
+  trackingCode: string;
+  referrer: string;
 
   core: Core;
   contracts: Contracts;
@@ -66,6 +71,9 @@ export class SynthetixSdk {
     this.pyth = new Pyth(this);
     this.perps = new Perps(this);
     this.spot = new Spot(this);
+
+    this.trackingCode = partnerConfig.trackingCode ?? DEFAULT_TRACKING_CODE;
+    this.referrer = partnerConfig.referrer ?? DEFAULT_REFERRER;
 
     /**
      * Initialize Public client to RPC chain rpc

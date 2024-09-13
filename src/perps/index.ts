@@ -1,4 +1,4 @@
-import { CallParameters, formatEther } from 'viem';
+import { CallParameters, formatEther, parseEther, parseUnits } from 'viem';
 import { SynthetixSdk } from '..';
 import { ZERO_ADDRESS } from '../constants';
 import {
@@ -546,5 +546,78 @@ export class Perps {
       });
     });
     return maxMarketValues;
+  }
+
+  /**
+   * Submit an order to the specified market. Keepers will attempt to fill the order
+   * according to the settlement strategy. If ``desired_fill_price`` is provided, the order
+   * will be filled at that price or better. If ``max_price_impact`` is provided, the
+   * ``desired_fill_price`` is calculated from the current market price and the price impact.
+   * @param size The size of the order to submit
+   * @param settlementStrategyId The id of the settlement strategy to use
+   * @param marketId The id of the market to submit the order to. If not provided, `marketName` must be provided
+   * @param marketName The name of the market to submit the order to. If not provided, `marketId` must be provided.
+   * @param accountId The id of the account to submit the order for. Defaults to `defaultAccountId`.
+   * @param desiredFillPrice The max price for longs and minimum price for shorts. If not provided, one will be calculated based on `maxPriceImpact`
+   * @param maxPriceImpact The maximum price impact to allow when filling the order as a percentage (1.0 = 1%). If not provided, it will inherit the default value from `snx.max_price_impact`
+   * @param submit If ``true``, submit the transaction to the blockchain
+   */
+  public async commitOrder(
+    size: number,
+    settlementStrategyId: number = 0,
+    marketId: number | undefined,
+    marketName: string | undefined,
+    accountId: bigint | undefined,
+    desiredFillPrice: number | undefined,
+    maxPriceImpact: number | undefined,
+    submit: boolean = false,
+  ) {
+    const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+
+    const { resolvedMarketId } = this.resolveMarket(marketId, marketName);
+    if (desiredFillPrice != undefined && maxPriceImpact != undefined) {
+      throw new Error('Cannot set both desiredFillPrice and maxPriceImpact');
+    }
+    const isShort = size < 0 ? -1 : 1;
+    const sizeInWei = parseEther(Math.abs(size).toString()) * BigInt(isShort);
+    let acceptablePrice: number;
+
+    // If desired price is provided, use the provided price, else fetch price
+    if (desiredFillPrice) {
+      acceptablePrice = desiredFillPrice;
+    } else {
+      const updatedMaxPriceImpact = maxPriceImpact ?? 1;  // @todo Replace with config value
+      const marketSummary = await this.getMarketSummary(resolvedMarketId);
+      const priceImpact = 1 + (isShort * updatedMaxPriceImpact) / 100;
+      acceptablePrice = (marketSummary.indexPrice ?? 0) * priceImpact;
+    }
+    if (accountId == undefined) {
+      accountId = this.defaultAccountId;
+    }
+
+    const txArgs = {
+      marketId: resolvedMarketId,
+      accountId: accountId,
+      sizeDelta: sizeInWei,
+      settlementStrategyId: settlementStrategyId,
+      acceptablePrice: parseEther(acceptablePrice.toString()),
+      trackingCode: this.sdk.trackingCode,
+      referrer: this.sdk.referrer,
+    };
+
+    console.log('txArgs', txArgs);
+    const tx = await this.sdk.utils.writeErc7412(perpsMarketProxy.address, perpsMarketProxy.abi, 'commitOrder', [
+      txArgs,
+    ]);
+    if (submit) {
+      console.log(
+        `Committing order size ${sizeInWei} (${size}) to ${marketName} (id: ${resolvedMarketId}) for account ${accountId}`,
+      );
+      const txHash = this.sdk.executeTransaction(tx);
+      console.log('Transaction hash for commit order tx: ', txHash);
+      return txHash;
+    } else {
+      return tx;
+    }
   }
 }
