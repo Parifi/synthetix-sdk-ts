@@ -16,6 +16,12 @@ describe('Perps', () => {
     console.log('settlementStrategy :', settlementStrategy);
   });
 
+  it('should create an account and return the tx hash', async () => {
+    const sdk = await getSdkInstanceForTesting();
+    const txData = await sdk.perps.createAccount(undefined, false);
+    console.log('Create account txHash:', txData);
+  });
+
   it('should return account ids and balance of an address', async () => {
     const sdk = await getSdkInstanceForTesting();
     const defaultAddress = process.env.DEFAULT_ADDRESS;

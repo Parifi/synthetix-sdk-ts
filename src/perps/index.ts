@@ -140,10 +140,11 @@ export class Perps {
       txArgs.push(accountId);
     }
 
-    const perpsAccountProxy = await this.sdk.contracts.getPerpsAccountProxyInstance();
+    // const perpsAccountProxy = await this.sdk.contracts.getPerpsAccountProxyInstance();
+    const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
     const tx: CallParameters = await this.sdk.utils.writeErc7412(
-      perpsAccountProxy.address,
-      perpsAccountProxy.abi,
+      perpsMarketProxy.address,
+      perpsMarketProxy.abi,
       'createAccount',
       txArgs,
     );
@@ -586,7 +587,7 @@ export class Perps {
     if (desiredFillPrice) {
       acceptablePrice = desiredFillPrice;
     } else {
-      const updatedMaxPriceImpact = maxPriceImpact ?? 1;  // @todo Replace with config value
+      const updatedMaxPriceImpact = maxPriceImpact ?? 1; // @todo Replace with config value
       const marketSummary = await this.getMarketSummary(resolvedMarketId);
       const priceImpact = 1 + (isShort * updatedMaxPriceImpact) / 100;
       acceptablePrice = (marketSummary.indexPrice ?? 0) * priceImpact;
