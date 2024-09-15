@@ -21,9 +21,3 @@ export interface RpcConfig {
   rpcEndpoint?: string;
   preset?: string;
 }
-
-export interface SubgraphConfig {
-  subgraphEndpoint?: string;
-  username?: string;
-  password?: string;
-}

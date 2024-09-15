@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { SynthetixSdk } from '../src/index';
-import { AccountConfig, PartnerConfig, PythConfig, RpcConfig, SubgraphConfig } from '../src/interface/classConfigs';
+import { AccountConfig, PartnerConfig, PythConfig, RpcConfig } from '../src/interface/classConfigs';
 import { createWalletClient, Hex, http } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { getPublicRpcEndpoint, getChain } from '../src/utils';
@@ -48,13 +48,7 @@ export const getSdkInstanceForTesting = async (): Promise<SynthetixSdk> => {
     cacheTtl: Number(process.env.PYTH_CACHE_TTL),
   };
 
-  const subgraphConfig: SubgraphConfig = {
-    subgraphEndpoint: process.env.SUBGRAPH_ENDPOINT,
-    username: process.env.SUBGRAPH_USERNAME,
-    password: process.env.SUBGRAPH_PASSWORD,
-  };
-
-  const sdk = new SynthetixSdk(accountConfig, partnerConfig, pythConfig, rpcConfig, subgraphConfig);
+  const sdk = new SynthetixSdk(accountConfig, partnerConfig, pythConfig, rpcConfig);
   await sdk.init();
 
   return sdk;

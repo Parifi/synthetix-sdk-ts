@@ -1,4 +1,4 @@
-import { AccountConfig, PartnerConfig, PythConfig, RpcConfig, SubgraphConfig } from './interface/classConfigs';
+import { AccountConfig, PartnerConfig, PythConfig, RpcConfig } from './interface/classConfigs';
 import { getPublicRpcEndpoint, getChain, Utils } from './utils';
 import { Core } from './core';
 import {
@@ -28,7 +28,6 @@ export class SynthetixSdk {
   partnerConfig: PartnerConfig;
   pythConfig: PythConfig;
   rpcConfig: RpcConfig;
-  subgraphConfig: SubgraphConfig;
 
   // Account fields
   accountAddress: Address = ZERO_ADDRESS;
@@ -55,14 +54,11 @@ export class SynthetixSdk {
     partnerConfig: PartnerConfig,
     pythConfig: PythConfig,
     rpcConfig: RpcConfig,
-    subgraphConfig: SubgraphConfig,
   ) {
     this.accountConfig = accountConfig;
     this.partnerConfig = partnerConfig;
     this.pythConfig = pythConfig;
     this.rpcConfig = rpcConfig;
-    this.subgraphConfig = subgraphConfig;
-
     this.core = new Core(this);
     this.contracts = new Contracts(this);
     this.utils = new Utils(this);
