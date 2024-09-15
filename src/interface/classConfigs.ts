@@ -3,8 +3,6 @@ import { WalletClient } from 'viem';
 export interface AccountConfig {
   address?: string;
   walletClient?: WalletClient;
-  coreAccountId?: number;
-  perpsAccountId?: number;
 }
 export interface PartnerConfig {
   trackingCode?: string;

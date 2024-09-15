@@ -34,8 +34,6 @@ export const getSdkInstanceForTesting = async (): Promise<SynthetixSdk> => {
   const accountConfig: AccountConfig = {
     address: process.env.DEFAULT_ADDRESS,
     walletClient: walletClient,
-    coreAccountId: Number(process.env.CORE_ACCOUNT_ID),
-    perpsAccountId: Number(process.env.PERPS_ACCOUNT_ID),
   };
 
   const partnerConfig: PartnerConfig = {

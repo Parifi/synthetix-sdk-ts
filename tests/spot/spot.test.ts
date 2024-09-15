@@ -2,20 +2,28 @@ import 'dotenv/config';
 import { getSdkInstanceForTesting } from '..';
 import { Address, CallParameters, encodeFunctionData, erc20Abi, formatUnits, getContract, Hex, parseUnits } from 'viem';
 import { IERC7412Abi } from '../../src/contracts/abis/IERC7412';
+import { SynthetixSdk } from '../../src';
 
-describe('Core', () => {
+describe('Spot', () => {
+  let sdk: SynthetixSdk;
+  beforeAll(async () => {
+    sdk = await getSdkInstanceForTesting();
+
+    // Get accounts for address and sets the default account
+    const defaultAddress = process.env.DEFAULT_ADDRESS;
+    const accountIds = await sdk.perps.getAccountIds(defaultAddress);
+    console.log('Account ids for default account: ', accountIds);
+  });
+
   it('should return response for a get call on Core proxy contract', async () => {
-    const sdk = await getSdkInstanceForTesting();
     const res = await sdk.core.getAccountOwner(2);
     console.info('Account owner :', res);
   });
 
   it('should wrap sUSDC tokens', async () => {
-    const sdk = await getSdkInstanceForTesting();
     const spotMarketProxy = await sdk.contracts.getSpotMarketProxyInstance();
     // const tokenAddress = await sdk.core.getUsdToken();
-    const tokenAddress = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913';
-
+    const tokenAddress = '0xc43708f8987df3f3681801e5e640667d86ce3c30'; // Temp value for fakeUSDC on base
     const size = '10';
     const sizeInWei = parseUnits(size, 6);
 
@@ -49,7 +57,7 @@ describe('Core', () => {
       console.log('Approval txHash:', approvalHash);
     }
 
-    const txHash = await sdk.spot.wrap(size, 1, false);
-    console.log('Wrap txHash:', txHash);
+    const tx = await sdk.spot.wrap(size, 1, false);
+    console.log('Wrap tx data:', tx);
   });
 });

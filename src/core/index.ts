@@ -14,12 +14,7 @@ export class Core {
 
   constructor(synthetixSdk: SynthetixSdk) {
     this.sdk = synthetixSdk;
-    this.defaultAccountId = process.env.CORE_ACCOUNT_ID == undefined ? undefined : BigInt(process.env.CORE_ACCOUNT_ID);
-    if (this.defaultAccountId == undefined) {
-      this.accountIds = [];
-    } else {
-      this.accountIds = [this.defaultAccountId];
-    }
+    this.accountIds = [];
   }
 
   /**
@@ -196,7 +191,7 @@ export class Core {
     tokenAddress: string,
     amount: number,
     decimals: number = 18,
-    accountId: bigint | undefined,
+    accountId: bigint | undefined = undefined,
     submit: boolean = false,
   ) {
     if (accountId == undefined) {

@@ -8,11 +8,12 @@ import { SynthetixSdk } from '..';
 export class Spot {
   sdk: SynthetixSdk;
   defaultAccountId?: bigint;
+  accountIds: bigint[];
+
 
   constructor(synthetixSdk: SynthetixSdk) {
     this.sdk = synthetixSdk;
-    this.defaultAccountId =
-      process.env.PERPS_ACCOUNT_ID == undefined ? undefined : BigInt(process.env.PERPS_ACCOUNT_ID);
+    this.accountIds = [];
   }
 
   public async wrap(size: string, marketId: Number, submit: boolean) {

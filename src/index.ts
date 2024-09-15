@@ -33,8 +33,6 @@ export class SynthetixSdk {
   // Account fields
   accountAddress: Address = ZERO_ADDRESS;
   accountIds?: bigint[];
-  defaultCoreAccountId?: bigint;
-  defaultPerpsAccountId?: bigint;
 
   // Public client should always be defined either using the rpcConfig or using the public endpoint
   publicClient: PublicClient;
@@ -152,10 +150,6 @@ export class SynthetixSdk {
         }
       }
       this.accountAddress = this.accountConfig.address as Hex;
-      this.defaultCoreAccountId =
-        process.env.CORE_ACCOUNT_ID == undefined ? undefined : BigInt(process.env.CORE_ACCOUNT_ID);
-      this.defaultPerpsAccountId =
-        process.env.PERPS_ACCOUNT_ID == undefined ? undefined : BigInt(process.env.PERPS_ACCOUNT_ID);
     } catch (error) {
       console.log('Error:', error);
       throw error;
