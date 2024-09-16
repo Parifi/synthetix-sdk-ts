@@ -65,3 +65,26 @@ export interface MaxMarketValue {
   marketId?: number;
   maxMarketValue?: number;
 }
+
+export interface OrderData {
+  marketId: number;
+  commitmentTime: number;
+  accountId: bigint;
+  sizeDelta: number;
+  settlementStrategyId: number;
+  acceptablePrice: number;
+  trackingCode: string;
+  referrer: string;
+  settlementStrategy?: SettlementStrategy;
+}
+
+export interface CollateralData {
+  totalCollateralValue: number;
+  collateralBalances: Record<string, number>;
+  debt: number;
+  availableMargin: number;
+  withdrawableMargin: number;
+  initialMarginRequirement: number;
+  maintenanceMarginRequirement: number;
+  maxLiquidationReward: number;
+}

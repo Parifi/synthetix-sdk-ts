@@ -2,14 +2,17 @@ import { CallParameters, formatEther, parseEther, parseUnits } from 'viem';
 import { SynthetixSdk } from '..';
 import { ZERO_ADDRESS } from '../constants';
 import {
+  CollateralData,
   FundingParameters,
   MarketData,
   MarketMetadata,
   MarketSummary,
   MaxMarketValue,
+  OrderData,
   OrderFees,
   SettlementStrategy,
 } from './interface';
+import { convertWeiToEther } from '../utils';
 
 /**
  * Class for interacting with Synthetix V3 core contracts
@@ -375,6 +378,7 @@ export class Perps {
    * @returns Settlement strategy for market
    */
   public async getSettlementStrategy(
+    settlementStrategyId: number,
     marketId: number | undefined = undefined,
     marketName: string | undefined = undefined,
   ): Promise<SettlementStrategy> {
@@ -396,7 +400,7 @@ export class Perps {
       perpsMarketProxy.address,
       perpsMarketProxy.abi,
       'getSettlementStrategy',
-      [resolvedMarketId, 0],
+      [resolvedMarketId, settlementStrategyId],
     )) as SettlementStrategyResponse;
 
     return {
@@ -615,4 +619,161 @@ export class Perps {
       return tx;
     }
   }
+
+  /**
+   *   Fetches the open order for an account. Optionally fetches the settlement strategy,
+   * which can be useful for order settlement and debugging.
+   * @param accountId The id of the account. If not provided, the default account is used
+   * @param fetchSettlementStrategy Flag to indicate whether to fetch the settlement strategy
+   */
+  public async getOrder(
+    accountId: bigint | undefined = undefined,
+    fetchSettlementStrategy: boolean = true,
+  ): Promise<OrderData> {
+    interface OrderCommitmentRequestRes {
+      marketId: bigint;
+      accountId: bigint;
+      sizeDelta: bigint;
+      settlementStrategyId: bigint;
+      acceptablePrice: bigint;
+      trackingCode: string;
+      referrer: string;
+    }
+
+    interface AsyncOrderDataRes {
+      commitmentTime: bigint;
+      request: OrderCommitmentRequestRes;
+    }
+
+    const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+
+    if (accountId == undefined) {
+      accountId = this.defaultAccountId;
+    }
+    const orderResponse = (await this.sdk.utils.callErc7412(
+      perpsMarketProxy.address,
+      perpsMarketProxy.abi,
+      'getOrder',
+      [accountId],
+    )) as AsyncOrderDataRes;
+    const orderReq = orderResponse.request;
+
+    const orderData: OrderData = {
+      marketId: Number(orderReq.marketId),
+      commitmentTime: Number(orderResponse.commitmentTime),
+      accountId: orderReq.accountId,
+      sizeDelta: Number(formatEther(orderReq.sizeDelta)),
+      settlementStrategyId: Number(orderReq.settlementStrategyId),
+      acceptablePrice: Number(orderReq.acceptablePrice),
+      trackingCode: orderReq.trackingCode,
+      referrer: orderReq.referrer,
+    };
+
+    if (fetchSettlementStrategy) {
+      const strategy = await this.getSettlementStrategy(
+        Number(orderReq.settlementStrategyId),
+        Number(orderReq.marketId),
+      );
+      orderData.settlementStrategy = strategy;
+    }
+    return orderData;
+  }
+
+  /**
+   * Fetch information about an account's margin requirements and balances.
+   * Accounts must maintain an ``available_margin`` above the ``maintenance_margin_requirement``
+   * to avoid liquidation. Accounts with ``available_margin`` below the ``initial_margin_requirement``
+   * can not interact with their position unless they deposit more collateral.
+   * @param accountId  The id of the account to fetch the margin info for. If not provided, the default account is used
+   */
+  public async getMarginInfo(accountId: bigint | undefined = undefined): Promise<CollateralData> {
+    if (accountId == undefined) {
+      accountId = this.defaultAccountId;
+    }
+
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+
+    const functionNames: string[] = [];
+    const argsList: unknown[] = [];
+
+    // 0. Get Total collateral value
+    functionNames.push('totalCollateralValue');
+    argsList.push([accountId]);
+
+    // 1. Get available margin
+    functionNames.push('getAvailableMargin');
+    argsList.push([accountId]);
+
+    // 2. Get withdrawable margin
+    functionNames.push('getWithdrawableMargin');
+    argsList.push([accountId]);
+
+    // 3. Get required margins
+    functionNames.push('getRequiredMargins');
+    argsList.push([accountId]);
+
+    // 4. Get account collateral ids
+    functionNames.push('getAccountCollateralIds');
+    argsList.push([accountId]);
+
+    // // 5. Get account debt
+    // functionNames.push('debt');
+    // argsList.push([accountId]);
+
+    const multicallResponse: unknown[] = await this.sdk.utils.multicallMultifunctionErc7412(
+      marketProxy.address,
+      marketProxy.abi,
+      functionNames,
+      argsList,
+    );
+
+    const totalCollateralValue = multicallResponse.at(0) as bigint;
+    const availableMargin = multicallResponse.at(1) as bigint;
+    const withdrawableMargin = multicallResponse.at(2) as bigint;
+
+    // returns (uint256 requiredInitialMargin,uint256 requiredMaintenanceMargin,uint256 maxLiquidationReward)
+    const requiredMarginsResponse = multicallResponse.at(3) as bigint[];
+    const requiredInitialMargin = requiredMarginsResponse.at(0) as bigint;
+    const requiredMaintenanceMargin = requiredMarginsResponse.at(1) as bigint;
+    const maxLiquidationReward = requiredMarginsResponse.at(2) as bigint;
+
+    // returns and array of collateral ids(uint256[] memory)
+    const collateralIds = multicallResponse.at(4) as bigint[];
+
+    // @todo Check why 'debt' function doesn't exist on ABI. Get debt
+
+    let collateralAmountsRecord: Record<number, number> = [];
+
+    if (collateralIds.length != 0) {
+      const inputs = collateralIds.map((id) => {
+        return [accountId, id];
+      });
+      console.log(inputs);
+      const collateralAmounts = (await this.sdk.utils.multicallErc7412(
+        marketProxy.address,
+        marketProxy.abi,
+        'getCollateralAmount',
+        inputs,
+      )) as bigint[];
+
+      collateralIds.map((collateralId, index) => {
+        return [collateralId, formatEther(collateralAmounts.at(index) ?? 0n)];
+      });
+    }
+
+    const marginInfo: CollateralData = {
+      totalCollateralValue: convertWeiToEther(totalCollateralValue),
+      collateralBalances: collateralAmountsRecord,
+      debt: 0,
+      availableMargin: convertWeiToEther(availableMargin),
+      withdrawableMargin: convertWeiToEther(withdrawableMargin),
+      initialMarginRequirement: convertWeiToEther(requiredInitialMargin),
+      maintenanceMarginRequirement: convertWeiToEther(requiredMaintenanceMargin),
+      maxLiquidationReward: convertWeiToEther(maxLiquidationReward),
+    };
+
+    console.log('marginInfo', marginInfo);
+    return marginInfo;
+  }
+
 }

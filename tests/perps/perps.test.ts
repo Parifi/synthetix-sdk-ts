@@ -45,4 +45,9 @@ describe('Perps', () => {
     const canBeLiquidated = await sdk.perps.canLiquidate(undefined);
     console.log('canBeLiquidated :', canBeLiquidated);
   });
+
+  it.only('should get margin info', async () => {
+    const canBeLiquidated = await sdk.perps.getMarginInfo(undefined);
+    // console.log('canBeLiquidated :', canBeLiquidated);
+  });
 });
