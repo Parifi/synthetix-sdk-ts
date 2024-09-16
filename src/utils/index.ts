@@ -453,4 +453,97 @@ export class Utils {
       }
     }
   }
+
+
+  /**
+   * Calls the `functionName` on `contractAddress` target using the Multicall contract. If the call requires
+   * a price update, ERC7412 price update tx is prepended to the tx.
+   * @param contractAddress Target contract address for the call
+   * @param abi Contract ABI
+   * @param functionName Function to be called on the contract
+   * @param args Array of arguments list for the function call
+   * @param calls Array of Call3Value calls for Multicall contract
+   * @returns Array of responses from the contract function call for the multicalls
+   */
+  public async multicallMultifunctionErc7412(
+    contractAddress: Address,
+    abi: unknown,
+    functionNames: string[],
+    argsList: unknown[],
+    calls: Call3Value[] = [],
+  ) {
+    const multicallInstance = await this.sdk.contracts.getMulticallInstance();
+
+    // Format the args to the required array format
+    argsList = argsList.map((args) => (Array.isArray(args) ? args : [args]));
+    const numPrependedCalls = calls.length;
+
+    if (argsList.length != functionNames.length){
+      throw new Error("Inconsistent data: args and functionName don't match")
+    }
+    argsList.forEach((args, index) => {
+      const currentCall: Call3Value = {
+        target: contractAddress,
+        callData: encodeFunctionData({
+          abi: abi as Abi,
+          functionName: functionNames[index],
+          args: args as unknown[],
+        }),
+        value: 0n,
+        requireSuccess: true,
+      };
+      calls.push(currentCall);
+    });
+
+    const numCalls = calls.length - numPrependedCalls;
+    const publicClient = this.sdk.getPublicClient();
+
+    while (true) {
+      try {
+        const multicallData = encodeFunctionData({
+          abi: multicallInstance.abi,
+          functionName: 'aggregate3Value',
+          args: [calls],
+        });
+
+        let totalValue = 0n;
+        for (const tx of calls) {
+          totalValue += tx.value || 0n;
+        }
+
+        const finalTx = {
+          account: this.sdk.accountAddress,
+          to: publicClient.chain?.contracts?.multicall3?.address,
+          data: multicallData,
+          value: totalValue,
+        };
+
+        const response = await publicClient.call(finalTx);
+
+        const multicallResult: Result[] = this.decodeResponse(
+          multicallInstance.abi,
+          'aggregate3Value',
+          response.data as Hex,
+        ) as unknown as Result[];
+
+        const callsToDecode = multicallResult.slice(-numCalls);
+
+        const decodedResult = callsToDecode.map((result, idx) => this.decodeResponse(abi, functionNames[idx], result.returnData));
+        return decodedResult;
+      } catch (error) {
+        const parsedError = parseError(error as CallExecutionError);
+
+        const isErc7412Error =
+          parsedError.startsWith(SIG_ORACLE_DATA_REQUIRED) || parsedError.startsWith(SIG_FEE_REQUIRED);
+        if (!isErc7412Error) {
+          console.log('Error details: ', error);
+          console.log('Parsed Error details: ', parsedError);
+          throw new Error('Error is not related to Oracle data');
+        }
+
+        calls = await this.handleErc7412Error(error, calls);
+        // console.log('Calls array after handleErc7412Error', calls);
+      }
+    }
+  }
 }
