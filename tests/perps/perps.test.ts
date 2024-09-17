@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { getSdkInstanceForTesting } from '..';
 import { SynthetixSdk } from '../../src';
+import { CallParameters, encodeFunctionData, erc20Abi, parseUnits } from 'viem';
 
 describe('Perps', () => {
   let sdk: SynthetixSdk;
@@ -46,8 +47,54 @@ describe('Perps', () => {
     console.log('canBeLiquidated :', canBeLiquidated);
   });
 
-  it.only('should get margin info', async () => {
-    const canBeLiquidated = await sdk.perps.getMarginInfo(undefined);
-    // console.log('canBeLiquidated :', canBeLiquidated);
+  it('should get margin info', async () => {
+    const marginInfo = await sdk.perps.getMarginInfo(undefined);
+    console.log('marginInfo :', marginInfo);
+  });
+
+  it.only('should add collateral', async () => {
+    // const tokenAddress = await sdk.core.getUsdToken();
+    const marketProxy = await sdk.contracts.getPerpsMarketProxyInstance();
+    const tokenAddress = '0x8069c44244e72443722cfb22dce5492cba239d39'; // For base sepolia susdc
+
+    const tokenBalance: bigint = (await sdk.utils.callErc7412(tokenAddress, erc20Abi, 'balanceOf', [
+      sdk.accountAddress,
+    ])) as bigint;
+
+    const spenderAddress = '0x0df5bb521adbf0db1fedc39973a82075df2d8730';
+    console.log('tokenBalance', tokenBalance);
+    const amount = 10; // 10 usdc
+    const amountInWei = parseUnits(amount.toString(), 6);
+
+    if (tokenBalance == BigInt(0) || tokenBalance < amountInWei) {
+      console.log('USD Token balance of address is less than amount');
+      return;
+    }
+
+    const balanceApproved = (await sdk.utils.callErc7412(tokenAddress, erc20Abi, 'allowance', [
+      sdk.accountAddress,
+      spenderAddress,
+    ])) as bigint;
+
+    console.log('balanceApproved', balanceApproved);
+
+    if (balanceApproved < amountInWei) {
+      const approvalTx: CallParameters = {
+        account: sdk.accountAddress,
+        to: tokenAddress,
+        data: encodeFunctionData({
+          abi: erc20Abi,
+          functionName: 'approve',
+          args: [spenderAddress, amountInWei],
+        }),
+      };
+      const approvalHash = await sdk.executeTransaction(approvalTx);
+      console.log('Approval txHash:', approvalHash);
+    }
+    const tx = await sdk.perps.modifyCollateral(amount, 0);
+    console.log('Add collateral tx: ', tx);
+
+    const marginInfo = await sdk.perps.getMarginInfo();
+    console.log('marginInfo :', marginInfo);
   });
 });

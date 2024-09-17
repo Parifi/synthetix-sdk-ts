@@ -776,4 +776,48 @@ export class Perps {
     return marginInfo;
   }
 
+  /**
+   * Move collateral in or out of a specified perps account. The ``market_id`` or ``market_name``
+   * must be provided to specify the collateral type.
+   * Provide either a ``market_id`` or a ``market_name``.  Note that the ``market_id`` here refers
+   * to the spot market id, not the perps market id. Make sure to approve the market proxy to transfer
+   * tokens of the collateral type before calling this function.
+   * @param amount The amount of collateral to move. Positive values deposit collateral, negative values withdraw collateral
+   * @param marketId The id of the market to move collateral for
+   * @param marketName The name of the market to move collateral for.
+   * @param accountId The id of the account to move collateral for. If not provided, the default account is used.
+   * @param submit If ``True``, submit the transaction to the blockchain.
+   */
+  public async modifyCollateral(
+    amount: number,
+    marketId: number | undefined = undefined,
+    marketName: string | undefined = undefined,
+    accountId: bigint | undefined = undefined,
+    submit: boolean = false,
+  ) {
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+
+    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketId, marketName);
+    console.log('resolvedMarketId', resolvedMarketId);
+    console.log('resolvedMarketName', resolvedMarketName);
+
+    if (accountId == undefined) {
+      accountId = this.defaultAccountId;
+    }
+
+    const tx = await this.sdk.utils.writeErc7412(marketProxy.address, marketProxy.abi, 'modifyCollateral', [
+      accountId,
+      resolvedMarketId,
+      parseUnits(amount.toString(), 6),
+    ]);
+
+    if (submit) {
+      const txHash = await this.sdk.executeTransaction(tx);
+      console.log(`Transferring ${amount} ${resolvedMarketName} for account ${accountId}`);
+      console.log('Modify collateral tx: ', txHash);
+      return txHash;
+    } else {
+      return tx;
+    }
+  }
 }

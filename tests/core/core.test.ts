@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { getSdkInstanceForTesting } from '..';
-import { decodeErrorResult, erc20Abi, getContract, parseUnits } from 'viem';
+import { CallParameters, decodeErrorResult, encodeFunctionData, erc20Abi, getContract, parseUnits } from 'viem';
 import { IERC7412Abi } from '../../src/contracts/abis/IERC7412';
 import { SynthetixSdk } from '../../src';
 
@@ -68,13 +68,19 @@ describe('Core', () => {
     ])) as bigint;
 
     if (balanceApproved < amountInWei) {
-      const approvalTx = await sdk.utils.writeErc7412(tokenAddress, erc20Abi, 'approve', [
-        coreProxy.address,
-        amountInWei,
-      ]);
+      const approvalTx: CallParameters = {
+        account: sdk.accountAddress,
+        to: tokenAddress,
+        data: encodeFunctionData({
+          abi: erc20Abi,
+          functionName: 'approve',
+          args: [coreProxy.address, amountInWei],
+        }),
+      };
       const approvalHash = await sdk.executeTransaction(approvalTx);
       console.log('Approval txHash:', approvalHash);
     }
+
     const txData = await sdk.core.deposit(tokenAddress, amount, 18);
     console.log('Deposit tx data:', txData);
   });
