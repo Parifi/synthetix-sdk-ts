@@ -42,17 +42,12 @@ describe('Perps', () => {
     console.log(tx);
   });
 
-  it('should test erc7412 call', async () => {
-    const canBeLiquidated = await sdk.perps.canLiquidate(undefined);
-    console.log('canBeLiquidated :', canBeLiquidated);
-  });
-
   it('should get margin info', async () => {
     const marginInfo = await sdk.perps.getMarginInfo(undefined);
     console.log('marginInfo :', marginInfo);
   });
 
-  it.only('should add collateral', async () => {
+  it('should add collateral', async () => {
     // const tokenAddress = await sdk.core.getUsdToken();
     const marketProxy = await sdk.contracts.getPerpsMarketProxyInstance();
     const tokenAddress = '0x8069c44244e72443722cfb22dce5492cba239d39'; // For base sepolia susdc
@@ -96,5 +91,13 @@ describe('Perps', () => {
 
     const marginInfo = await sdk.perps.getMarginInfo();
     console.log('marginInfo :', marginInfo);
+  });
+
+  it('should return if an account can be liquidated', async () => {
+    const canBeLiquidated = await sdk.perps.getCanLiquidate(undefined);
+    console.log('canBeLiquidated :', canBeLiquidated);
+
+    const canLiquidates = await sdk.perps.getCanLiquidates();
+    console.log('canLiquidates :', canLiquidates);
   });
 });

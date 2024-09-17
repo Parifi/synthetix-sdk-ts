@@ -351,24 +351,6 @@ export class Perps {
     } as MarketSummary;
   }
 
-  public async canLiquidate(accountId: bigint | undefined = undefined): Promise<boolean> {
-    if (accountId == undefined) {
-      console.log('Using default account ID value :', this.defaultAccountId);
-      accountId = this.defaultAccountId;
-    }
-
-    const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-
-    const canBeLiquidated = await this.sdk.utils.callErc7412(
-      perpsMarketProxy.address,
-      perpsMarketProxy.abi,
-      'canLiquidate',
-      [accountId],
-    );
-    console.log('canBeLiquidated', canBeLiquidated);
-    return canBeLiquidated as boolean;
-  }
-
   /**
    * Fetch the settlement strategy for a market. Settlement strategies describe the
    * conditions under which an order can be settled.
@@ -819,5 +801,78 @@ export class Perps {
     } else {
       return tx;
     }
+  }
+
+  /**
+   * Fetch the balance of each collateral type for an account.
+   * @param accountId The id of the account to fetch the collateral balances for. If not provided, the default account is used.
+   */
+  public async getCollateralBalances(accountId: bigint | undefined = undefined) {
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    if (accountId == undefined) {
+      accountId = this.defaultAccountId;
+    }
+
+    // @todo Add function in spot to get market ids
+  }
+
+  /**
+   * Check if an `accountId` is eligible for liquidation.
+   * @param accountId The id of the account to check. If not provided, the default account is used.
+   * @returns
+   */
+  public async getCanLiquidate(accountId: bigint | undefined = undefined): Promise<boolean> {
+    if (accountId == undefined) {
+      accountId = this.defaultAccountId;
+    }
+
+    const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+
+    const canBeLiquidated = (await this.sdk.utils.callErc7412(
+      perpsMarketProxy.address,
+      perpsMarketProxy.abi,
+      'canLiquidate',
+      [accountId],
+    )) as boolean;
+    console.log('canBeLiquidated', canBeLiquidated);
+    return canBeLiquidated;
+  }
+
+  /**
+   * Check if a batch of `accountId`'s are eligible for liquidation.
+   * @param accountIds An array of account ids
+   * @returns
+   */
+  public async getCanLiquidates(
+    accountIds: bigint[] | undefined = undefined,
+  ): Promise<{ accountId: bigint; canLiquidate: boolean }[]> {
+    const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    if (accountIds == undefined) {
+      if (this.defaultAccountId != undefined) {
+        accountIds = this.accountIds;
+      } else {
+        throw new Error('Invalid account ID');
+      }
+    }
+
+    // Format the args to the required array format
+    const input = accountIds.map((accountId) => [accountId]);
+
+    const canLiquidatesResponse = (await this.sdk.utils.multicallErc7412(
+      perpsMarketProxy.address,
+      perpsMarketProxy.abi,
+      'canLiquidate',
+      input,
+    )) as boolean[];
+
+    const canLiquidates = canLiquidatesResponse.map((response, index) => {
+      return {
+        accountId: accountIds.at(index) ?? 0n,
+        canLiquidate: response,
+      };
+    });
+
+    console.log('canLiquidates', canLiquidates);
+    return canLiquidates;
   }
 }
