@@ -10,11 +10,9 @@ import {
   Hex,
   http,
   PublicClient,
-  Transaction,
   WalletClient,
   webSocket,
 } from 'viem';
-import { ipc } from 'viem/node';
 import { ZERO_ADDRESS } from './constants/common';
 import { Contracts } from './contracts';
 import { Pyth } from './pyth';
@@ -93,14 +91,6 @@ export class SynthetixSdk {
           multicall: true,
         },
       });
-    } else if (rpcEndpoint?.endsWith('ipc')) {
-      this.publicClient = createPublicClient({
-        chain: viemChain,
-        transport: ipc(rpcEndpoint),
-        batch: {
-          multicall: true,
-        },
-      });
     } else {
       // Use the default public RPC provider if rpcEndpoint is missing
       console.info('Using public RPC endpoint for chainId ', this.rpcConfig.chainId);
@@ -151,14 +141,8 @@ export class SynthetixSdk {
       throw error;
     }
 
-    // Initialize partner config
-
     // Initialize Pyth
     await this.pyth.initPyth();
-
-    // Initialize Rpc config
-
-    // Initialize Subgraph config
   }
 
   public getPublicClient(): PublicClient {
@@ -177,7 +161,12 @@ export class SynthetixSdk {
     }
   }
 
-  public async executeTransaction(tx: CallParameters) {
+  /**
+   * Executes a transaction from the user wallet. The private key for the wallet is used from the .env
+   * @param tx Call parameters for the tx
+   * @returns txHash Transaction hash after tx execution
+   */
+  public async executeTransaction(tx: CallParameters): Promise<string> {
     if (process.env.PRIVATE_KEY != undefined) {
       const viemChain = getChain(this.rpcConfig.chainId);
       const account = privateKeyToAccount(process.env.PRIVATE_KEY as Hex);
