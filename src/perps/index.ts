@@ -8,6 +8,7 @@ import {
   MarketMetadata,
   MarketSummary,
   MaxMarketValue,
+  OpenPositionData,
   OrderData,
   OrderFees,
   SettlementStrategy,
@@ -74,7 +75,7 @@ export class Perps {
     }
     return {
       resolvedMarketId: (resolvedMarketId ?? marketId) as number,
-      resolvedMarketName: (resolvedMarketName ?? marketName) as string,
+      resolvedMarketName: resolvedMarketName ?? marketName ?? 'Unresolved market',
     };
   }
 
@@ -874,5 +875,102 @@ export class Perps {
 
     console.log('canLiquidates', canLiquidates);
     return canLiquidates;
+  }
+
+  /**
+   * Fetch the position for a specified account and market. The result includes the unrealized
+   * pnl since the last interaction with this position, any accrued funding, and the position size.
+   * Provide either a ``marketId`` or a ``marketName``::
+   * @param marketId The id of the market to fetch the position for.
+   * @param marketName The name of the market to fetch the position for.
+   * @param accountId The id of the account to fetch the position for. If not provided, the default account is used.
+   */
+  public async getOpenPosition(
+    marketId: number | undefined = undefined,
+    marketName: string | undefined = undefined,
+    accountId: bigint | undefined = undefined,
+  ): Promise<OpenPositionData> {
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    if (accountId == undefined) {
+      accountId = this.defaultAccountId;
+    }
+    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketId, marketName);
+
+    // Smart contract response:
+    // returns (int256 totalPnl, int256 accruedFunding, int128 positionSize, uint256 owedInterest);
+    const response = (await this.sdk.utils.callErc7412(marketProxy.address, marketProxy.abi, 'getOpenPosition', [
+      accountId,
+      resolvedMarketId,
+    ])) as bigint[];
+
+    const openPositionData: OpenPositionData = {
+      marketId: resolvedMarketId,
+      marketName: resolvedMarketName,
+      totalPnl: convertWeiToEther(response.at(0)),
+      accruedFunding: convertWeiToEther(response.at(1)),
+      positionSize: convertWeiToEther(response.at(2)),
+      owedInterest: convertWeiToEther(response.at(3)),
+    };
+    console.log('openPositionData', openPositionData);
+    return openPositionData;
+  }
+
+  /**
+   * Fetch positions for an array of specified markets. The result includes the unrealized
+   * pnl since the last interaction with this position, any accrued funding, and the position size.
+   * Provide either an array of ``marketIds`` or a ``marketNames``::
+   * @param marketIds Array of market ids to fetch the position for.
+   * @param marketNames Array of market names to fetch the position for.
+   * @param accountId The id of the account to fetch the position for. If not provided, the default account is used.
+   */
+  public async getOpenPositions(
+    marketIds: number[] | undefined = undefined,
+    marketNames: string[] | undefined = undefined,
+    accountId: bigint | undefined = undefined,
+  ): Promise<OpenPositionData[]> {
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    if (accountId == undefined) {
+      accountId = this.defaultAccountId;
+    }
+
+    // If market ids and market names both are undefined, then fetch all markets
+    if (marketIds == undefined && marketNames == undefined) {
+      marketIds = Array.from(this.marketsById.keys());
+      marketNames = Array.from(this.marketsByName.keys());
+    } else if (marketNames != undefined && marketIds == undefined) {
+      marketIds = marketNames.map((marketName) => {
+        return this.resolveMarket(undefined, marketName).resolvedMarketId;
+      });
+    }
+
+    const inputs = marketIds?.map((marketId) => {
+      return [accountId, marketId];
+    }) as unknown[];
+
+    // Smart contract response:
+    // returns (int256 totalPnl, int256 accruedFunding, int128 positionSize, uint256 owedInterest);
+    const response = (await this.sdk.utils.multicallErc7412(
+      marketProxy.address,
+      marketProxy.abi,
+      'getOpenPosition',
+      inputs,
+    )) as bigint[][];
+
+    const openPositionsData: OpenPositionData[] = [];
+    response.forEach((positionData, idx) => {
+      const marketId = marketIds?.at(idx) ?? 0;
+      const positionSize = convertWeiToEther(positionData.at(2));
+      if (Math.abs(positionSize) > 0) {
+        openPositionsData.push({
+          marketId: marketId,
+          marketName: this.marketsById.get(marketId)?.marketName ?? 'Unresolved market',
+          totalPnl: convertWeiToEther(positionData.at(0)),
+          accruedFunding: convertWeiToEther(positionData.at(1)),
+          positionSize: positionSize,
+          owedInterest: convertWeiToEther(positionData.at(3)),
+        });
+      }
+    });
+    return openPositionsData;
   }
 }

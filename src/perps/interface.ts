@@ -88,3 +88,12 @@ export interface CollateralData {
   maintenanceMarginRequirement: number;
   maxLiquidationReward: number;
 }
+
+export interface OpenPositionData {
+  marketId: number;
+  marketName: string;
+  totalPnl: number;
+  accruedFunding: number;
+  positionSize: number;
+  owedInterest: number;
+}

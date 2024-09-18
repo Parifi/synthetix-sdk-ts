@@ -12,6 +12,8 @@ describe('Perps', () => {
     const defaultAddress = process.env.DEFAULT_ADDRESS;
     const accountIds = await sdk.perps.getAccountIds(defaultAddress);
     console.log('Account ids for default account: ', accountIds);
+
+    await sdk.perps.getMarkets();
   });
 
   it('should return market data', async () => {
@@ -99,5 +101,15 @@ describe('Perps', () => {
 
     const canLiquidates = await sdk.perps.getCanLiquidates();
     console.log('canLiquidates :', canLiquidates);
+  });
+
+  it('should return open position data', async () => {
+    const positionData = await sdk.perps.getOpenPosition(100);
+    console.log('positionData :', positionData);
+  });
+
+  it('should return open position data for multiple markets', async () => {
+    const positionsData = await sdk.perps.getOpenPositions(undefined, ['Ethereum', 'Bitcoin', 'Synthetix', 'Solana']);
+    console.log('positionsData :', positionsData);
   });
 });
