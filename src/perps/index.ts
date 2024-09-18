@@ -164,8 +164,11 @@ export class Perps {
   // @todo Add logic for disabled markets
   public async getMarkets(): Promise<{ marketsById: Map<number, MarketData>; marketsByName: Map<string, MarketData> }> {
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-    const marketIds: number[] = (await perpsMarketProxy.read.getMarkets([])) as number[];
-    console.log('marketIds', marketIds);
+    const marketIdsResponse: bigint[] = (await perpsMarketProxy.read.getMarkets([])) as bigint[];
+
+    const marketIds = marketIdsResponse.map((id) => {
+      return Number(id);
+    });
 
     // Response type from metadata smart contract call
     type MetadataResponse = [string, string];
