@@ -3,8 +3,6 @@ import { WalletClient } from 'viem';
 export interface AccountConfig {
   address?: string;
   walletClient?: WalletClient;
-  coreAccountId?: number;
-  perpsAccountId?: number;
 }
 export interface PartnerConfig {
   trackingCode?: string;
@@ -22,10 +20,4 @@ export interface RpcConfig {
   chainId: number;
   rpcEndpoint?: string;
   preset?: string;
-}
-
-export interface SubgraphConfig {
-  subgraphEndpoint?: string;
-  username?: string;
-  password?: string;
 }

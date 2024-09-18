@@ -1,4 +1,4 @@
-import { AccountConfig, PartnerConfig, PythConfig, RpcConfig, SubgraphConfig } from './interface/classConfigs';
+import { AccountConfig, PartnerConfig, PythConfig, RpcConfig } from './interface/classConfigs';
 import { getPublicRpcEndpoint, getChain, Utils } from './utils';
 import { Core } from './core';
 import {
@@ -10,35 +10,35 @@ import {
   Hex,
   http,
   PublicClient,
-  Transaction,
   WalletClient,
   webSocket,
 } from 'viem';
-import { ipc } from 'viem/node';
 import { ZERO_ADDRESS } from './constants/common';
 import { Contracts } from './contracts';
 import { Pyth } from './pyth';
 import { Perps } from './perps';
 import { privateKeyToAccount } from 'viem/accounts';
 import { Spot } from './spot';
+import { DEFAULT_REFERRER, DEFAULT_TRACKING_CODE } from './constants';
 
 export class SynthetixSdk {
   accountConfig: AccountConfig;
   partnerConfig: PartnerConfig;
   pythConfig: PythConfig;
   rpcConfig: RpcConfig;
-  subgraphConfig: SubgraphConfig;
 
   // Account fields
   accountAddress: Address = ZERO_ADDRESS;
   accountIds?: bigint[];
-  defaultCoreAccountId?: bigint;
-  defaultPerpsAccountId?: bigint;
 
   // Public client should always be defined either using the rpcConfig or using the public endpoint
   publicClient: PublicClient;
   walletClient?: WalletClient;
   account?: Account;
+
+  // Partner config
+  trackingCode: string;
+  referrer: string;
 
   core: Core;
   contracts: Contracts;
@@ -52,20 +52,20 @@ export class SynthetixSdk {
     partnerConfig: PartnerConfig,
     pythConfig: PythConfig,
     rpcConfig: RpcConfig,
-    subgraphConfig: SubgraphConfig,
   ) {
     this.accountConfig = accountConfig;
     this.partnerConfig = partnerConfig;
     this.pythConfig = pythConfig;
     this.rpcConfig = rpcConfig;
-    this.subgraphConfig = subgraphConfig;
-
     this.core = new Core(this);
     this.contracts = new Contracts(this);
     this.utils = new Utils(this);
     this.pyth = new Pyth(this);
     this.perps = new Perps(this);
     this.spot = new Spot(this);
+
+    this.trackingCode = partnerConfig.trackingCode ?? DEFAULT_TRACKING_CODE;
+    this.referrer = partnerConfig.referrer ?? DEFAULT_REFERRER;
 
     /**
      * Initialize Public client to RPC chain rpc
@@ -87,14 +87,6 @@ export class SynthetixSdk {
       this.publicClient = createPublicClient({
         chain: viemChain,
         transport: webSocket(rpcEndpoint),
-        batch: {
-          multicall: true,
-        },
-      });
-    } else if (rpcEndpoint?.endsWith('ipc')) {
-      this.publicClient = createPublicClient({
-        chain: viemChain,
-        transport: ipc(rpcEndpoint),
         batch: {
           multicall: true,
         },
@@ -144,23 +136,13 @@ export class SynthetixSdk {
         }
       }
       this.accountAddress = this.accountConfig.address as Hex;
-      this.defaultCoreAccountId =
-        process.env.CORE_ACCOUNT_ID == undefined ? undefined : BigInt(process.env.CORE_ACCOUNT_ID);
-      this.defaultPerpsAccountId =
-        process.env.PERPS_ACCOUNT_ID == undefined ? undefined : BigInt(process.env.PERPS_ACCOUNT_ID);
     } catch (error) {
       console.log('Error:', error);
       throw error;
     }
 
-    // Initialize partner config
-
     // Initialize Pyth
     await this.pyth.initPyth();
-
-    // Initialize Rpc config
-
-    // Initialize Subgraph config
   }
 
   public getPublicClient(): PublicClient {
@@ -179,7 +161,12 @@ export class SynthetixSdk {
     }
   }
 
-  public async executeTransaction(tx: CallParameters) {
+  /**
+   * Executes a transaction from the user wallet. The private key for the wallet is used from the .env
+   * @param tx Call parameters for the tx
+   * @returns txHash Transaction hash after tx execution
+   */
+  public async executeTransaction(tx: CallParameters): Promise<string> {
     if (process.env.PRIVATE_KEY != undefined) {
       const viemChain = getChain(this.rpcConfig.chainId);
       const account = privateKeyToAccount(process.env.PRIVATE_KEY as Hex);

@@ -1,25 +1,115 @@
 import 'dotenv/config';
 import { getSdkInstanceForTesting } from '..';
+import { SynthetixSdk } from '../../src';
+import { CallParameters, encodeFunctionData, erc20Abi, parseUnits } from 'viem';
 
 describe('Perps', () => {
+  let sdk: SynthetixSdk;
+  beforeAll(async () => {
+    sdk = await getSdkInstanceForTesting();
+
+    // Get accounts for address and sets the default account
+    const defaultAddress = process.env.DEFAULT_ADDRESS;
+    const accountIds = await sdk.perps.getAccountIds(defaultAddress);
+    console.log('Account ids for default account: ', accountIds);
+
+    await sdk.perps.getMarkets();
+  });
+
   it('should return market data', async () => {
-    const sdk = await getSdkInstanceForTesting();
     const { marketsById, marketsByName } = await sdk.perps.getMarkets();
-    console.log('Final markets by marketsById', marketsById);
-    console.log('Final markets by marketsByName', marketsByName);
+    expect(marketsById.size).toBeGreaterThan(0);
+    expect(marketsByName.size).toBeGreaterThan(0);
   });
 
   it('should return settlement strategies data', async () => {
-    const sdk = await getSdkInstanceForTesting();
     const marketId = 200;
     const settlementStrategy = await sdk.perps.getSettlementStrategy(marketId);
     console.log('settlementStrategy :', settlementStrategy);
   });
 
-  it('should test erc7412 call', async () => {
-    const sdk = await getSdkInstanceForTesting();
-    const accountId: bigint = BigInt(process.env.PERPS_ACCOUNT_ID || '0');
-    const canBeLiquidated = await sdk.perps.canLiquidate(accountId);
+  it('should create an account and return the tx hash', async () => {
+    const txData = await sdk.perps.createAccount(undefined, false);
+    console.log('Create account tx:', txData);
+  });
+
+  it('should return account ids and balance of an address', async () => {
+    const defaultAddress = process.env.DEFAULT_ADDRESS;
+    const accountIds = await sdk.perps.getAccountIds(defaultAddress);
+    console.info('Account Ids :', accountIds);
+  });
+
+  it('should commit an order for settlement', async () => {
+    const tx = await sdk.perps.commitOrder(0.001, 0, 100, undefined, undefined, undefined, 1, false);
+    console.log(tx);
+  });
+
+  it('should get margin info', async () => {
+    const marginInfo = await sdk.perps.getMarginInfo(undefined);
+    console.log('marginInfo :', marginInfo);
+  });
+
+  it('should add collateral', async () => {
+    // const tokenAddress = await sdk.core.getUsdToken();
+    const marketProxy = await sdk.contracts.getPerpsMarketProxyInstance();
+    const tokenAddress = '0x8069c44244e72443722cfb22dce5492cba239d39'; // For base sepolia susdc
+
+    const tokenBalance: bigint = (await sdk.utils.callErc7412(tokenAddress, erc20Abi, 'balanceOf', [
+      sdk.accountAddress,
+    ])) as bigint;
+
+    const spenderAddress = '0x0df5bb521adbf0db1fedc39973a82075df2d8730';
+    console.log('tokenBalance', tokenBalance);
+    const amount = 10; // 10 usdc
+    const amountInWei = parseUnits(amount.toString(), 6);
+
+    if (tokenBalance == BigInt(0) || tokenBalance < amountInWei) {
+      console.log('USD Token balance of address is less than amount');
+      return;
+    }
+
+    const balanceApproved = (await sdk.utils.callErc7412(tokenAddress, erc20Abi, 'allowance', [
+      sdk.accountAddress,
+      spenderAddress,
+    ])) as bigint;
+
+    console.log('balanceApproved', balanceApproved);
+
+    if (balanceApproved < amountInWei) {
+      const approvalTx: CallParameters = {
+        account: sdk.accountAddress,
+        to: tokenAddress,
+        data: encodeFunctionData({
+          abi: erc20Abi,
+          functionName: 'approve',
+          args: [spenderAddress, amountInWei],
+        }),
+      };
+      const approvalHash = await sdk.executeTransaction(approvalTx);
+      console.log('Approval txHash:', approvalHash);
+    }
+    const tx = await sdk.perps.modifyCollateral(amount, 0);
+    console.log('Add collateral tx: ', tx);
+
+    const marginInfo = await sdk.perps.getMarginInfo();
+    console.log('marginInfo :', marginInfo);
+  });
+
+  it('should return if an account can be liquidated', async () => {
+    const canBeLiquidated = await sdk.perps.getCanLiquidate(undefined);
     console.log('canBeLiquidated :', canBeLiquidated);
+
+    const canLiquidates = await sdk.perps.getCanLiquidates();
+    console.log('canLiquidates :', canLiquidates);
+  });
+
+  it('should return open position data', async () => {
+    const positionData = await sdk.perps.getOpenPosition(100);
+    console.log('positionData :', positionData);
+  });
+
+  it('should return open position data for multiple markets', async () => {
+    const positionsData = await sdk.perps.getOpenPositions(undefined, ['Ethereum', 'Bitcoin', 'Synthetix', 'Solana']);
+    console.log('positionsData :', positionsData);
   });
 });

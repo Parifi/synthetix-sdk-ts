@@ -1,6 +1,6 @@
 {
   "name": "@parifi/synthetix-sdk-ts",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "A Typescript SDK for interactions with the Synthetix protocol",
   "files": [
     "dist",
@@ -52,7 +52,7 @@
   },
   "dependencies": {
     "@pythnetwork/pyth-evm-js": "^1.66.0",
-    "@synthetixio/v3-contracts": "^6.5.0",
+    "@synthetixio/v3-contracts": "^6.8.0",
     "axios": "^1.7.5",
     "dotenv": "^16.4.5",
     "viem": "^2.20.1"

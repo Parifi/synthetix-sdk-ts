@@ -1,15 +1,19 @@
-import { CallParameters, formatEther } from 'viem';
+import { CallParameters, formatEther, parseEther, parseUnits } from 'viem';
 import { SynthetixSdk } from '..';
 import { ZERO_ADDRESS } from '../constants';
 import {
+  CollateralData,
   FundingParameters,
   MarketData,
   MarketMetadata,
   MarketSummary,
   MaxMarketValue,
+  OpenPositionData,
+  OrderData,
   OrderFees,
   SettlementStrategy,
 } from './interface';
+import { convertWeiToEther } from '../utils';
 
 /**
  * Class for interacting with Synthetix V3 core contracts
@@ -28,13 +32,7 @@ export class Perps {
 
   constructor(synthetixSdk: SynthetixSdk) {
     this.sdk = synthetixSdk;
-    this.defaultAccountId =
-      process.env.PERPS_ACCOUNT_ID == undefined ? undefined : BigInt(process.env.PERPS_ACCOUNT_ID);
-    if (this.defaultAccountId == undefined) {
-      this.accountIds = [];
-    } else {
-      this.accountIds = [this.defaultAccountId];
-    }
+    this.accountIds = [];
 
     // Initialize empty market data
     this.marketsById = new Map<number, MarketData>();
@@ -77,7 +75,7 @@ export class Perps {
     }
     return {
       resolvedMarketId: (resolvedMarketId ?? marketId) as number,
-      resolvedMarketName: (resolvedMarketName ?? marketName) as string,
+      resolvedMarketName: resolvedMarketName ?? marketName ?? 'Unresolved market',
     };
   }
 
@@ -140,10 +138,11 @@ export class Perps {
       txArgs.push(accountId);
     }
 
-    const perpsAccountProxy = await this.sdk.contracts.getPerpsAccountProxyInstance();
+    // const perpsAccountProxy = await this.sdk.contracts.getPerpsAccountProxyInstance();
+    const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
     const tx: CallParameters = await this.sdk.utils.writeErc7412(
-      perpsAccountProxy.address,
-      perpsAccountProxy.abi,
+      perpsMarketProxy.address,
+      perpsMarketProxy.abi,
       'createAccount',
       txArgs,
     );
@@ -165,8 +164,11 @@ export class Perps {
   // @todo Add logic for disabled markets
   public async getMarkets(): Promise<{ marketsById: Map<number, MarketData>; marketsByName: Map<string, MarketData> }> {
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-    const marketIds: number[] = (await perpsMarketProxy.read.getMarkets([])) as number[];
-    console.log('marketIds', marketIds);
+    const marketIdsResponse: bigint[] = (await perpsMarketProxy.read.getMarkets([])) as bigint[];
+
+    const marketIds = marketIdsResponse.map((id) => {
+      return Number(id);
+    });
 
     // Response type from metadata smart contract call
     type MetadataResponse = [string, string];
@@ -353,24 +355,6 @@ export class Perps {
     } as MarketSummary;
   }
 
-  public async canLiquidate(accountId: bigint | undefined = undefined): Promise<boolean> {
-    if (accountId == undefined) {
-      console.log('Using default account ID value :', this.defaultAccountId);
-      accountId = this.defaultAccountId;
-    }
-
-    const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-
-    const canBeLiquidated = await this.sdk.utils.callErc7412(
-      perpsMarketProxy.address,
-      perpsMarketProxy.abi,
-      'canLiquidate',
-      [accountId],
-    );
-    console.log('canBeLiquidated', canBeLiquidated);
-    return canBeLiquidated as boolean;
-  }
-
   /**
    * Fetch the settlement strategy for a market. Settlement strategies describe the
    * conditions under which an order can be settled.
@@ -380,6 +364,7 @@ export class Perps {
    * @returns Settlement strategy for market
    */
   public async getSettlementStrategy(
+    settlementStrategyId: number,
     marketId: number | undefined = undefined,
     marketName: string | undefined = undefined,
   ): Promise<SettlementStrategy> {
@@ -401,7 +386,7 @@ export class Perps {
       perpsMarketProxy.address,
       perpsMarketProxy.abi,
       'getSettlementStrategy',
-      [resolvedMarketId, 0],
+      [resolvedMarketId, settlementStrategyId],
     )) as SettlementStrategyResponse;
 
     return {
@@ -546,5 +531,449 @@ export class Perps {
       });
     });
     return maxMarketValues;
+  }
+
+  /**
+   * Submit an order to the specified market. Keepers will attempt to fill the order
+   * according to the settlement strategy. If ``desired_fill_price`` is provided, the order
+   * will be filled at that price or better. If ``max_price_impact`` is provided, the
+   * ``desired_fill_price`` is calculated from the current market price and the price impact.
+   * @param size The size of the order to submit
+   * @param settlementStrategyId The id of the settlement strategy to use
+   * @param marketId The id of the market to submit the order to. If not provided, `marketName` must be provided
+   * @param marketName The name of the market to submit the order to. If not provided, `marketId` must be provided.
+   * @param accountId The id of the account to submit the order for. Defaults to `defaultAccountId`.
+   * @param desiredFillPrice The max price for longs and minimum price for shorts. If not provided, one will be calculated based on `maxPriceImpact`
+   * @param maxPriceImpact The maximum price impact to allow when filling the order as a percentage (1.0 = 1%). If not provided, it will inherit the default value from `snx.max_price_impact`
+   * @param submit If ``true``, submit the transaction to the blockchain
+   */
+  public async commitOrder(
+    size: number,
+    settlementStrategyId: number = 0,
+    marketId: number | undefined,
+    marketName: string | undefined,
+    accountId: bigint | undefined,
+    desiredFillPrice: number | undefined,
+    maxPriceImpact: number | undefined,
+    submit: boolean = false,
+  ) {
+    const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+
+    const { resolvedMarketId } = this.resolveMarket(marketId, marketName);
+    if (desiredFillPrice != undefined && maxPriceImpact != undefined) {
+      throw new Error('Cannot set both desiredFillPrice and maxPriceImpact');
+    }
+    const isShort = size < 0 ? -1 : 1;
+    const sizeInWei = parseEther(Math.abs(size).toString()) * BigInt(isShort);
+    let acceptablePrice: number;
+
+    // If desired price is provided, use the provided price, else fetch price
+    if (desiredFillPrice) {
+      acceptablePrice = desiredFillPrice;
+    } else {
+      const updatedMaxPriceImpact = maxPriceImpact ?? 1; // @todo Replace with config value
+      const marketSummary = await this.getMarketSummary(resolvedMarketId);
+      const priceImpact = 1 + (isShort * updatedMaxPriceImpact) / 100;
+      acceptablePrice = (marketSummary.indexPrice ?? 0) * priceImpact;
+    }
+    if (accountId == undefined) {
+      accountId = this.defaultAccountId;
+    }
+
+    const txArgs = {
+      marketId: resolvedMarketId,
+      accountId: accountId,
+      sizeDelta: sizeInWei,
+      settlementStrategyId: settlementStrategyId,
+      acceptablePrice: parseEther(acceptablePrice.toString()),
+      trackingCode: this.sdk.trackingCode,
+      referrer: this.sdk.referrer,
+    };
+
+    console.log('txArgs', txArgs);
+    const tx = await this.sdk.utils.writeErc7412(perpsMarketProxy.address, perpsMarketProxy.abi, 'commitOrder', [
+      txArgs,
+    ]);
+    if (submit) {
+      console.log(
+        `Committing order size ${sizeInWei} (${size}) to ${marketName} (id: ${resolvedMarketId}) for account ${accountId}`,
+      );
+      const txHash = this.sdk.executeTransaction(tx);
+      console.log('Transaction hash for commit order tx: ', txHash);
+      return txHash;
+    } else {
+      return tx;
+    }
+  }
+
+  /**
+   *   Fetches the open order for an account. Optionally fetches the settlement strategy,
+   * which can be useful for order settlement and debugging.
+   * @param accountId The id of the account. If not provided, the default account is used
+   * @param fetchSettlementStrategy Flag to indicate whether to fetch the settlement strategy
+   */
+  public async getOrder(
+    accountId: bigint | undefined = undefined,
+    fetchSettlementStrategy: boolean = true,
+  ): Promise<OrderData> {
+    interface OrderCommitmentRequestRes {
+      marketId: bigint;
+      accountId: bigint;
+      sizeDelta: bigint;
+      settlementStrategyId: bigint;
+      acceptablePrice: bigint;
+      trackingCode: string;
+      referrer: string;
+    }
+
+    interface AsyncOrderDataRes {
+      commitmentTime: bigint;
+      request: OrderCommitmentRequestRes;
+    }
+
+    const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+
+    if (accountId == undefined) {
+      accountId = this.defaultAccountId;
+    }
+    const orderResponse = (await this.sdk.utils.callErc7412(
+      perpsMarketProxy.address,
+      perpsMarketProxy.abi,
+      'getOrder',
+      [accountId],
+    )) as AsyncOrderDataRes;
+    const orderReq = orderResponse.request;
+
+    const orderData: OrderData = {
+      marketId: Number(orderReq.marketId),
+      commitmentTime: Number(orderResponse.commitmentTime),
+      accountId: orderReq.accountId,
+      sizeDelta: Number(formatEther(orderReq.sizeDelta)),
+      settlementStrategyId: Number(orderReq.settlementStrategyId),
+      acceptablePrice: Number(orderReq.acceptablePrice),
+      trackingCode: orderReq.trackingCode,
+      referrer: orderReq.referrer,
+    };
+
+    if (fetchSettlementStrategy) {
+      const strategy = await this.getSettlementStrategy(
+        Number(orderReq.settlementStrategyId),
+        Number(orderReq.marketId),
+      );
+      orderData.settlementStrategy = strategy;
+    }
+    return orderData;
+  }
+
+  /**
+   * Fetch information about an account's margin requirements and balances.
+   * Accounts must maintain an ``available_margin`` above the ``maintenance_margin_requirement``
+   * to avoid liquidation. Accounts with ``available_margin`` below the ``initial_margin_requirement``
+   * can not interact with their position unless they deposit more collateral.
+   * @param accountId  The id of the account to fetch the margin info for. If not provided, the default account is used
+   */
+  public async getMarginInfo(accountId: bigint | undefined = undefined): Promise<CollateralData> {
+    if (accountId == undefined) {
+      accountId = this.defaultAccountId;
+    }
+
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+
+    const functionNames: string[] = [];
+    const argsList: unknown[] = [];
+
+    // 0. Get Total collateral value
+    functionNames.push('totalCollateralValue');
+    argsList.push([accountId]);
+
+    // 1. Get available margin
+    functionNames.push('getAvailableMargin');
+    argsList.push([accountId]);
+
+    // 2. Get withdrawable margin
+    functionNames.push('getWithdrawableMargin');
+    argsList.push([accountId]);
+
+    // 3. Get required margins
+    functionNames.push('getRequiredMargins');
+    argsList.push([accountId]);
+
+    // 4. Get account collateral ids
+    functionNames.push('getAccountCollateralIds');
+    argsList.push([accountId]);
+
+    // // 5. Get account debt
+    // functionNames.push('debt');
+    // argsList.push([accountId]);
+
+    const multicallResponse: unknown[] = await this.sdk.utils.multicallMultifunctionErc7412(
+      marketProxy.address,
+      marketProxy.abi,
+      functionNames,
+      argsList,
+    );
+
+    const totalCollateralValue = multicallResponse.at(0) as bigint;
+    const availableMargin = multicallResponse.at(1) as bigint;
+    const withdrawableMargin = multicallResponse.at(2) as bigint;
+
+    // returns (uint256 requiredInitialMargin,uint256 requiredMaintenanceMargin,uint256 maxLiquidationReward)
+    const requiredMarginsResponse = multicallResponse.at(3) as bigint[];
+    const requiredInitialMargin = requiredMarginsResponse.at(0) as bigint;
+    const requiredMaintenanceMargin = requiredMarginsResponse.at(1) as bigint;
+    const maxLiquidationReward = requiredMarginsResponse.at(2) as bigint;
+
+    // returns and array of collateral ids(uint256[] memory)
+    const collateralIds = multicallResponse.at(4) as bigint[];
+
+    // @todo Check why 'debt' function doesn't exist on ABI. Get debt
+
+    let collateralAmountsRecord: Record<number, number> = [];
+
+    if (collateralIds.length != 0) {
+      const inputs = collateralIds.map((id) => {
+        return [accountId, id];
+      });
+      console.log(inputs);
+      const collateralAmounts = (await this.sdk.utils.multicallErc7412(
+        marketProxy.address,
+        marketProxy.abi,
+        'getCollateralAmount',
+        inputs,
+      )) as bigint[];
+
+      collateralIds.map((collateralId, index) => {
+        return [collateralId, formatEther(collateralAmounts.at(index) ?? 0n)];
+      });
+    }
+
+    const marginInfo: CollateralData = {
+      totalCollateralValue: convertWeiToEther(totalCollateralValue),
+      collateralBalances: collateralAmountsRecord,
+      debt: 0,
+      availableMargin: convertWeiToEther(availableMargin),
+      withdrawableMargin: convertWeiToEther(withdrawableMargin),
+      initialMarginRequirement: convertWeiToEther(requiredInitialMargin),
+      maintenanceMarginRequirement: convertWeiToEther(requiredMaintenanceMargin),
+      maxLiquidationReward: convertWeiToEther(maxLiquidationReward),
+    };
+
+    console.log('marginInfo', marginInfo);
+    return marginInfo;
+  }
+
+  /**
+   * Move collateral in or out of a specified perps account. The ``market_id`` or ``market_name``
+   * must be provided to specify the collateral type.
+   * Provide either a ``market_id`` or a ``market_name``.  Note that the ``market_id`` here refers
+   * to the spot market id, not the perps market id. Make sure to approve the market proxy to transfer
+   * tokens of the collateral type before calling this function.
+   * @param amount The amount of collateral to move. Positive values deposit collateral, negative values withdraw collateral
+   * @param marketId The id of the market to move collateral for
+   * @param marketName The name of the market to move collateral for.
+   * @param accountId The id of the account to move collateral for. If not provided, the default account is used.
+   * @param submit If ``True``, submit the transaction to the blockchain.
+   */
+  public async modifyCollateral(
+    amount: number,
+    marketId: number | undefined = undefined,
+    marketName: string | undefined = undefined,
+    accountId: bigint | undefined = undefined,
+    submit: boolean = false,
+  ) {
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+
+    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketId, marketName);
+    console.log('resolvedMarketId', resolvedMarketId);
+    console.log('resolvedMarketName', resolvedMarketName);
+
+    if (accountId == undefined) {
+      accountId = this.defaultAccountId;
+    }
+
+    const tx = await this.sdk.utils.writeErc7412(marketProxy.address, marketProxy.abi, 'modifyCollateral', [
+      accountId,
+      resolvedMarketId,
+      parseUnits(amount.toString(), 6),
+    ]);
+
+    if (submit) {
+      const txHash = await this.sdk.executeTransaction(tx);
+      console.log(`Transferring ${amount} ${resolvedMarketName} for account ${accountId}`);
+      console.log('Modify collateral tx: ', txHash);
+      return txHash;
+    } else {
+      return tx;
+    }
+  }
+
+  /**
+   * Fetch the balance of each collateral type for an account.
+   * @param accountId The id of the account to fetch the collateral balances for. If not provided, the default account is used.
+   */
+  public async getCollateralBalances(accountId: bigint | undefined = undefined) {
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    if (accountId == undefined) {
+      accountId = this.defaultAccountId;
+    }
+
+    // @todo Add function in spot to get market ids
+  }
+
+  /**
+   * Check if an `accountId` is eligible for liquidation.
+   * @param accountId The id of the account to check. If not provided, the default account is used.
+   * @returns
+   */
+  public async getCanLiquidate(accountId: bigint | undefined = undefined): Promise<boolean> {
+    if (accountId == undefined) {
+      accountId = this.defaultAccountId;
+    }
+
+    const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+
+    const canBeLiquidated = (await this.sdk.utils.callErc7412(
+      perpsMarketProxy.address,
+      perpsMarketProxy.abi,
+      'canLiquidate',
+      [accountId],
+    )) as boolean;
+    console.log('canBeLiquidated', canBeLiquidated);
+    return canBeLiquidated;
+  }
+
+  /**
+   * Check if a batch of `accountId`'s are eligible for liquidation.
+   * @param accountIds An array of account ids
+   * @returns
+   */
+  public async getCanLiquidates(
+    accountIds: bigint[] | undefined = undefined,
+  ): Promise<{ accountId: bigint; canLiquidate: boolean }[]> {
+    const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    if (accountIds == undefined) {
+      if (this.defaultAccountId != undefined) {
+        accountIds = this.accountIds;
+      } else {
+        throw new Error('Invalid account ID');
+      }
+    }
+
+    // Format the args to the required array format
+    const input = accountIds.map((accountId) => [accountId]);
+
+    const canLiquidatesResponse = (await this.sdk.utils.multicallErc7412(
+      perpsMarketProxy.address,
+      perpsMarketProxy.abi,
+      'canLiquidate',
+      input,
+    )) as boolean[];
+
+    const canLiquidates = canLiquidatesResponse.map((response, index) => {
+      return {
+        accountId: accountIds.at(index) ?? 0n,
+        canLiquidate: response,
+      };
+    });
+
+    console.log('canLiquidates', canLiquidates);
+    return canLiquidates;
+  }
+
+  /**
+   * Fetch the position for a specified account and market. The result includes the unrealized
+   * pnl since the last interaction with this position, any accrued funding, and the position size.
+   * Provide either a ``marketId`` or a ``marketName``::
+   * @param marketId The id of the market to fetch the position for.
+   * @param marketName The name of the market to fetch the position for.
+   * @param accountId The id of the account to fetch the position for. If not provided, the default account is used.
+   */
+  public async getOpenPosition(
+    marketId: number | undefined = undefined,
+    marketName: string | undefined = undefined,
+    accountId: bigint | undefined = undefined,
+  ): Promise<OpenPositionData> {
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    if (accountId == undefined) {
+      accountId = this.defaultAccountId;
+    }
+    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketId, marketName);
+
+    // Smart contract response:
+    // returns (int256 totalPnl, int256 accruedFunding, int128 positionSize, uint256 owedInterest);
+    const response = (await this.sdk.utils.callErc7412(marketProxy.address, marketProxy.abi, 'getOpenPosition', [
+      accountId,
+      resolvedMarketId,
+    ])) as bigint[];
+
+    const openPositionData: OpenPositionData = {
+      marketId: resolvedMarketId,
+      marketName: resolvedMarketName,
+      totalPnl: convertWeiToEther(response.at(0)),
+      accruedFunding: convertWeiToEther(response.at(1)),
+      positionSize: convertWeiToEther(response.at(2)),
+      owedInterest: convertWeiToEther(response.at(3)),
+    };
+    console.log('openPositionData', openPositionData);
+    return openPositionData;
+  }
+
+  /**
+   * Fetch positions for an array of specified markets. The result includes the unrealized
+   * pnl since the last interaction with this position, any accrued funding, and the position size.
+   * Provide either an array of ``marketIds`` or a ``marketNames``::
+   * @param marketIds Array of market ids to fetch the position for.
+   * @param marketNames Array of market names to fetch the position for.
+   * @param accountId The id of the account to fetch the position for. If not provided, the default account is used.
+   */
+  public async getOpenPositions(
+    marketIds: number[] | undefined = undefined,
+    marketNames: string[] | undefined = undefined,
+    accountId: bigint | undefined = undefined,
+  ): Promise<OpenPositionData[]> {
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    if (accountId == undefined) {
+      accountId = this.defaultAccountId;
+    }
+
+    // If market ids and market names both are undefined, then fetch all markets
+    if (marketIds == undefined && marketNames == undefined) {
+      marketIds = Array.from(this.marketsById.keys());
+      marketNames = Array.from(this.marketsByName.keys());
+    } else if (marketNames != undefined && marketIds == undefined) {
+      marketIds = marketNames.map((marketName) => {
+        return this.resolveMarket(undefined, marketName).resolvedMarketId;
+      });
+    }
+
+    const inputs = marketIds?.map((marketId) => {
+      return [accountId, marketId];
+    }) as unknown[];
+
+    // Smart contract response:
+    // returns (int256 totalPnl, int256 accruedFunding, int128 positionSize, uint256 owedInterest);
+    const response = (await this.sdk.utils.multicallErc7412(
+      marketProxy.address,
+      marketProxy.abi,
+      'getOpenPosition',
+      inputs,
+    )) as bigint[][];
+
+    const openPositionsData: OpenPositionData[] = [];
+    response.forEach((positionData, idx) => {
+      const marketId = marketIds?.at(idx) ?? 0;
+      const positionSize = convertWeiToEther(positionData.at(2));
+      if (Math.abs(positionSize) > 0) {
+        openPositionsData.push({
+          marketId: marketId,
+          marketName: this.marketsById.get(marketId)?.marketName ?? 'Unresolved market',
+          totalPnl: convertWeiToEther(positionData.at(0)),
+          accruedFunding: convertWeiToEther(positionData.at(1)),
+          positionSize: positionSize,
+          owedInterest: convertWeiToEther(positionData.at(3)),
+        });
+      }
+    });
+    return openPositionsData;
   }
 }

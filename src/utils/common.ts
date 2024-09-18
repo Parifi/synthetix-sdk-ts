@@ -1,3 +1,4 @@
+import { formatEther } from 'viem';
 import { mainnet, base, optimism, arbitrum, baseSepolia, arbitrumSepolia, Chain } from 'viem/chains';
 // import { mainnet } as chains from 'viem/chains';
 
@@ -20,4 +21,17 @@ export function getChain(chainId: number): Chain {
     }
   }
   throw new Error(`Chain with id ${chainId} not found`);
+}
+
+export function convertWeiToEther(amountInWei: string | bigint | undefined): number {
+  if (amountInWei == undefined) {
+    throw new Error('Invalid amount received during conversion: undefined');
+  }
+  if (typeof amountInWei == 'bigint') {
+    return Number(formatEther(amountInWei));
+  } else if (typeof amountInWei == 'string') {
+    return Number(formatEther(BigInt(amountInWei)));
+  } else {
+    throw new Error('Expected string or bigint for conversion');
+  }
 }
