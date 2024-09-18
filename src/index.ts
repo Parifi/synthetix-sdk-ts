@@ -14,7 +14,6 @@ import {
   WalletClient,
   webSocket,
 } from 'viem';
-import { ipc } from 'viem/node';
 import { ZERO_ADDRESS } from './constants/common';
 import { Contracts } from './contracts';
 import { Pyth } from './pyth';
@@ -89,14 +88,6 @@ export class SynthetixSdk {
       this.publicClient = createPublicClient({
         chain: viemChain,
         transport: webSocket(rpcEndpoint),
-        batch: {
-          multicall: true,
-        },
-      });
-    } else if (rpcEndpoint?.endsWith('ipc')) {
-      this.publicClient = createPublicClient({
-        chain: viemChain,
-        transport: ipc(rpcEndpoint),
         batch: {
           multicall: true,
         },
