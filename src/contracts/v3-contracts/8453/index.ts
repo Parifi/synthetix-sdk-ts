@@ -33,7 +33,7 @@ import * as RewardsDistributorForSpartanCouncilPoolUSDCAndromeda from '@syntheti
 import * as SNXTokenAndromeda from '@synthetixio/v3-contracts/8453-andromeda/SNXToken.json';
 import * as SynthToken_sStataUSDCAndromeda from '@synthetixio/v3-contracts/8453-andromeda/SynthToken_sStataUSDC.json';
 
-export const metaMappingArb = {
+export const metaMappingBase = {
   andromeda: (MetaAndromeda as any).default, // Access the default export for JSON data
 };
 

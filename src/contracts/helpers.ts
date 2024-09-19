@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { abiMappingArb, metaMappingArb } from './v3-contracts/42161';
+import { abiMappingBase, metaMappingBase } from './v3-contracts/8453';
+import { abiMappingBaseSepolia, metaMappingBaseSepolia } from './v3-contracts/84532';
 
 // Define the structure for Meta and ABI
 interface Meta {
@@ -34,10 +36,14 @@ type ABI = Record<string, any>[];
 
 const metaMapping: Record<number, Record<string, Meta>> = {
   42161: metaMappingArb,
+  8453: metaMappingBase,
+  84532: metaMappingBaseSepolia,
 };
 
 const abiMapping: Record<number, Record<string, Record<string, ABI>>> = {
   42161: abiMappingArb,
+  8453: abiMappingBase,
+  84532: abiMappingBaseSepolia,
 };
 
 // Function to dynamically import metadata

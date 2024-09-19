@@ -33,11 +33,11 @@ import * as FakeCollateralfwSNXAndromeda from '@synthetixio/v3-contracts/84532-a
 import * as MintableToken_fUSDCAndromeda from '@synthetixio/v3-contracts/84532-andromeda/MintableToken_fUSDC.json';
 import * as MintableToken_fwSNXAndromeda from '@synthetixio/v3-contracts/84532-andromeda/MintableToken_fwSNX.json';
 
-export const metaMappingArb = {
+export const metaMappingBaseSepolia = {
   andromeda: (MetaAndromeda as any).default, // Access the default export for JSON data
 };
 
-export const abiMappingBase = {
+export const abiMappingBaseSepolia = {
   andromdea: {
     AccountProxy: (AccountProxyAndromeda as any).default,
     AllErrors: (AllErrorsAndromeda as any).default,
