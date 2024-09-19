@@ -38,7 +38,7 @@ export const metaMappingBaseSepolia = {
 };
 
 export const abiMappingBaseSepolia = {
-  andromdea: {
+  andromeda: {
     AccountProxy: (AccountProxyAndromeda as any).default,
     AllErrors: (AllErrorsAndromeda as any).default,
     CoreProxy: (CoreProxyAndromeda as any).default,
