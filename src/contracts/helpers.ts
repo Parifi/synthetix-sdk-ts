@@ -47,7 +47,7 @@ const abiMapping: Record<number, Record<string, Record<string, ABI>>> = {
 };
 
 // Function to dynamically import metadata
-export async function dynamicImportMeta(chainId: number, preset: string = 'arbthetix'): Promise<Meta> {
+export async function dynamicImportMeta(chainId: number, preset: string = 'main'): Promise<Meta> {
   const meta = metaMapping[chainId]?.[preset];
   if (!meta) {
     throw new Error(`Meta not found for chainId ${chainId} and preset ${preset}`);
@@ -56,11 +56,7 @@ export async function dynamicImportMeta(chainId: number, preset: string = 'arbth
 }
 
 // Function to import ABI based on chain ID, preset, and contract name
-export async function dynamicImportAbi(
-  chainId: number,
-  preset: string = 'arbthetix',
-  contractName: string,
-): Promise<ABI> {
+export async function dynamicImportAbi(chainId: number, preset: string = 'main', contractName: string): Promise<ABI> {
   const abi = abiMapping[chainId]?.[preset]?.[contractName];
   if (!abi) {
     throw new Error(`ABI not found for contract ${contractName} on chainId ${chainId} and preset ${preset}`);
