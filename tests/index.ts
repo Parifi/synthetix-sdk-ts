@@ -48,7 +48,7 @@ export const getSdkInstanceForTesting = async (): Promise<SynthetixSdk> => {
     cacheTtl: Number(process.env.PYTH_CACHE_TTL),
   };
 
-  const sdk = new SynthetixSdk(accountConfig, partnerConfig, pythConfig, rpcConfig);
+  const sdk = new SynthetixSdk({ accountConfig, partnerConfig, pythConfig, rpcConfig });
   await sdk.init();
 
   return sdk;

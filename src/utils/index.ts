@@ -287,7 +287,7 @@ export class Utils {
    * @param contractAddress Target contract address for the call
    * @param abi Contract ABI
    * @param functionName Function to be called on the contract
-   * @param args Array of arguments list for the function call
+   * @param argsList Array of arguments list for the function call
    * @param calls Array of Call3Value calls for Multicall contract
    * @returns Array of responses from the contract function call for the multicalls
    */
@@ -454,14 +454,13 @@ export class Utils {
     }
   }
 
-
   /**
    * Calls the `functionName` on `contractAddress` target using the Multicall contract. If the call requires
    * a price update, ERC7412 price update tx is prepended to the tx.
    * @param contractAddress Target contract address for the call
    * @param abi Contract ABI
-   * @param functionName Function to be called on the contract
-   * @param args Array of arguments list for the function call
+   * @param functionNames Function to be called on the contract
+   * @param argsList Array of arguments list for the function call
    * @param calls Array of Call3Value calls for Multicall contract
    * @returns Array of responses from the contract function call for the multicalls
    */
@@ -478,8 +477,8 @@ export class Utils {
     argsList = argsList.map((args) => (Array.isArray(args) ? args : [args]));
     const numPrependedCalls = calls.length;
 
-    if (argsList.length != functionNames.length){
-      throw new Error("Inconsistent data: args and functionName don't match")
+    if (argsList.length != functionNames.length) {
+      throw new Error("Inconsistent data: args and functionName don't match");
     }
     argsList.forEach((args, index) => {
       const currentCall: Call3Value = {
@@ -528,7 +527,9 @@ export class Utils {
 
         const callsToDecode = multicallResult.slice(-numCalls);
 
-        const decodedResult = callsToDecode.map((result, idx) => this.decodeResponse(abi, functionNames[idx], result.returnData));
+        const decodedResult = callsToDecode.map((result, idx) =>
+          this.decodeResponse(abi, functionNames[idx], result.returnData),
+        );
         return decodedResult;
       } catch (error) {
         const parsedError = parseError(error as CallExecutionError);

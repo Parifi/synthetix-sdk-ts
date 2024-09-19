@@ -8,6 +8,7 @@ import {
   MarketMetadata,
   MarketSummary,
   MaxMarketValue,
+  OpenPositionData,
   OrderData,
   OrderFees,
   SettlementStrategy,
@@ -15,9 +16,27 @@ import {
 import { convertWeiToEther } from '../utils';
 
 /**
- * Class for interacting with Synthetix V3 core contracts
- * @remarks
+ * Class for interacting with Synthetix Perps V3 contracts
+ * Provides methods for creating and managing accounts, depositing and withdrawing
+ * collateral, committing and settling orders, and liquidating accounts.
  *
+ * Use ``get`` methods to fetch information about accounts, markets, and orders::
+ *    const markets = await sdk.perps.getMarkets()
+ *    const openPositions = await sdk.perps.getOpenPositions()
+ * Other methods prepare transactions, and submit them to your RPC::
+ *    const createTxHash = await sdk.perps.createAccount(submit=True)
+ *    const collateralTxHash = await sdk.perps.modifyCollateral(amount=1000, market_name='sUSD', submit=True)
+ *    const orderTxHash = await sdk.perps.commitOrder(size=10, market_name='ETH', desired_fill_price=2000, submit=True)
+ * An instance of this module is available as ``sdk.perps``. If you are using a network without
+ * perps deployed, the contracts will be unavailable and the methods will raise an error.
+ * The following contracts are required:
+ * - PerpsMarketProxy
+ * - PerpsAccountProxy
+ * - PythERC7412Wrapper
+ */
+
+/**
+ * @param synthetixSdk An instance of the Synthetix class
  */
 export class Perps {
   sdk: SynthetixSdk;
@@ -51,6 +70,9 @@ export class Perps {
   ): { resolvedMarketId: number; resolvedMarketName: string } {
     let resolvedMarketId, resolvedMarketName;
 
+    console.log(this.marketsById);
+    console.log(this.marketsByName);
+
     const hasMarketId = marketId != undefined;
     const hasMarketName = marketName != undefined;
 
@@ -74,7 +96,7 @@ export class Perps {
     }
     return {
       resolvedMarketId: (resolvedMarketId ?? marketId) as number,
-      resolvedMarketName: (resolvedMarketName ?? marketName) as string,
+      resolvedMarketName: resolvedMarketName ?? marketName ?? 'Unresolved market',
     };
   }
 
@@ -82,8 +104,8 @@ export class Perps {
    * Fetch a list of perps ``account_id`` owned by an address. Perps accounts
    * are minted as an NFT to the owner's address. The ``account_id`` is the
    * token id of the NFTs held by the address.
-   * @param address: The address to get accounts for. Uses connected address if not provided.
-   * @param defaultAccountId: The default account ID to set after fetching.
+   * @param address The address to get accounts for. Uses connected address if not provided.
+   * @param defaultAccountId The default account ID to set after fetching.
    * @returns A list of account IDs owned by the address
    */
 
@@ -163,8 +185,11 @@ export class Perps {
   // @todo Add logic for disabled markets
   public async getMarkets(): Promise<{ marketsById: Map<number, MarketData>; marketsByName: Map<string, MarketData> }> {
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-    const marketIds: number[] = (await perpsMarketProxy.read.getMarkets([])) as number[];
-    console.log('marketIds', marketIds);
+    const marketIdsResponse: bigint[] = (await perpsMarketProxy.read.getMarkets([])) as bigint[];
+
+    const marketIds = marketIdsResponse.map((id) => {
+      return Number(id);
+    });
 
     // Response type from metadata smart contract call
     type MetadataResponse = [string, string];
@@ -874,5 +899,102 @@ export class Perps {
 
     console.log('canLiquidates', canLiquidates);
     return canLiquidates;
+  }
+
+  /**
+   * Fetch the position for a specified account and market. The result includes the unrealized
+   * pnl since the last interaction with this position, any accrued funding, and the position size.
+   * Provide either a ``marketId`` or a ``marketName``::
+   * @param marketId The id of the market to fetch the position for.
+   * @param marketName The name of the market to fetch the position for.
+   * @param accountId The id of the account to fetch the position for. If not provided, the default account is used.
+   */
+  public async getOpenPosition(
+    marketId: number | undefined = undefined,
+    marketName: string | undefined = undefined,
+    accountId: bigint | undefined = undefined,
+  ): Promise<OpenPositionData> {
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    if (accountId == undefined) {
+      accountId = this.defaultAccountId;
+    }
+    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketId, marketName);
+
+    // Smart contract response:
+    // returns (int256 totalPnl, int256 accruedFunding, int128 positionSize, uint256 owedInterest);
+    const response = (await this.sdk.utils.callErc7412(marketProxy.address, marketProxy.abi, 'getOpenPosition', [
+      accountId,
+      resolvedMarketId,
+    ])) as bigint[];
+
+    const openPositionData: OpenPositionData = {
+      marketId: resolvedMarketId,
+      marketName: resolvedMarketName,
+      totalPnl: convertWeiToEther(response.at(0)),
+      accruedFunding: convertWeiToEther(response.at(1)),
+      positionSize: convertWeiToEther(response.at(2)),
+      owedInterest: convertWeiToEther(response.at(3)),
+    };
+    console.log('openPositionData', openPositionData);
+    return openPositionData;
+  }
+
+  /**
+   * Fetch positions for an array of specified markets. The result includes the unrealized
+   * pnl since the last interaction with this position, any accrued funding, and the position size.
+   * Provide either an array of ``marketIds`` or a ``marketNames``::
+   * @param marketIds Array of market ids to fetch the position for.
+   * @param marketNames Array of market names to fetch the position for.
+   * @param accountId The id of the account to fetch the position for. If not provided, the default account is used.
+   */
+  public async getOpenPositions(
+    marketIds: number[] | undefined = undefined,
+    marketNames: string[] | undefined = undefined,
+    accountId: bigint | undefined = undefined,
+  ): Promise<OpenPositionData[]> {
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    if (accountId == undefined) {
+      accountId = this.defaultAccountId;
+    }
+
+    // If market ids and market names both are undefined, then fetch all markets
+    if (marketIds == undefined && marketNames == undefined) {
+      marketIds = Array.from(this.marketsById.keys());
+      marketNames = Array.from(this.marketsByName.keys());
+    } else if (marketNames != undefined && marketIds == undefined) {
+      marketIds = marketNames.map((marketName) => {
+        return this.resolveMarket(undefined, marketName).resolvedMarketId;
+      });
+    }
+
+    const inputs = marketIds?.map((marketId) => {
+      return [accountId, marketId];
+    }) as unknown[];
+
+    // Smart contract response:
+    // returns (int256 totalPnl, int256 accruedFunding, int128 positionSize, uint256 owedInterest);
+    const response = (await this.sdk.utils.multicallErc7412(
+      marketProxy.address,
+      marketProxy.abi,
+      'getOpenPosition',
+      inputs,
+    )) as bigint[][];
+
+    const openPositionsData: OpenPositionData[] = [];
+    response.forEach((positionData, idx) => {
+      const marketId = marketIds?.at(idx) ?? 0;
+      const positionSize = convertWeiToEther(positionData.at(2));
+      if (Math.abs(positionSize) > 0) {
+        openPositionsData.push({
+          marketId: marketId,
+          marketName: this.marketsById.get(marketId)?.marketName ?? 'Unresolved market',
+          totalPnl: convertWeiToEther(positionData.at(0)),
+          accruedFunding: convertWeiToEther(positionData.at(1)),
+          positionSize: positionSize,
+          owedInterest: convertWeiToEther(positionData.at(3)),
+        });
+      }
+    });
+    return openPositionsData;
   }
 }
