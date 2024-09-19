@@ -36,7 +36,7 @@ import { convertWeiToEther } from '../utils';
  */
 
 /**
- * @param synthetixSdk: An instance of the Synthetix class
+ * @param synthetixSdk An instance of the Synthetix class
  */
 export class Perps {
   sdk: SynthetixSdk;
@@ -104,8 +104,8 @@ export class Perps {
    * Fetch a list of perps ``account_id`` owned by an address. Perps accounts
    * are minted as an NFT to the owner's address. The ``account_id`` is the
    * token id of the NFTs held by the address.
-   * @param address: The address to get accounts for. Uses connected address if not provided.
-   * @param defaultAccountId: The default account ID to set after fetching.
+   * @param address The address to get accounts for. Uses connected address if not provided.
+   * @param defaultAccountId The default account ID to set after fetching.
    * @returns A list of account IDs owned by the address
    */
 
