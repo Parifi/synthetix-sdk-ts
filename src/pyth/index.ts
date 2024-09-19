@@ -19,7 +19,7 @@ export class Pyth {
     this.pythClient = {} as AxiosInstance;
     if (synthetixSdk.pythConfig.pythEndpoint) {
       this.pythConnection = new EvmPriceServiceConnection(synthetixSdk.pythConfig.pythEndpoint, {
-        timeout: 20000,
+        timeout: DEFAULT_PYTH_TIMEOUT,
       });
     } else {
       this.pythConnection = new EvmPriceServiceConnection(PUBLIC_PYTH_ENDPOINT);

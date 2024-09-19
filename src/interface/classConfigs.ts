@@ -4,6 +4,7 @@ export interface AccountConfig {
   address?: string;
   walletClient?: WalletClient;
 }
+
 export interface PartnerConfig {
   trackingCode?: string;
   referrer?: string;
@@ -20,4 +21,11 @@ export interface RpcConfig {
   chainId: number;
   rpcEndpoint?: string;
   preset?: string;
+}
+
+export interface SdkConfigParams {
+  accountConfig: AccountConfig;
+  partnerConfig: PartnerConfig;
+  pythConfig: PythConfig;
+  rpcConfig: RpcConfig;
 }

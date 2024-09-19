@@ -1,4 +1,4 @@
-import { AccountConfig, PartnerConfig, PythConfig, RpcConfig } from './interface/classConfigs';
+import { AccountConfig, PartnerConfig, PythConfig, RpcConfig, SdkConfigParams } from './interface/classConfigs';
 import { getPublicRpcEndpoint, getChain, Utils } from './utils';
 import { Core } from './core';
 import {
@@ -21,6 +21,19 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { Spot } from './spot';
 import { DEFAULT_REFERRER, DEFAULT_TRACKING_CODE } from './constants';
 
+/**
+ * The main class for interacting with the Synthetix protocol. The class
+ * requires a provider RPC endpoint and a wallet address (or a private key which is used from .env.PRIVATE_KEY)
+ *    const sdk = new SynthetixSdk({accountConfig, partnerConfig, pythConfig, rpcConfig});
+ *    await sdk.init();
+ *
+ * The only required parameters for the SDK to initialize are the `chainId` and (`address` or `env.PRIVATE_KEY`).
+ * All other parameters are optional and are set to default values if uninitialized.
+ *    const accountConfig = { address: '0x' }
+ *    const rpcConfig = { chainId: 8453, rpcEndpoint: 'https://https://base-sepolia.g.alchemy.com/v2/ALCHEMY_KEY', preset: 'andromeda'}
+ *    const sdk = new SynthetixSdk({accountConfig, rpcConfig })
+ *    const markets = await sdk.perps.getMarkets()
+ */
 export class SynthetixSdk {
   accountConfig: AccountConfig;
   partnerConfig: PartnerConfig;
@@ -47,12 +60,7 @@ export class SynthetixSdk {
   perps: Perps;
   spot: Spot;
 
-  constructor(
-    accountConfig: AccountConfig,
-    partnerConfig: PartnerConfig,
-    pythConfig: PythConfig,
-    rpcConfig: RpcConfig,
-  ) {
+  constructor({ accountConfig, partnerConfig, pythConfig, rpcConfig }: SdkConfigParams) {
     this.accountConfig = accountConfig;
     this.partnerConfig = partnerConfig;
     this.pythConfig = pythConfig;
@@ -107,6 +115,7 @@ export class SynthetixSdk {
      * Initialize Wallet client for users wallet
      */
     try {
+      // @todo Remove/Update walletClient as a param from config and instead use env.PRIVATE_KEY
       if (this.accountConfig.walletClient != undefined) {
         // Set the wallet in SDK if passed
         this.walletClient = this.accountConfig.walletClient;

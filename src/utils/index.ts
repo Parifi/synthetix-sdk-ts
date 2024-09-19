@@ -287,7 +287,7 @@ export class Utils {
    * @param contractAddress Target contract address for the call
    * @param abi Contract ABI
    * @param functionName Function to be called on the contract
-   * @param args Array of arguments list for the function call
+   * @param argsList Array of arguments list for the function call
    * @param calls Array of Call3Value calls for Multicall contract
    * @returns Array of responses from the contract function call for the multicalls
    */
@@ -459,8 +459,8 @@ export class Utils {
    * a price update, ERC7412 price update tx is prepended to the tx.
    * @param contractAddress Target contract address for the call
    * @param abi Contract ABI
-   * @param functionName Function to be called on the contract
-   * @param args Array of arguments list for the function call
+   * @param functionNames Function to be called on the contract
+   * @param argsList Array of arguments list for the function call
    * @param calls Array of Call3Value calls for Multicall contract
    * @returns Array of responses from the contract function call for the multicalls
    */
