@@ -70,9 +70,6 @@ export class Perps {
   ): { resolvedMarketId: number; resolvedMarketName: string } {
     let resolvedMarketId, resolvedMarketName;
 
-    console.log(this.marketsById);
-    console.log(this.marketsByName);
-
     const hasMarketId = marketId != undefined;
     const hasMarketName = marketName != undefined;
 

@@ -23,8 +23,9 @@ describe('Perps', () => {
   });
 
   it('should return settlement strategies data', async () => {
-    const marketId = 200;
-    const settlementStrategy = await sdk.perps.getSettlementStrategy(marketId);
+    const settlementStrategyId = 0;
+    const marketId = 1600;
+    const settlementStrategy = await sdk.perps.getSettlementStrategy(settlementStrategyId, marketId);
     console.log('settlementStrategy :', settlementStrategy);
   });
 
