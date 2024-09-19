@@ -16,9 +16,27 @@ import {
 import { convertWeiToEther } from '../utils';
 
 /**
- * Class for interacting with Synthetix V3 core contracts
- * @remarks
+ * Class for interacting with Synthetix Perps V3 contracts
+ * Provides methods for creating and managing accounts, depositing and withdrawing
+ * collateral, committing and settling orders, and liquidating accounts.
  *
+ * Use ``get`` methods to fetch information about accounts, markets, and orders::
+ *    const markets = await sdk.perps.getMarkets()
+ *    const openPositions = await sdk.perps.getOpenPositions()
+ * Other methods prepare transactions, and submit them to your RPC::
+ *    const createTxHash = await sdk.perps.createAccount(submit=True)
+ *    const collateralTxHash = await sdk.perps.modifyCollateral(amount=1000, market_name='sUSD', submit=True)
+ *    const orderTxHash = await sdk.perps.commitOrder(size=10, market_name='ETH', desired_fill_price=2000, submit=True)
+ * An instance of this module is available as ``sdk.perps``. If you are using a network without
+ * perps deployed, the contracts will be unavailable and the methods will raise an error.
+ * The following contracts are required:
+ * - PerpsMarketProxy
+ * - PerpsAccountProxy
+ * - PythERC7412Wrapper
+ */
+
+/**
+ * @param synthetixSdk: An instance of the Synthetix class
  */
 export class Perps {
   sdk: SynthetixSdk;
@@ -51,6 +69,9 @@ export class Perps {
     marketName: string | undefined = undefined,
   ): { resolvedMarketId: number; resolvedMarketName: string } {
     let resolvedMarketId, resolvedMarketName;
+
+    console.log(this.marketsById);
+    console.log(this.marketsByName);
 
     const hasMarketId = marketId != undefined;
     const hasMarketName = marketName != undefined;
