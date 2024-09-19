@@ -20,7 +20,7 @@ describe('Spot', () => {
     console.info('Account owner :', res);
   });
 
-  it.only('should wrap sUSDC tokens', async () => {
+  it('should wrap sUSDC tokens', async () => {
     const spotMarketProxy = await sdk.contracts.getSpotMarketProxyInstance();
     // const tokenAddress = await sdk.core.getUsdToken();
     const tokenAddress = '0xc43708f8987df3f3681801e5e640667d86ce3c30'; // Temp value for fakeUSDC on base

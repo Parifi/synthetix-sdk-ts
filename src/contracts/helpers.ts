@@ -1,3 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { abiMappingArb, metaMappingArb } from './v3-contracts/42161';
+import { abiMappingBase, metaMappingBase } from './v3-contracts/8453';
+import { abiMappingBaseSepolia, metaMappingBaseSepolia } from './v3-contracts/84532';
+
+// Define the structure for Meta and ABI
 interface Meta {
   name: string;
   preset: string;
@@ -26,14 +32,34 @@ interface Meta {
   };
 }
 
+type ABI = Record<string, any>[];
+
+const metaMapping: Record<number, Record<string, Meta>> = {
+  42161: metaMappingArb,
+  8453: metaMappingBase,
+  84532: metaMappingBaseSepolia,
+};
+
+const abiMapping: Record<number, Record<string, Record<string, ABI>>> = {
+  42161: abiMappingArb,
+  8453: abiMappingBase,
+  84532: abiMappingBaseSepolia,
+};
+
+// Function to dynamically import metadata
 export async function dynamicImportMeta(chainId: number, preset: string = 'main'): Promise<Meta> {
-  const fileName = `@synthetixio/v3-contracts/${chainId}-${preset}/meta.json`;
-  const module = await import(fileName);
-  return module.default as Meta;
+  const meta = metaMapping[chainId]?.[preset];
+  if (!meta) {
+    throw new Error(`Meta not found for chainId ${chainId} and preset ${preset}`);
+  }
+  return meta;
 }
 
-export async function dynamicImportAbi(chainId: number, preset: string = 'main', contractName: string) {
-  const fileName = `@synthetixio/v3-contracts/${chainId}-${preset}/${contractName}.json`;
-  const module = await import(fileName);
-  return module.default;
+// Function to import ABI based on chain ID, preset, and contract name
+export async function dynamicImportAbi(chainId: number, preset: string = 'main', contractName: string): Promise<ABI> {
+  const abi = abiMapping[chainId]?.[preset]?.[contractName];
+  if (!abi) {
+    throw new Error(`ABI not found for contract ${contractName} on chainId ${chainId} and preset ${preset}`);
+  }
+  return abi;
 }
