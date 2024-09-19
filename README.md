@@ -134,4 +134,4 @@ describe('Perps', () => {
 
 ## API Reference
 
-The API reference for the SDK can be viewed here: [Parifi Synthetix Typescript SDK]("https://parifi.github.io/synthetix-sdk-ts/classes/index.SynthetixSdk.html")
+The API reference for the SDK can be viewed here: [Parifi Synthetix Typescript SDK](https://parifi.github.io/synthetix-sdk-ts/classes/index.SynthetixSdk.html)
