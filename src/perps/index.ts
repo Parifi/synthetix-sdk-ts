@@ -188,7 +188,7 @@ export class Perps {
       return Number(id);
     });
 
-    // Response type from metadata smart contract call
+    // Response type from metadata smart contract call - [MarketName, MarketSymbol]
     type MetadataResponse = [string, string];
 
     const marketMetadataResponse = (await this.sdk.utils.multicallErc7412(
@@ -455,7 +455,7 @@ export class Perps {
     settlementStrategiesResponse.forEach((strategy, index) => {
       settlementStrategies.push({
         marketId: marketIds[index],
-        marketName: this.marketMetadata.get(marketIds[index])?.symbol,
+        marketName: this.marketMetadata.get(marketIds[index])?.marketName,
         strategyType: strategy.strategyType,
         settlementDelay: Number(strategy.settlementDelay),
         settlementWindowDuration: Number(strategy.settlementWindowDuration),
