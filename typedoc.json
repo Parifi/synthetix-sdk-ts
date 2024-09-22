@@ -1,0 +1,7 @@
+{
+    "entryPoints": ["src/index.ts", "src/contracts/index.ts", "src/core/index.ts", "src/perps/index.ts", "src/spot/index.ts", "src/utils/index.ts"],
+    "entryPointStrategy": "resolve",
+    "out": "docs",
+    "exclude": ["**/node_modules/**"]
+ }
+ 

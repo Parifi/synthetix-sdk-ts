@@ -48,8 +48,8 @@ export class Core {
    *  Fetches the account IDs for the given address by checking the balance of
    *  the AccountProxy contract, which is an NFT owned by the address.
    *  If no address is provided, uses the connected wallet address.
-   * @param address: The address to get accounts for. Uses connected address if not provided.
-   * @param defaultAccountId: The default account ID to set after fetching.
+   * @param address The address to get accounts for. Uses connected address if not provided.
+   * @param defaultAccountId The default account ID to set after fetching.
    * @returns A list of account IDs owned by the address
    */
 
