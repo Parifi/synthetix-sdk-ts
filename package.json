@@ -52,7 +52,7 @@
   },
   "dependencies": {
     "@pythnetwork/pyth-evm-js": "^1.66.0",
-    "@synthetixio/v3-contracts": "^6.8.0",
+    "@synthetixio/v3-contracts": "^6.9.0",
     "axios": "^1.7.5",
     "dotenv": "^16.4.5",
     "viem": "^2.20.1"

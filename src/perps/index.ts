@@ -11,9 +11,10 @@ import {
   OpenPositionData,
   OrderData,
   OrderFees,
+  OrderQuote,
   SettlementStrategy,
 } from './interface';
-import { convertWeiToEther } from '../utils';
+import { convertEtherToWei, convertWeiToEther, sleep } from '../utils';
 
 /**
  * Class for interacting with Synthetix V3 core contracts
@@ -975,5 +976,257 @@ export class Perps {
       }
     });
     return openPositionsData;
+  }
+
+  /**
+   * Get a quote for the size of an order in a specified market. The quote includes the provided price
+   * and the fill price of the order after price impact. If a price is not provided, a price will be fetched
+   * from Pyth. Provide either a ``marketId`` or ``marketName``.
+   * @param size The size of the order to quote.
+   * @param price The price to quote the order at. If not provided, the current market price is used
+   * @param marketId The id of the market to quote the order for
+   * @param marketName The name of the market to quote the order for
+   * @param accountId The id of the account to quote the order for. If not provided, the default account is used
+   * @param settlementStrategyId The id of the settlement strategy to use for the settlement reward calculation
+   * @param includeRequiredMargin If ``true``, include the required margin for the account in the quote.
+   */
+  public async getQuote(
+    size: number,
+    price: number | undefined = undefined,
+    marketId: number | undefined = undefined,
+    marketName: string | undefined = undefined,
+    accountId: bigint | undefined = undefined,
+    settlementStrategyId: number = 0,
+    includeRequiredMargin: boolean = true,
+  ): Promise<OrderQuote> {
+    if (accountId == undefined) {
+      accountId = this.defaultAccountId;
+    }
+
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketId, marketName);
+    const feedId = this.marketsById.get(resolvedMarketId)?.feedId;
+    if (feedId == undefined) {
+      throw new Error('Invalid feed id received from market data');
+    }
+
+    let calls = [];
+    if (price == undefined) {
+      // @todo Add prepare oracle call fn
+      price = 0;
+    } else {
+      // price = price;
+      // calls = [];
+    }
+
+    // Smart contract call returns (uint256 orderFees, uint256 fillPrice)
+    const orderFeesWithPriceResponse = (await this.sdk.utils.callErc7412(
+      marketProxy.address,
+      marketProxy.abi,
+      'computeOrderFeesWithPrice',
+      [resolvedMarketId, convertEtherToWei(size), convertEtherToWei(price)],
+    )) as [bigint, bigint];
+
+    const settlementRewardCost = (await this.sdk.utils.callErc7412(
+      marketProxy.address,
+      marketProxy.abi,
+      'getSettlementRewardCost',
+      [resolvedMarketId, settlementStrategyId],
+    )) as bigint;
+
+    const orderQuote: OrderQuote = {
+      orderSize: size,
+      indexPrice: price,
+      orderFees: convertWeiToEther(orderFeesWithPriceResponse[0]),
+      settlementRewardCost: convertWeiToEther(settlementRewardCost),
+      fillPrice: convertWeiToEther(orderFeesWithPriceResponse[1]),
+    };
+
+    if (includeRequiredMargin && accountId) {
+      const requiredMargin = (await this.sdk.utils.callErc7412(
+        marketProxy.address,
+        marketProxy.abi,
+        'requiredMarginForOrderWithPrice',
+        [accountId, resolvedMarketId, convertEtherToWei(size), convertEtherToWei(price)],
+      )) as bigint;
+      orderQuote.requiredMargin = convertWeiToEther(requiredMargin);
+    }
+    return orderQuote;
+  }
+
+  // @todo Function `debt` not found for ABI
+  /**
+   * Returns the debt of the account id
+   * @param accountId The id of the account to get the debt for. If not provided, the default account is used.
+   * @returns debt Account debt in ether
+   */
+  public async getDebt(accountId: bigint | undefined = undefined): Promise<number> {
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    if (accountId == undefined) {
+      accountId = this.defaultAccountId;
+    }
+
+    const debt = (await this.sdk.utils.callErc7412(marketProxy.address, marketProxy.abi, 'debt', [
+      accountId,
+    ])) as bigint;
+    console.log('Account Debt: ', debt);
+    return convertWeiToEther(debt);
+  }
+
+  // @todo Function `payDebt` not found for ABI
+  /**
+   * Pay the debt of a perps account. If no amount is provided, the full debt
+   * of the account is repaid. Make sure to approve the proxy to transfer sUSD before
+   * calling this function.
+   * @param amount The amount of debt to repay. If not provided, the full debt is repaid.
+   * @param accountId The id of the account to repay the debt for. If not provided, the default account is used.
+   * @param submit If ``true``, submit the transaction to the blockchain. If not provided, transaction object is returned
+   */
+  public async payDebt(
+    amount: number | undefined = undefined,
+    accountId: bigint | undefined = undefined,
+    submit: boolean = false,
+  ) {
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    if (accountId == undefined) {
+      accountId = this.defaultAccountId;
+    }
+
+    if (amount == undefined) {
+      // amount = await this.getDebt(accountId);
+      amount = 0;
+    }
+    const tx = await this.sdk.utils.writeErc7412(marketProxy.address, marketProxy.abi, 'payDebt', [
+      accountId,
+      convertEtherToWei(amount),
+    ]);
+
+    if (submit) {
+      console.log(`Repaying debt of ${amount} for account ${accountId}`);
+      const txHash = await this.sdk.executeTransaction(tx);
+      console.log('Repay debt transaction: ', txHash);
+      return txHash;
+    } else {
+      return tx;
+    }
+  }
+
+  /**
+   * Submit a liquidation for an account, or static call the liquidation function to fetch
+   * the liquidation reward. The static call is important for accounts which have been
+   * partially liquidated. Due to the throughput limit on liquidated value, the static call
+   * returning a nonzero value means more value can be liquidated (and rewards collected).
+   * This function can not be called if ``submit`` and ``staticCall`` are true.
+   * @param accountId The id of the account to liquidate. If not provided, the default account is used.
+   * @param submit If ``true``, submit the transaction to the blockchain.
+   * @param staticCall If ``true``, static call the liquidation function to fetch the liquidation reward.
+   */
+  public async liquidate(
+    accountId: bigint | undefined = undefined,
+    submit: boolean = false,
+    staticCall: boolean = false,
+  ) {
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    if (accountId == undefined) {
+      accountId = this.defaultAccountId;
+    }
+
+    if (submit && staticCall) {
+      throw new Error('Cannot submit and use static call in the same transaction');
+    }
+
+    if (staticCall) {
+      const liquidationReward = (await this.sdk.utils.callErc7412(marketProxy.address, marketProxy.abi, 'liquidate', [
+        accountId,
+      ])) as bigint;
+      return convertWeiToEther(liquidationReward);
+    } else {
+      const tx = await this.sdk.utils.writeErc7412(marketProxy.address, marketProxy.abi, 'liquidate', [accountId]);
+      if (submit) {
+        console.log('Liquidating account :', accountId);
+        const txHash = await this.sdk.executeTransaction(tx);
+        console.log('Liquidate transaction: ', txHash);
+        return txHash;
+      } else {
+        return tx;
+      }
+    }
+  }
+
+  /**
+   * Settles an order using ERC7412 by handling ``OracleDataRequired`` errors and forming a multicall.
+   * If the order is not yet ready to be settled, this function will wait until the settlement time.
+   * If the transaction fails, this function will retry until the max number of tries is reached with a
+   * configurable delay.
+   * @param accountId The id of the account to settle. If not provided, the default account is used.
+   * @param submit If ``true``, submit the transaction to the blockchain.
+   * @param maxTxTries The max number of tries to submit the transaction
+   * @param txDelay The delay in seconds between transaction submissions.
+   */
+  public async settleOrder(
+    accountId: bigint | undefined = undefined,
+    submit: boolean = false,
+    maxTxTries: number = 3,
+    txDelay: number = 2,
+  ) {
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+
+    if (accountId == undefined) {
+      accountId = this.defaultAccountId;
+    }
+
+    const order = await this.getOrder(accountId);
+    const settlementStrategy = order.settlementStrategy;
+    const settlementTime = order.commitmentTime + (settlementStrategy?.settlementDelay ?? 0);
+    const expirationTime = order.commitmentTime + (settlementStrategy?.settlementWindowDuration ?? 0);
+    const currentTimestamp = Math.floor(Date.now() / 1000);
+
+    if (order.sizeDelta == 0) {
+      throw new Error(`Order is already settled for account ${accountId}`);
+    } else if (settlementTime > currentTimestamp) {
+      const duration = settlementTime - currentTimestamp;
+      console.log(`Waiting ${duration} seconds to settle order`);
+      await sleep(duration);
+    } else if (expirationTime < currentTimestamp) {
+      throw new Error(`Order has expired for account ${accountId}`);
+    } else {
+      console.log('Order is ready to be settled');
+    }
+
+    let totalTries = 0;
+    let tx;
+    while (totalTries < maxTxTries) {
+      try {
+        tx = await this.sdk.utils.writeErc7412(marketProxy.address, marketProxy.abi, 'settleOrder', [accountId]);
+      } catch (error) {
+        console.log('Settle order error: ', error);
+        totalTries += 1;
+        sleep(txDelay);
+        continue;
+      }
+
+      if (submit) {
+        console.log(`Settling order for account ${accountId}`);
+        const txHash = await this.sdk.executeTransaction(tx);
+        console.log('Settle txHash: ', txHash);
+
+        const updatedOrder = await this.getOrder(accountId);
+        if (updatedOrder.sizeDelta == 0) {
+          console.log('Order settlement successful for account ', accountId);
+          return txHash;
+        }
+
+        // If order settlement failed, retry after a delay
+        totalTries += 1;
+        if (totalTries > maxTxTries) {
+          throw new Error('Failed to settle order');
+        } else {
+          console.log(`Failed to settle order, waiting ${txDelay} seconds and retrying`);
+          sleep(txDelay);
+        }
+      } else {
+        return tx;
+      }
+    }
   }
 }

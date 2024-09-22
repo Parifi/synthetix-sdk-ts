@@ -97,3 +97,12 @@ export interface OpenPositionData {
   positionSize: number;
   owedInterest: number;
 }
+
+export interface OrderQuote {
+  orderSize: number;
+  indexPrice: number;
+  orderFees: number;
+  settlementRewardCost: number;
+  fillPrice: number;
+  requiredMargin?: number;
+}
