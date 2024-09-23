@@ -265,7 +265,7 @@ export class Perps {
       return Number(id);
     });
 
-    // Response type from metadata smart contract call
+    // Response type from metadata smart contract call - [MarketName, MarketSymbol]
     type MetadataResponse = [string, string];
 
     const marketMetadataResponse = (await this.sdk.utils.multicallErc7412(

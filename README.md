@@ -103,7 +103,7 @@ npm test tests/perps
 
 To add new tests, create a file with the .test.ts extension in the tests directory. Here’s an example of a simple test:
 
-```
+```javascript
 describe('Perps', () => {
   let sdk: SynthetixSdk;
   beforeAll(async () => {
