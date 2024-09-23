@@ -54,6 +54,8 @@ export class Perps {
   // @note Ideally prefer using market symbol over market name
   marketsBySymbol: Map<string, MarketData>;
 
+  isErc7412Enabled: boolean = true;
+
   constructor(synthetixSdk: SynthetixSdk) {
     this.sdk = synthetixSdk;
     this.accountIds = [];
@@ -112,9 +114,17 @@ export class Perps {
    * runtime.
    * @param marketNames An array of market names to fetch prices for. If not provided, all markets are fetched
    */
-  public async prepareOracleCall(marketSymbols: string[] = []): Promise<Call3Value | undefined> {
-    if (marketSymbols.length == 0) {
+  public async prepareOracleCall(marketIds: number[] = []): Promise<Call3Value | undefined> {
+    let marketSymbols: string[] = [];
+    if (marketIds.length == 0) {
       marketSymbols = Array.from(this.marketsBySymbol.keys());
+    } else {
+      marketIds.forEach((marketId) => {
+        const marketSymbol = this.marketsById.get(marketId)?.symbol;
+        if (marketSymbol != undefined) {
+          marketSymbols.push(marketSymbol);
+        }
+      });
     }
 
     const priceFeedIds: string[] = [];
