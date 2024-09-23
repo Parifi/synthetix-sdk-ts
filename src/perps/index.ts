@@ -1,4 +1,4 @@
-import { CallParameters, formatEther, parseEther, parseUnits } from 'viem';
+import { Address, CallParameters, formatEther, parseEther, parseUnits } from 'viem';
 import { SynthetixSdk } from '..';
 import { ZERO_ADDRESS } from '../constants';
 import {
@@ -49,14 +49,19 @@ export class Perps {
   marketsById: Map<number, MarketData>;
   marketsByName: Map<string, MarketData>;
 
+  // Mapping of Market Symbol to MarketData.
+  // @note Ideally prefer using market symbol over market name
+  marketsBySymbol: Map<string, MarketData>;
+
   constructor(synthetixSdk: SynthetixSdk) {
     this.sdk = synthetixSdk;
     this.accountIds = [];
 
     // Initialize empty market data
+    this.marketMetadata = new Map<number, MarketMetadata>();
     this.marketsById = new Map<number, MarketData>();
     this.marketsByName = new Map<string, MarketData>();
-    this.marketMetadata = new Map<number, MarketMetadata>();
+    this.marketsBySymbol = new Map<string, MarketData>();
   }
 
   /**
@@ -206,7 +211,8 @@ export class Perps {
     marketMetadataResponse.forEach((market, index) => {
       const marketName = market[0];
       const marketSymbol = market[1];
-      const settlementStrategy = settlementStrategies.find((strategy) => strategy.marketName == marketName);
+      const settlementStrategy = settlementStrategies.find((strategy) => strategy.marketId == marketIds[index]);
+
       this.marketMetadata.set(marketIds[index], {
         marketName: marketName,
         symbol: marketSymbol,
@@ -234,10 +240,12 @@ export class Perps {
       const maxMarketValue = maxMarketValues.find((maxMarketValue) => maxMarketValue.marketId == marketId);
 
       const marketName = this.marketMetadata.get(marketId)?.marketName ?? '0x';
+      const marketSymbol = this.marketMetadata.get(marketId)?.symbol ?? 'INVALID';
+
       const marketData = {
         marketId: marketId,
         marketName: marketName,
-        symbol: this.marketMetadata.get(marketId)?.symbol,
+        symbol: marketSymbol,
         feedId: this.marketMetadata.get(marketId)?.feedId,
         skew: marketSummary?.skew,
         size: marketSummary?.size,
@@ -255,6 +263,7 @@ export class Perps {
 
       this.marketsById.set(marketId, marketData);
       this.marketsByName.set(marketName, marketData);
+      this.marketsBySymbol.set(marketSymbol, marketData);
     });
 
     return { marketsById: this.marketsById, marketsByName: this.marketsByName };
@@ -456,7 +465,6 @@ export class Perps {
     settlementStrategiesResponse.forEach((strategy, index) => {
       settlementStrategies.push({
         marketId: marketIds[index],
-        marketName: this.marketMetadata.get(marketIds[index])?.symbol,
         strategyType: strategy.strategyType,
         settlementDelay: Number(strategy.settlementDelay),
         settlementWindowDuration: Number(strategy.settlementWindowDuration),
