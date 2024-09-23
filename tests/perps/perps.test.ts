@@ -136,4 +136,9 @@ describe('Perps', () => {
     const liquidateTx = await sdk.perps.settleOrder();
     console.log('liquidateTx :', liquidateTx);
   });
+
+  it('should get pyth price data and prepare oracle call', async () => {
+    const pythData = await sdk.perps.prepareOracleCall(['ETH', 'BTC', 'SOL', 'SNX']);
+    expect(pythData).not.toBe(undefined);
+  });
 });

@@ -1,4 +1,4 @@
-import { Address, CallParameters, formatEther, parseEther, parseUnits } from 'viem';
+import { Address, CallParameters, encodeAbiParameters, formatEther, Hex, parseEther, parseUnits } from 'viem';
 import { SynthetixSdk } from '..';
 import { ZERO_ADDRESS } from '../constants';
 import {
@@ -15,6 +15,7 @@ import {
   SettlementStrategy,
 } from './interface';
 import { convertEtherToWei, convertWeiToEther, sleep } from '../utils';
+import { Call3Value } from '../interface/contractTypes';
 
 /**
  * Class for interacting with Synthetix Perps V3 contracts
@@ -101,6 +102,53 @@ export class Perps {
       resolvedMarketId: (resolvedMarketId ?? marketId) as number,
       resolvedMarketName: resolvedMarketName ?? marketName ?? 'Unresolved market',
     };
+  }
+
+  /**
+   *   Prepare a call to the external node with oracle updates for the specified market names.
+   * The result can be passed as the first argument to a multicall function to improve performance
+   * of ERC-7412 calls. If no market names are provided, all markets are fetched. This is useful for
+   * read functions since the user does not pay gas for those oracle calls, and reduces RPC calls and
+   * runtime.
+   * @param marketNames An array of market names to fetch prices for. If not provided, all markets are fetched
+   */
+  public async prepareOracleCall(marketSymbols: string[] = []): Promise<Call3Value | undefined> {
+    if (marketSymbols.length == 0) {
+      marketSymbols = Array.from(this.marketsBySymbol.keys());
+    }
+
+    const priceFeedIds: string[] = [];
+    marketSymbols.forEach((marketSymbol) => {
+      const feedId = this.sdk.pyth.priceFeedIds.get(marketSymbol);
+      if (feedId != undefined) {
+        priceFeedIds.push(feedId);
+      }
+    });
+
+    if (priceFeedIds.length == 0) {
+      return;
+    }
+
+    const stalenessTolerance = 30n; // 30 seconds
+    let updateData = (await this.sdk.pyth.pythConnection.getPriceFeedsUpdateData(priceFeedIds)) as unknown as Address[];
+
+    const signedRequiredData = encodeAbiParameters(
+      [
+        { type: 'uint8', name: 'updateType' },
+        { type: 'uint64', name: 'stalenessTolerance' },
+        { type: 'bytes32[]', name: 'priceIds' },
+        { type: 'bytes[]', name: 'updateData' },
+      ],
+      [1, stalenessTolerance, priceFeedIds as Hex[], updateData],
+    );
+
+    const pythWrapper = await this.sdk.contracts.getPythErc7412WrapperInstance();
+    const dataVerificationTx = await this.sdk.utils.generateDataVerificationTx(pythWrapper.address, signedRequiredData);
+
+    // set `requireSuccess` to false in this case, since sometimes
+    // the wrapper will return an error if the price has already been updated
+    dataVerificationTx.requireSuccess = false;
+    return dataVerificationTx;
   }
 
   /**
