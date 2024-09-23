@@ -19,7 +19,8 @@
   "scripts": {
     "build": "tsup ./src",
     "prepare": "npm run build",
-    "test": "jest"
+    "test": "jest",
+    "docs": "typedoc"
   },
   "repository": {
     "type": "git",
