@@ -1,4 +1,4 @@
-import { formatEther } from 'viem';
+import { formatEther, parseEther } from 'viem';
 import { mainnet, base, optimism, arbitrum, baseSepolia, arbitrumSepolia, Chain } from 'viem/chains';
 // import { mainnet } as chains from 'viem/chains';
 
@@ -34,4 +34,21 @@ export function convertWeiToEther(amountInWei: string | bigint | undefined): num
   } else {
     throw new Error('Expected string or bigint for conversion');
   }
+}
+
+export function convertEtherToWei(amount: string | number | undefined): bigint {
+  if (amount == undefined) {
+    throw new Error('Invalid amount received during conversion: undefined');
+  }
+  if (typeof amount == 'number') {
+    return parseEther(amount.toString());
+  } else if (typeof amount == 'string') {
+    return parseEther(amount);
+  } else {
+    throw new Error('Expected string or bigint for conversion');
+  }
+}
+
+export function sleep(seconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, seconds * 1000));
 }

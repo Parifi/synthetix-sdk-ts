@@ -14,7 +14,7 @@ export interface MarketSummary {
 export interface MarketMetadata {
   marketName: string;
   symbol: string;
-  feedId: string;
+  feedId?: string;
 }
 
 export interface MarketData {
@@ -38,7 +38,6 @@ export interface MarketData {
 
 export interface SettlementStrategy {
   marketId?: number;
-  marketName?: string;
   strategyType?: number;
   settlementDelay?: number;
   settlementWindowDuration?: number;
@@ -96,4 +95,13 @@ export interface OpenPositionData {
   accruedFunding: number;
   positionSize: number;
   owedInterest: number;
+}
+
+export interface OrderQuote {
+  orderSize: number;
+  indexPrice: number;
+  orderFees: number;
+  settlementRewardCost: number;
+  fillPrice: number;
+  requiredMargin?: number;
 }

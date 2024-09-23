@@ -1,6 +1,6 @@
 {
   "name": "@parifi/synthetix-sdk-ts",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "A Typescript SDK for interactions with the Synthetix protocol",
   "files": [
     "dist",
@@ -19,7 +19,8 @@
   "scripts": {
     "build": "tsup ./src",
     "prepare": "npm run build",
-    "test": "jest"
+    "test": "jest",
+    "docs": "typedoc"
   },
   "repository": {
     "type": "git",
@@ -53,7 +54,7 @@
   },
   "dependencies": {
     "@pythnetwork/pyth-evm-js": "^1.66.0",
-    "@synthetixio/v3-contracts": "^6.8.0",
+    "@synthetixio/v3-contracts": "^6.9.0",
     "axios": "^1.7.5",
     "dotenv": "^16.4.5",
     "viem": "^2.20.1"

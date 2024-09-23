@@ -113,4 +113,33 @@ describe('Perps', () => {
     const positionsData = await sdk.perps.getOpenPositions(undefined, ['Ethereum', 'Bitcoin', 'Synthetix', 'Solana']);
     console.log('positionsData :', positionsData);
   });
+
+  it('should return order quote', async () => {
+    const orderQuote = await sdk.perps.getQuote(1, undefined, undefined, 'Ethereum', undefined, 0, true);
+    console.log('orderQuote :', orderQuote);
+  });
+
+  // @todo Function `payDebt` not found for ABI
+  it.skip('should pay account debt', async () => {
+    const debtTx = await sdk.perps.payDebt();
+    console.log('debtTx :', debtTx);
+  });
+
+  // Account ID should be marked as liquidatable
+  it.skip('should liquidate an account', async () => {
+    const liquidateTx = await sdk.perps.liquidate(undefined, false, true);
+    console.log('liquidateTx :', liquidateTx);
+  });
+
+  // Account should have a pending order
+  it.skip('should settle an order', async () => {
+    const liquidateTx = await sdk.perps.settleOrder();
+    console.log('liquidateTx :', liquidateTx);
+  });
+
+  it('should get pyth price data and prepare oracle call', async () => {
+    const marketId = sdk.perps.marketsBySymbol.get('ETH')?.marketId ?? 100;
+    const pythData = await sdk.perps.prepareOracleCall([marketId]);
+    expect(pythData).not.toBe(undefined);
+  });
 });

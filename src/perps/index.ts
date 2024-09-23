@@ -1,4 +1,13 @@
-import { CallParameters, formatEther, parseEther, parseUnits } from 'viem';
+import {
+  Address,
+  CallParameters,
+  encodeAbiParameters,
+  formatEther,
+  formatUnits,
+  Hex,
+  parseEther,
+  parseUnits,
+} from 'viem';
 import { SynthetixSdk } from '..';
 import { ZERO_ADDRESS } from '../constants';
 import {
@@ -11,9 +20,11 @@ import {
   OpenPositionData,
   OrderData,
   OrderFees,
+  OrderQuote,
   SettlementStrategy,
 } from './interface';
-import { convertWeiToEther } from '../utils';
+import { convertEtherToWei, convertWeiToEther, sleep } from '../utils';
+import { Call3Value } from '../interface/contractTypes';
 
 /**
  * Class for interacting with Synthetix Perps V3 contracts
@@ -48,14 +59,21 @@ export class Perps {
   marketsById: Map<number, MarketData>;
   marketsByName: Map<string, MarketData>;
 
+  // Mapping of Market Symbol to MarketData.
+  // @note Ideally prefer using market symbol over market name
+  marketsBySymbol: Map<string, MarketData>;
+
+  isErc7412Enabled: boolean = true;
+
   constructor(synthetixSdk: SynthetixSdk) {
     this.sdk = synthetixSdk;
     this.accountIds = [];
 
     // Initialize empty market data
+    this.marketMetadata = new Map<number, MarketMetadata>();
     this.marketsById = new Map<number, MarketData>();
     this.marketsByName = new Map<string, MarketData>();
-    this.marketMetadata = new Map<number, MarketMetadata>();
+    this.marketsBySymbol = new Map<string, MarketData>();
   }
 
   /**
@@ -95,6 +113,65 @@ export class Perps {
       resolvedMarketId: (resolvedMarketId ?? marketId) as number,
       resolvedMarketName: resolvedMarketName ?? marketName ?? 'Unresolved market',
     };
+  }
+
+  /**
+   *   Prepare a call to the external node with oracle updates for the specified market names.
+   * The result can be passed as the first argument to a multicall function to improve performance
+   * of ERC-7412 calls. If no market names are provided, all markets are fetched. This is useful for
+   * read functions since the user does not pay gas for those oracle calls, and reduces RPC calls and
+   * runtime.
+   * @param marketNames An array of market names to fetch prices for. If not provided, all markets are fetched
+   */
+  public async prepareOracleCall(marketIds: number[] = []): Promise<Call3Value[]> {
+    let marketSymbols: string[] = [];
+    if (marketIds.length == 0) {
+      marketSymbols = Array.from(this.marketsBySymbol.keys());
+    } else {
+      marketIds.forEach((marketId) => {
+        const marketSymbol = this.marketsById.get(marketId)?.symbol;
+        if (marketSymbol != undefined) {
+          marketSymbols.push(marketSymbol);
+        }
+      });
+    }
+
+    const priceFeedIds: string[] = [];
+    marketSymbols.forEach((marketSymbol) => {
+      const feedId = this.sdk.pyth.priceFeedIds.get(marketSymbol);
+      if (feedId != undefined) {
+        priceFeedIds.push(feedId);
+      }
+    });
+
+    if (priceFeedIds.length == 0) {
+      return [];
+    }
+
+    const stalenessTolerance = 30n; // 30 seconds
+    let updateData = (await this.sdk.pyth.pythConnection.getPriceFeedsUpdateData(priceFeedIds)) as unknown as Address[];
+
+    const signedRequiredData = encodeAbiParameters(
+      [
+        { type: 'uint8', name: 'updateType' },
+        { type: 'uint64', name: 'stalenessTolerance' },
+        { type: 'bytes32[]', name: 'priceIds' },
+        { type: 'bytes[]', name: 'updateData' },
+      ],
+      [1, stalenessTolerance, priceFeedIds as Hex[], updateData],
+    );
+
+    const pythWrapper = await this.sdk.contracts.getPythErc7412WrapperInstance();
+    const dataVerificationTx = await this.sdk.utils.generateDataVerificationTx(pythWrapper.address, signedRequiredData);
+
+    // set `requireSuccess` to false in this case, since sometimes
+    // the wrapper will return an error if the price has already been updated
+    dataVerificationTx.requireSuccess = false;
+
+    // @todo Fetch the priceUpdateFee for tx dynamically from the contract
+    // instead of using arbitrary values for pyth price update fees
+    dataVerificationTx.value = 500n;
+    return [dataVerificationTx];
   }
 
   /**
@@ -205,7 +282,8 @@ export class Perps {
     marketMetadataResponse.forEach((market, index) => {
       const marketName = market[0];
       const marketSymbol = market[1];
-      const settlementStrategy = settlementStrategies.find((strategy) => strategy.marketName == marketName);
+      const settlementStrategy = settlementStrategies.find((strategy) => strategy.marketId == marketIds[index]);
+
       this.marketMetadata.set(marketIds[index], {
         marketName: marketName,
         symbol: marketSymbol,
@@ -233,10 +311,12 @@ export class Perps {
       const maxMarketValue = maxMarketValues.find((maxMarketValue) => maxMarketValue.marketId == marketId);
 
       const marketName = this.marketMetadata.get(marketId)?.marketName ?? '0x';
+      const marketSymbol = this.marketMetadata.get(marketId)?.symbol ?? 'INVALID';
+
       const marketData = {
         marketId: marketId,
         marketName: marketName,
-        symbol: this.marketMetadata.get(marketId)?.symbol,
+        symbol: marketSymbol,
         feedId: this.marketMetadata.get(marketId)?.feedId,
         skew: marketSummary?.skew,
         size: marketSummary?.size,
@@ -254,6 +334,7 @@ export class Perps {
 
       this.marketsById.set(marketId, marketData);
       this.marketsByName.set(marketName, marketData);
+      this.marketsBySymbol.set(marketSymbol, marketData);
     });
 
     return { marketsById: this.marketsById, marketsByName: this.marketsByName };
@@ -276,6 +357,7 @@ export class Perps {
       indexPrice: bigint;
     }
 
+    const oracleCalls = await this.prepareOracleCall(marketIds);
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     const interestRate = await this.sdk.utils.callErc7412(
@@ -283,6 +365,7 @@ export class Perps {
       perpsMarketProxy.abi,
       'interestRate',
       [],
+      oracleCalls,
     );
 
     const marketSummariesInput = marketIds.map((marketId) => [marketId]);
@@ -291,6 +374,7 @@ export class Perps {
       perpsMarketProxy.abi,
       'getMarketSummary',
       marketSummariesInput,
+      oracleCalls,
     )) as MarketSummaryResponse[];
 
     if (marketIds.length !== marketSummariesResponse.length) {
@@ -340,6 +424,7 @@ export class Perps {
       indexPrice: bigint;
     }
 
+    const oracleCalls = await this.prepareOracleCall([resolvedMarketId]);
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     const interestRate = await this.sdk.utils.callErc7412(
@@ -347,6 +432,7 @@ export class Perps {
       perpsMarketProxy.abi,
       'interestRate',
       [],
+      oracleCalls,
     );
     console.log('interestRate', interestRate);
 
@@ -355,6 +441,7 @@ export class Perps {
       perpsMarketProxy.abi,
       'getMarketSummary',
       [resolvedMarketId],
+      oracleCalls,
     )) as MarketSummaryResponse;
 
     console.log('marketSummaryResponse', marketSummaryResponse);
@@ -455,7 +542,6 @@ export class Perps {
     settlementStrategiesResponse.forEach((strategy, index) => {
       settlementStrategies.push({
         marketId: marketIds[index],
-        marketName: this.marketMetadata.get(marketIds[index])?.marketName,
         strategyType: strategy.strategyType,
         settlementDelay: Number(strategy.settlementDelay),
         settlementWindowDuration: Number(strategy.settlementWindowDuration),
@@ -724,11 +810,14 @@ export class Perps {
     // functionNames.push('debt');
     // argsList.push([accountId]);
 
+    const oracleCalls = await this.prepareOracleCall();
+
     const multicallResponse: unknown[] = await this.sdk.utils.multicallMultifunctionErc7412(
       marketProxy.address,
       marketProxy.abi,
       functionNames,
       argsList,
+      oracleCalls,
     );
 
     const totalCollateralValue = multicallResponse.at(0) as bigint;
@@ -758,6 +847,7 @@ export class Perps {
         marketProxy.abi,
         'getCollateralAmount',
         inputs,
+        oracleCalls,
       )) as bigint[];
 
       collateralIds.map((collateralId, index) => {
@@ -848,6 +938,7 @@ export class Perps {
       accountId = this.defaultAccountId;
     }
 
+    const oracleCalls = await this.prepareOracleCall();
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     const canBeLiquidated = (await this.sdk.utils.callErc7412(
@@ -855,6 +946,7 @@ export class Perps {
       perpsMarketProxy.abi,
       'canLiquidate',
       [accountId],
+      oracleCalls,
     )) as boolean;
     console.log('canBeLiquidated', canBeLiquidated);
     return canBeLiquidated;
@@ -877,6 +969,8 @@ export class Perps {
       }
     }
 
+    const oracleCalls = await this.prepareOracleCall();
+
     // Format the args to the required array format
     const input = accountIds.map((accountId) => [accountId]);
 
@@ -885,6 +979,7 @@ export class Perps {
       perpsMarketProxy.abi,
       'canLiquidate',
       input,
+      oracleCalls,
     )) as boolean[];
 
     const canLiquidates = canLiquidatesResponse.map((response, index) => {
@@ -916,13 +1011,17 @@ export class Perps {
       accountId = this.defaultAccountId;
     }
     const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketId, marketName);
+    const oracleCalls = await this.prepareOracleCall([resolvedMarketId]);
 
     // Smart contract response:
     // returns (int256 totalPnl, int256 accruedFunding, int128 positionSize, uint256 owedInterest);
-    const response = (await this.sdk.utils.callErc7412(marketProxy.address, marketProxy.abi, 'getOpenPosition', [
-      accountId,
-      resolvedMarketId,
-    ])) as bigint[];
+    const response = (await this.sdk.utils.callErc7412(
+      marketProxy.address,
+      marketProxy.abi,
+      'getOpenPosition',
+      [accountId, resolvedMarketId],
+      oracleCalls,
+    )) as bigint[];
 
     const openPositionData: OpenPositionData = {
       marketId: resolvedMarketId,
@@ -963,6 +1062,7 @@ export class Perps {
         return this.resolveMarket(undefined, marketName).resolvedMarketId;
       });
     }
+    const oracleCalls = await this.prepareOracleCall(marketIds);
 
     const inputs = marketIds?.map((marketId) => {
       return [accountId, marketId];
@@ -975,6 +1075,7 @@ export class Perps {
       marketProxy.abi,
       'getOpenPosition',
       inputs,
+      oracleCalls,
     )) as bigint[][];
 
     const openPositionsData: OpenPositionData[] = [];
@@ -993,5 +1094,267 @@ export class Perps {
       }
     });
     return openPositionsData;
+  }
+
+  /**
+   * Get a quote for the size of an order in a specified market. The quote includes the provided price
+   * and the fill price of the order after price impact. If a price is not provided, a price will be fetched
+   * from Pyth. Provide either a ``marketId`` or ``marketName``.
+   * @param size The size of the order to quote.
+   * @param price The price to quote the order at. If not provided, the current market price is used
+   * @param marketId The id of the market to quote the order for
+   * @param marketName The name of the market to quote the order for
+   * @param accountId The id of the account to quote the order for. If not provided, the default account is used
+   * @param settlementStrategyId The id of the settlement strategy to use for the settlement reward calculation
+   * @param includeRequiredMargin If ``true``, include the required margin for the account in the quote.
+   */
+  public async getQuote(
+    size: number,
+    price?: number,
+    marketId: number | undefined = undefined,
+    marketName: string | undefined = undefined,
+    accountId: bigint | undefined = undefined,
+    settlementStrategyId: number = 0,
+    includeRequiredMargin: boolean = true,
+  ): Promise<OrderQuote> {
+    if (accountId == undefined) {
+      accountId = this.defaultAccountId;
+    }
+
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    const { resolvedMarketId } = this.resolveMarket(marketId, marketName);
+
+    const feedId = this.marketsById.get(resolvedMarketId)?.feedId;
+    if (feedId == undefined) {
+      throw new Error('Invalid feed id received from market data');
+    }
+
+    const oracleCalls = await this.prepareOracleCall([resolvedMarketId]);
+
+    if (price == undefined) {
+      const publishTimestamp = Math.floor(Date.now() / 1000) - 30;
+      const pythPrice = await this.sdk.pyth.pythConnection.getPriceFeed(feedId, publishTimestamp);
+
+      try {
+        const priceUnchecked = pythPrice.getPriceUnchecked();
+        price = Number(formatUnits(BigInt(priceUnchecked.price), Math.abs(priceUnchecked.expo)));
+      } catch (error) {
+        throw error;
+      }
+    }
+
+    // Smart contract call returns (uint256 orderFees, uint256 fillPrice)
+    const orderFeesWithPriceResponse = (await this.sdk.utils.callErc7412(
+      marketProxy.address,
+      marketProxy.abi,
+      'computeOrderFeesWithPrice',
+      [resolvedMarketId, convertEtherToWei(size), convertEtherToWei(price)],
+      oracleCalls,
+    )) as [bigint, bigint];
+
+    const settlementRewardCost = (await this.sdk.utils.callErc7412(
+      marketProxy.address,
+      marketProxy.abi,
+      'getSettlementRewardCost',
+      [resolvedMarketId, settlementStrategyId],
+      oracleCalls,
+    )) as bigint;
+
+    const orderQuote: OrderQuote = {
+      orderSize: size,
+      indexPrice: price,
+      orderFees: convertWeiToEther(orderFeesWithPriceResponse[0]),
+      settlementRewardCost: convertWeiToEther(settlementRewardCost),
+      fillPrice: convertWeiToEther(orderFeesWithPriceResponse[1]),
+    };
+
+    if (includeRequiredMargin && accountId) {
+      const requiredMargin = (await this.sdk.utils.callErc7412(
+        marketProxy.address,
+        marketProxy.abi,
+        'requiredMarginForOrderWithPrice',
+        [accountId, resolvedMarketId, convertEtherToWei(size), convertEtherToWei(price)],
+        oracleCalls,
+      )) as bigint;
+
+      orderQuote.requiredMargin = convertWeiToEther(requiredMargin);
+    }
+    return orderQuote;
+  }
+
+  // @todo Function `debt` not found for ABI
+  /**
+   * Returns the debt of the account id
+   * @param accountId The id of the account to get the debt for. If not provided, the default account is used.
+   * @returns debt Account debt in ether
+   */
+  public async getDebt(accountId: bigint | undefined = undefined): Promise<number> {
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    if (accountId == undefined) {
+      accountId = this.defaultAccountId;
+    }
+
+    const debt = (await this.sdk.utils.callErc7412(marketProxy.address, marketProxy.abi, 'debt', [
+      accountId,
+    ])) as bigint;
+    console.log('Account Debt: ', debt);
+    return convertWeiToEther(debt);
+  }
+
+  // @todo Function `payDebt` not found for ABI
+  /**
+   * Pay the debt of a perps account. If no amount is provided, the full debt
+   * of the account is repaid. Make sure to approve the proxy to transfer sUSD before
+   * calling this function.
+   * @param amount The amount of debt to repay. If not provided, the full debt is repaid.
+   * @param accountId The id of the account to repay the debt for. If not provided, the default account is used.
+   * @param submit If ``true``, submit the transaction to the blockchain. If not provided, transaction object is returned
+   */
+  public async payDebt(
+    amount: number | undefined = undefined,
+    accountId: bigint | undefined = undefined,
+    submit: boolean = false,
+  ) {
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    if (accountId == undefined) {
+      accountId = this.defaultAccountId;
+    }
+
+    if (amount == undefined) {
+      // amount = await this.getDebt(accountId);
+      amount = 0;
+    }
+    const tx = await this.sdk.utils.writeErc7412(marketProxy.address, marketProxy.abi, 'payDebt', [
+      accountId,
+      convertEtherToWei(amount),
+    ]);
+
+    if (submit) {
+      console.log(`Repaying debt of ${amount} for account ${accountId}`);
+      const txHash = await this.sdk.executeTransaction(tx);
+      console.log('Repay debt transaction: ', txHash);
+      return txHash;
+    } else {
+      return tx;
+    }
+  }
+
+  /**
+   * Submit a liquidation for an account, or static call the liquidation function to fetch
+   * the liquidation reward. The static call is important for accounts which have been
+   * partially liquidated. Due to the throughput limit on liquidated value, the static call
+   * returning a nonzero value means more value can be liquidated (and rewards collected).
+   * This function can not be called if ``submit`` and ``staticCall`` are true.
+   * @param accountId The id of the account to liquidate. If not provided, the default account is used.
+   * @param submit If ``true``, submit the transaction to the blockchain.
+   * @param staticCall If ``true``, static call the liquidation function to fetch the liquidation reward.
+   */
+  public async liquidate(
+    accountId: bigint | undefined = undefined,
+    submit: boolean = false,
+    staticCall: boolean = false,
+  ) {
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    if (accountId == undefined) {
+      accountId = this.defaultAccountId;
+    }
+
+    if (submit && staticCall) {
+      throw new Error('Cannot submit and use static call in the same transaction');
+    }
+
+    if (staticCall) {
+      const liquidationReward = (await this.sdk.utils.callErc7412(marketProxy.address, marketProxy.abi, 'liquidate', [
+        accountId,
+      ])) as bigint;
+      return convertWeiToEther(liquidationReward);
+    } else {
+      const tx = await this.sdk.utils.writeErc7412(marketProxy.address, marketProxy.abi, 'liquidate', [accountId]);
+      if (submit) {
+        console.log('Liquidating account :', accountId);
+        const txHash = await this.sdk.executeTransaction(tx);
+        console.log('Liquidate transaction: ', txHash);
+        return txHash;
+      } else {
+        return tx;
+      }
+    }
+  }
+
+  /**
+   * Settles an order using ERC7412 by handling ``OracleDataRequired`` errors and forming a multicall.
+   * If the order is not yet ready to be settled, this function will wait until the settlement time.
+   * If the transaction fails, this function will retry until the max number of tries is reached with a
+   * configurable delay.
+   * @param accountId The id of the account to settle. If not provided, the default account is used.
+   * @param submit If ``true``, submit the transaction to the blockchain.
+   * @param maxTxTries The max number of tries to submit the transaction
+   * @param txDelay The delay in seconds between transaction submissions.
+   */
+  public async settleOrder(
+    accountId: bigint | undefined = undefined,
+    submit: boolean = false,
+    maxTxTries: number = 3,
+    txDelay: number = 2,
+  ) {
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+
+    if (accountId == undefined) {
+      accountId = this.defaultAccountId;
+    }
+
+    const order = await this.getOrder(accountId);
+    const settlementStrategy = order.settlementStrategy;
+    const settlementTime = order.commitmentTime + (settlementStrategy?.settlementDelay ?? 0);
+    const expirationTime = order.commitmentTime + (settlementStrategy?.settlementWindowDuration ?? 0);
+    const currentTimestamp = Math.floor(Date.now() / 1000);
+
+    if (order.sizeDelta == 0) {
+      throw new Error(`Order is already settled for account ${accountId}`);
+    } else if (settlementTime > currentTimestamp) {
+      const duration = settlementTime - currentTimestamp;
+      console.log(`Waiting ${duration} seconds to settle order`);
+      await sleep(duration);
+    } else if (expirationTime < currentTimestamp) {
+      throw new Error(`Order has expired for account ${accountId}`);
+    } else {
+      console.log('Order is ready to be settled');
+    }
+
+    let totalTries = 0;
+    let tx;
+    while (totalTries < maxTxTries) {
+      try {
+        tx = await this.sdk.utils.writeErc7412(marketProxy.address, marketProxy.abi, 'settleOrder', [accountId]);
+      } catch (error) {
+        console.log('Settle order error: ', error);
+        totalTries += 1;
+        sleep(txDelay);
+        continue;
+      }
+
+      if (submit) {
+        console.log(`Settling order for account ${accountId}`);
+        const txHash = await this.sdk.executeTransaction(tx);
+        console.log('Settle txHash: ', txHash);
+
+        const updatedOrder = await this.getOrder(accountId);
+        if (updatedOrder.sizeDelta == 0) {
+          console.log('Order settlement successful for account ', accountId);
+          return txHash;
+        }
+
+        // If order settlement failed, retry after a delay
+        totalTries += 1;
+        if (totalTries > maxTxTries) {
+          throw new Error('Failed to settle order');
+        } else {
+          console.log(`Failed to settle order, waiting ${txDelay} seconds and retrying`);
+          sleep(txDelay);
+        }
+      } else {
+        return tx;
+      }
+    }
   }
 }
