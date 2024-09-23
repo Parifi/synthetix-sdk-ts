@@ -115,7 +115,7 @@ describe('Perps', () => {
   });
 
   it('should return order quote', async () => {
-    const orderQuote = await sdk.perps.getQuote(1, 2400, undefined, 'Ethereum', undefined, 0, true);
+    const orderQuote = await sdk.perps.getQuote(1, undefined, undefined, 'Ethereum', undefined, 0, true);
     console.log('orderQuote :', orderQuote);
   });
 
@@ -138,7 +138,8 @@ describe('Perps', () => {
   });
 
   it('should get pyth price data and prepare oracle call', async () => {
-    const pythData = await sdk.perps.prepareOracleCall(['ETH', 'BTC', 'SOL', 'SNX']);
+    const marketId = sdk.perps.marketsBySymbol.get('ETH')?.marketId ?? 100;
+    const pythData = await sdk.perps.prepareOracleCall([marketId]);
     expect(pythData).not.toBe(undefined);
   });
 });

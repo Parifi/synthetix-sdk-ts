@@ -1,4 +1,13 @@
-import { Address, CallParameters, encodeAbiParameters, formatEther, Hex, parseEther, parseUnits } from 'viem';
+import {
+  Address,
+  CallParameters,
+  encodeAbiParameters,
+  formatEther,
+  formatUnits,
+  Hex,
+  parseEther,
+  parseUnits,
+} from 'viem';
 import { SynthetixSdk } from '..';
 import { ZERO_ADDRESS } from '../constants';
 import {
@@ -114,7 +123,7 @@ export class Perps {
    * runtime.
    * @param marketNames An array of market names to fetch prices for. If not provided, all markets are fetched
    */
-  public async prepareOracleCall(marketIds: number[] = []): Promise<Call3Value | undefined> {
+  public async prepareOracleCall(marketIds: number[] = []): Promise<Call3Value[]> {
     let marketSymbols: string[] = [];
     if (marketIds.length == 0) {
       marketSymbols = Array.from(this.marketsBySymbol.keys());
@@ -136,7 +145,7 @@ export class Perps {
     });
 
     if (priceFeedIds.length == 0) {
-      return;
+      return [];
     }
 
     const stalenessTolerance = 30n; // 30 seconds
@@ -158,7 +167,11 @@ export class Perps {
     // set `requireSuccess` to false in this case, since sometimes
     // the wrapper will return an error if the price has already been updated
     dataVerificationTx.requireSuccess = false;
-    return dataVerificationTx;
+
+    // @todo Fetch the priceUpdateFee for tx dynamically from the contract
+    // instead of using arbitrary values for pyth price update fees
+    dataVerificationTx.value = 500n;
+    return [dataVerificationTx];
   }
 
   /**
@@ -344,6 +357,7 @@ export class Perps {
       indexPrice: bigint;
     }
 
+    const oracleCalls = await this.prepareOracleCall(marketIds);
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     const interestRate = await this.sdk.utils.callErc7412(
@@ -351,6 +365,7 @@ export class Perps {
       perpsMarketProxy.abi,
       'interestRate',
       [],
+      oracleCalls,
     );
 
     const marketSummariesInput = marketIds.map((marketId) => [marketId]);
@@ -359,6 +374,7 @@ export class Perps {
       perpsMarketProxy.abi,
       'getMarketSummary',
       marketSummariesInput,
+      oracleCalls,
     )) as MarketSummaryResponse[];
 
     if (marketIds.length !== marketSummariesResponse.length) {
@@ -408,6 +424,7 @@ export class Perps {
       indexPrice: bigint;
     }
 
+    const oracleCalls = await this.prepareOracleCall([resolvedMarketId]);
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     const interestRate = await this.sdk.utils.callErc7412(
@@ -415,6 +432,7 @@ export class Perps {
       perpsMarketProxy.abi,
       'interestRate',
       [],
+      oracleCalls,
     );
     console.log('interestRate', interestRate);
 
@@ -423,6 +441,7 @@ export class Perps {
       perpsMarketProxy.abi,
       'getMarketSummary',
       [resolvedMarketId],
+      oracleCalls,
     )) as MarketSummaryResponse;
 
     console.log('marketSummaryResponse', marketSummaryResponse);
@@ -791,11 +810,14 @@ export class Perps {
     // functionNames.push('debt');
     // argsList.push([accountId]);
 
+    const oracleCalls = await this.prepareOracleCall();
+
     const multicallResponse: unknown[] = await this.sdk.utils.multicallMultifunctionErc7412(
       marketProxy.address,
       marketProxy.abi,
       functionNames,
       argsList,
+      oracleCalls,
     );
 
     const totalCollateralValue = multicallResponse.at(0) as bigint;
@@ -825,6 +847,7 @@ export class Perps {
         marketProxy.abi,
         'getCollateralAmount',
         inputs,
+        oracleCalls,
       )) as bigint[];
 
       collateralIds.map((collateralId, index) => {
@@ -915,6 +938,7 @@ export class Perps {
       accountId = this.defaultAccountId;
     }
 
+    const oracleCalls = await this.prepareOracleCall();
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     const canBeLiquidated = (await this.sdk.utils.callErc7412(
@@ -922,6 +946,7 @@ export class Perps {
       perpsMarketProxy.abi,
       'canLiquidate',
       [accountId],
+      oracleCalls,
     )) as boolean;
     console.log('canBeLiquidated', canBeLiquidated);
     return canBeLiquidated;
@@ -944,6 +969,8 @@ export class Perps {
       }
     }
 
+    const oracleCalls = await this.prepareOracleCall();
+
     // Format the args to the required array format
     const input = accountIds.map((accountId) => [accountId]);
 
@@ -952,6 +979,7 @@ export class Perps {
       perpsMarketProxy.abi,
       'canLiquidate',
       input,
+      oracleCalls,
     )) as boolean[];
 
     const canLiquidates = canLiquidatesResponse.map((response, index) => {
@@ -983,13 +1011,17 @@ export class Perps {
       accountId = this.defaultAccountId;
     }
     const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketId, marketName);
+    const oracleCalls = await this.prepareOracleCall([resolvedMarketId]);
 
     // Smart contract response:
     // returns (int256 totalPnl, int256 accruedFunding, int128 positionSize, uint256 owedInterest);
-    const response = (await this.sdk.utils.callErc7412(marketProxy.address, marketProxy.abi, 'getOpenPosition', [
-      accountId,
-      resolvedMarketId,
-    ])) as bigint[];
+    const response = (await this.sdk.utils.callErc7412(
+      marketProxy.address,
+      marketProxy.abi,
+      'getOpenPosition',
+      [accountId, resolvedMarketId],
+      oracleCalls,
+    )) as bigint[];
 
     const openPositionData: OpenPositionData = {
       marketId: resolvedMarketId,
@@ -1030,6 +1062,7 @@ export class Perps {
         return this.resolveMarket(undefined, marketName).resolvedMarketId;
       });
     }
+    const oracleCalls = await this.prepareOracleCall(marketIds);
 
     const inputs = marketIds?.map((marketId) => {
       return [accountId, marketId];
@@ -1042,6 +1075,7 @@ export class Perps {
       marketProxy.abi,
       'getOpenPosition',
       inputs,
+      oracleCalls,
     )) as bigint[][];
 
     const openPositionsData: OpenPositionData[] = [];
@@ -1076,7 +1110,7 @@ export class Perps {
    */
   public async getQuote(
     size: number,
-    price: number | undefined = undefined,
+    price?: number,
     marketId: number | undefined = undefined,
     marketName: string | undefined = undefined,
     accountId: bigint | undefined = undefined,
@@ -1088,19 +1122,25 @@ export class Perps {
     }
 
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketId, marketName);
+    const { resolvedMarketId } = this.resolveMarket(marketId, marketName);
+
     const feedId = this.marketsById.get(resolvedMarketId)?.feedId;
     if (feedId == undefined) {
       throw new Error('Invalid feed id received from market data');
     }
 
-    let calls = [];
+    const oracleCalls = await this.prepareOracleCall([resolvedMarketId]);
+
     if (price == undefined) {
-      // @todo Add prepare oracle call fn
-      price = 0;
-    } else {
-      // price = price;
-      // calls = [];
+      const publishTimestamp = Math.floor(Date.now() / 1000) - 30;
+      const pythPrice = await this.sdk.pyth.pythConnection.getPriceFeed(feedId, publishTimestamp);
+
+      try {
+        const priceUnchecked = pythPrice.getPriceUnchecked();
+        price = Number(formatUnits(BigInt(priceUnchecked.price), Math.abs(priceUnchecked.expo)));
+      } catch (error) {
+        throw error;
+      }
     }
 
     // Smart contract call returns (uint256 orderFees, uint256 fillPrice)
@@ -1109,6 +1149,7 @@ export class Perps {
       marketProxy.abi,
       'computeOrderFeesWithPrice',
       [resolvedMarketId, convertEtherToWei(size), convertEtherToWei(price)],
+      oracleCalls,
     )) as [bigint, bigint];
 
     const settlementRewardCost = (await this.sdk.utils.callErc7412(
@@ -1116,6 +1157,7 @@ export class Perps {
       marketProxy.abi,
       'getSettlementRewardCost',
       [resolvedMarketId, settlementStrategyId],
+      oracleCalls,
     )) as bigint;
 
     const orderQuote: OrderQuote = {
@@ -1132,7 +1174,9 @@ export class Perps {
         marketProxy.abi,
         'requiredMarginForOrderWithPrice',
         [accountId, resolvedMarketId, convertEtherToWei(size), convertEtherToWei(price)],
+        oracleCalls,
       )) as bigint;
+
       orderQuote.requiredMargin = convertWeiToEther(requiredMargin);
     }
     return orderQuote;
