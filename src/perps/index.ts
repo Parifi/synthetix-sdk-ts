@@ -4,6 +4,7 @@ import {
   encodeAbiParameters,
   formatEther,
   formatUnits,
+  getAbiItem,
   Hex,
   parseEther,
   parseUnits,
@@ -44,9 +45,6 @@ import { Call3Value } from '../interface/contractTypes';
  * - PerpsMarketProxy
  * - PerpsAccountProxy
  * - PythERC7412Wrapper
- */
-
-/**
  * @param synthetixSdk An instance of the Synthetix class
  */
 export class Perps {
@@ -64,6 +62,8 @@ export class Perps {
   marketsBySymbol: Map<string, MarketData>;
 
   isErc7412Enabled: boolean = true;
+  // Set multicollateral to false by default
+  isMulticollateralEnabled: boolean = false;
 
   constructor(synthetixSdk: SynthetixSdk) {
     this.sdk = synthetixSdk;
@@ -74,6 +74,27 @@ export class Perps {
     this.marketsById = new Map<number, MarketData>();
     this.marketsByName = new Map<string, MarketData>();
     this.marketsBySymbol = new Map<string, MarketData>();
+  }
+
+  async initPerps() {
+    await this.getMarkets();
+    await this.getAccountIds();
+
+    // Check if the Multicollateral is enabled
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    const debtFunctionData = getAbiItem({
+      abi: marketProxy.abi,
+      name: 'debt',
+    });
+
+    const payDebtFunctionData = getAbiItem({
+      abi: marketProxy.abi,
+      name: 'payDebt',
+    });
+    if (debtFunctionData != undefined && payDebtFunctionData != undefined) {
+      this.isMulticollateralEnabled = true;
+      console.log('Multicollateral perps is enabled');
+    }
   }
 
   /**
@@ -801,15 +822,6 @@ export class Perps {
     // 3. Get required margins
     functionNames.push('getRequiredMargins');
     argsList.push([accountId]);
-
-    // 4. Get account collateral ids
-    functionNames.push('getAccountCollateralIds');
-    argsList.push([accountId]);
-
-    // // 5. Get account debt
-    // functionNames.push('debt');
-    // argsList.push([accountId]);
-
     const oracleCalls = await this.prepareOracleCall();
 
     const multicallResponse: unknown[] = await this.sdk.utils.multicallMultifunctionErc7412(
@@ -830,29 +842,52 @@ export class Perps {
     const requiredMaintenanceMargin = requiredMarginsResponse.at(1) as bigint;
     const maxLiquidationReward = requiredMarginsResponse.at(2) as bigint;
 
-    // returns and array of collateral ids(uint256[] memory)
-    const collateralIds = multicallResponse.at(4) as bigint[];
-
-    // @todo Check why 'debt' function doesn't exist on ABI. Get debt
-
     let collateralAmountsRecord: Record<number, number> = [];
+    let debt = 0;
+    if (this.isMulticollateralEnabled) {
+      const fNames: string[] = []; // Function names
+      const aList: unknown[] = []; // Argument list
 
-    if (collateralIds.length != 0) {
-      const inputs = collateralIds.map((id) => {
-        return [accountId, id];
-      });
-      console.log(inputs);
-      const collateralAmounts = (await this.sdk.utils.multicallErc7412(
+      // 0. Get account collateral ids
+      fNames.push('getAccountCollateralIds');
+      aList.push([accountId]);
+
+      // 1. Get account debt
+      fNames.push('debt');
+      aList.push([accountId]);
+
+      const response: unknown[] = await this.sdk.utils.multicallMultifunctionErc7412(
         marketProxy.address,
         marketProxy.abi,
-        'getCollateralAmount',
-        inputs,
+        fNames,
+        aList,
         oracleCalls,
-      )) as bigint[];
+      );
 
-      collateralIds.map((collateralId, index) => {
-        return [collateralId, formatEther(collateralAmounts.at(index) ?? 0n)];
-      });
+      // returns and array of collateral ids(uint256[] memory)
+      const collateralIds = response.at(0) as bigint[];
+      debt = convertWeiToEther(response.at(1) as bigint);
+
+      // 'debt' function is only available for markets with Multicollateral enabled
+      if (collateralIds.length != 0) {
+        const inputs = collateralIds.map((id) => {
+          return [accountId, id];
+        });
+        console.log('inputs', inputs);
+        const collateralAmounts = (await this.sdk.utils.multicallErc7412(
+          marketProxy.address,
+          marketProxy.abi,
+          'getCollateralAmount',
+          inputs,
+          oracleCalls,
+        )) as bigint[];
+
+        collateralIds.forEach((collateralId, index) => {
+          collateralAmountsRecord[Number(collateralId)] = convertWeiToEther(collateralAmounts.at(index));
+        });
+      }
+    } else {
+      collateralAmountsRecord[0] = convertWeiToEther(totalCollateralValue);
     }
 
     const marginInfo: CollateralData = {
