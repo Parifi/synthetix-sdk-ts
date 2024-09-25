@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { getSdkInstanceForTesting } from '..';
-import { Address, CallParameters, encodeFunctionData, erc20Abi, formatUnits, getContract, Hex, parseUnits } from 'viem';
+import { Address, CallParameters, encodeFunctionData, erc20Abi, formatUnits, parseUnits } from 'viem';
 import { SynthetixSdk } from '../../src';
 import { Side } from '../../src/spot/interface';
 import { convertWeiToEther } from '../../src/utils';

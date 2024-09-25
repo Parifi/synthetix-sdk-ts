@@ -1,18 +1,19 @@
 import {
   Address,
   CallParameters,
+  ContractFunctionParameters,
   encodeFunctionData,
   erc20Abi,
-  formatUnits,
   getContract,
   Hex,
   maxUint256,
   parseUnits,
 } from 'viem';
 import { SynthetixSdk } from '..';
-import { Side, SpotMarketData, SpotOrder, SpotSettlementStrategy } from '../spot/interface';
+import { SpotMarketData } from '../perps/interface';
 import { DISABLED_MARKETS, ZERO_ADDRESS } from '../constants';
 import { convertEtherToWei, convertWeiToEther, sleep } from '../utils';
+import { SpotSettlementStrategy, SpotOrder, Side } from './interface';
 
 /**
  * Class for interacting with Synthetix V3 spot market contracts.
@@ -170,7 +171,7 @@ export class Spot {
     });
 
     const spotProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
-    let finalSynths: SpotMarketData[] = [];
+    const finalSynths: SpotMarketData[] = [];
 
     // Iterate through all the market IDs until ADDRESS_ZERO is returned
     const MAX_MARKETS = 100;
@@ -204,7 +205,7 @@ export class Spot {
 
     let settlementStrategies: SpotSettlementStrategy[];
     if (this.asyncOrderEnabled) {
-      const marketIds = Array.from(finalSynths.keys());
+      // const marketIds = Array.from(finalSynths.keys());
       // Get settlement strategies
       // settlementStrategies = await this.getSettlementStrategies(0, marketIds);
     } else {
@@ -212,10 +213,10 @@ export class Spot {
     }
 
     // Query ERC20 contract for market details for each synth
-    const multicallInputs: any = [];
+    const multicallInputs: ContractFunctionParameters[] = [];
     finalSynths.forEach((synth) => {
       multicallInputs.push({
-        address: synth.contractAddress,
+        address: synth.contractAddress as Address,
         abi: erc20Abi,
         functionName: 'symbol',
       });
@@ -284,7 +285,7 @@ export class Spot {
       address = this.sdk.accountAddress;
     }
 
-    const synthContract = await this.getSynthContract(marketId, marketName);
+    const synthContract = this.getSynthContract(marketId, marketName);
     const balance = await synthContract.read.balanceOf([address as Hex]);
     return convertWeiToEther(balance);
   }
@@ -304,7 +305,7 @@ export class Spot {
     marketId?: number,
     marketName?: string,
   ): Promise<number> {
-    const synthContract = await this.getSynthContract(marketId, marketName);
+    const synthContract = this.getSynthContract(marketId, marketName);
     const allowance = await synthContract.read.allowance([address as Hex, targetAddress as Hex]);
     return convertWeiToEther(allowance);
   }
@@ -383,7 +384,7 @@ export class Spot {
 
     if (fetchSettlementStrategy) {
       const settlementStrategy = await this.getSettlementStrategy(
-        Number(order.settlementStrategyId) ?? 0n,
+        Number(order.settlementStrategyId) || 0,
         resolvedMarketId,
       );
       order.settlementStrategy = settlementStrategy;
@@ -598,11 +599,11 @@ export class Spot {
    * @returns
    */
   public async wrap(size: number, marketId?: number, marketName?: string, submit: boolean = false) {
-    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketId, marketName);
+    const { resolvedMarketId } = this.resolveMarket(marketId, marketName);
     const spotMarketProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
 
-    let sizeInWei = this.formatSize(Math.abs(size), resolvedMarketId);
-    let functionName = size > 0 ? 'wrap' : 'unwrap';
+    const sizeInWei = this.formatSize(Math.abs(size), resolvedMarketId);
+    const functionName = size > 0 ? 'wrap' : 'unwrap';
 
     const tx: CallParameters = await this.sdk.utils.writeErc7412(
       spotMarketProxy.address,
@@ -715,7 +716,7 @@ export class Spot {
     txDelay: number = 2,
     submit: boolean = false,
   ) {
-    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketId, marketName);
+    const { resolvedMarketId } = this.resolveMarket(marketId, marketName);
     const spotMarketProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
 
     const order = await this.getOrder(asyncOrderId, resolvedMarketId);
