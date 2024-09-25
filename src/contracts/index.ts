@@ -186,4 +186,26 @@ export class Contracts {
       );
     }
   }
+
+  /**
+   * The function returns an instance of the USD Proxy smart contract
+   * @returns Contract - Instance of USD Proxy smart contract
+   */
+  public async getUSDProxyInstance() {
+    try {
+      const meta = await dynamicImportMeta(this.sdk.rpcConfig.chainId, this.sdk.rpcConfig.preset);
+      const abi = await dynamicImportAbi(this.sdk.rpcConfig.chainId, this.sdk.rpcConfig.preset, 'USDProxy');
+      const usdProxyInstance = getContract({
+        address: meta.contracts.USDProxy as Hex,
+        abi: abi,
+        client: this.getClientsForContractInstance(),
+      });
+      return usdProxyInstance;
+    } catch (error) {
+      console.log(error);
+      throw new Error(
+        `Unsupported chain ${this.sdk.rpcConfig.chainId} or preset ${this.sdk.rpcConfig.preset} for USDProxy`,
+      );
+    }
+  }
 }

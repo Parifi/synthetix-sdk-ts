@@ -20,6 +20,15 @@ describe('Spot', () => {
     console.info('Account owner :', res);
   });
 
+  it.only('should return markets: ', async () => {
+    const { marketsById, marketsByName } = await sdk.spot.getMarkets();
+    expect(marketsById.size).toBeGreaterThan(0);
+    expect(marketsByName.size).toBeGreaterThan(0);
+
+    console.log('marketsById', marketsById);
+    console.log('marketsByName', marketsByName);
+  });
+
   it('should wrap sUSDC tokens', async () => {
     const spotMarketProxy = await sdk.contracts.getSpotMarketProxyInstance();
     // const tokenAddress = await sdk.core.getUsdToken();
