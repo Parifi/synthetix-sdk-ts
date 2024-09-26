@@ -36,15 +36,6 @@ export interface MarketData {
   maxMarketValue?: number;
 }
 
-export interface SpotMarketData {
-  marketId: number;
-  contractAddress: string;
-  marketName?: string;
-  symbol?: string;
-  feedId?: string;
-  settlementStrategy?: SettlementStrategy;
-}
-
 export interface SettlementStrategy {
   marketId?: number;
   strategyType?: number;

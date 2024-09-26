@@ -133,8 +133,8 @@ describe('Perps', () => {
 
   // Account should have a pending order
   it.skip('should settle an order', async () => {
-    const liquidateTx = await sdk.perps.settleOrder();
-    console.log('liquidateTx :', liquidateTx);
+    const settleTx = await sdk.perps.settleOrder();
+    console.log('liquidateTx :', settleTx);
   });
 
   it('should get pyth price data and prepare oracle call', async () => {

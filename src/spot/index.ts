@@ -1,8 +1,18 @@
-import { Address, CallParameters, erc20Abi, getContract, Hex, parseUnits } from 'viem';
+import {
+  Address,
+  CallParameters,
+  encodeFunctionData,
+  erc20Abi,
+  formatUnits,
+  getContract,
+  Hex,
+  maxUint256,
+  parseUnits,
+} from 'viem';
 import { SynthetixSdk } from '..';
-import { SpotMarketData } from '../perps/interface';
+import { Side, SpotMarketData, SpotOrder } from '../spot/interface';
 import { DISABLED_MARKETS, ZERO_ADDRESS } from '../constants';
-import { convertWeiToEther } from '../utils';
+import { convertEtherToWei, convertWeiToEther, sleep } from '../utils';
 
 /**
  * Class for interacting with Synthetix V3 spot market contracts.
@@ -42,6 +52,10 @@ export class Spot {
     if (synthetixSdk.rpcConfig.chainId in DISABLED_MARKETS) {
       this.disabledMarkets = DISABLED_MARKETS[synthetixSdk.rpcConfig.chainId];
     }
+  }
+
+  async initSpot() {
+    await this.getMarkets();
   }
 
   /**
@@ -84,6 +98,28 @@ export class Spot {
   }
 
   /**
+   * Format the size of a synth for an order. This is used for synths whose base asset
+   * does not use 18 decimals. For example, USDC uses 6 decimals, so we need to handle size
+   * differently from other assets.
+   * @param size The size as an ether value (e.g. 100).
+   * @param marketId The id of the market.
+   * @returns The formatted size in wei. (e.g. 100 = 100000000000000000000)
+   */
+  public formatSize(size: number, marketId: number): bigint {
+    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketId, undefined);
+
+    let sizeInWei: bigint;
+    // Hard-coding a catch for USDC with 6 decimals
+    if (this.sdk.rpcConfig.chainId in [8453, 84532, 42161, 421514] && resolvedMarketName in ['sUSDC', 'sStataUSDC']) {
+      sizeInWei = parseUnits(size.toString(), 6);
+    } else {
+      sizeInWei = parseUnits(size.toString(), 6);
+    }
+    console.log(`Size ${size} in wei for market ${resolvedMarketName}: ${sizeInWei}`);
+    return sizeInWei;
+  }
+
+  /**
    * Fetches contracts and metadata about all spot markets on the network. This includes
    * the market id, synth name, contract address, and the underlying synth contract. Each
    * synth is an ERC20 token, so these contracts can be used for transfers and allowances.
@@ -119,12 +155,14 @@ export class Spot {
     this.marketsById.set(0, {
       marketId: 0,
       marketName: 'sUSD',
+      symbol: 'sUSD',
       contractAddress: usdProxy.address,
     });
 
     this.marketsByName.set('sUSD', {
       marketId: 0,
       marketName: 'sUSD',
+      symbol: 'sUSD',
       contractAddress: usdProxy.address,
     });
 
@@ -207,7 +245,7 @@ export class Spot {
    * @param marketName The name of the market
    * @returns
    */
-  public async getSynthContract(marketId?: number, marketName?: string) {
+  public getSynthContract(marketId?: number, marketName?: string) {
     const { resolvedMarketId } = this.resolveMarket(marketId, marketName);
 
     const contractAddress = this.marketsById.get(resolvedMarketId)?.contractAddress;
@@ -242,22 +280,407 @@ export class Spot {
     return convertWeiToEther(balance);
   }
 
+  /**
+   * Get the allowance for a ``target_address`` to transfer from ``address``. Provide either
+   * a ``marketId`` or ``marketName`` to choose the synth.
+   * @param targetAddress The address for which to check allowance.
+   * @param address The owner address to check allowance for.
+   * @param marketId The id of the market.
+   * @param marketName The name of the market.
+   * @returns The allowance in ether.
+   */
+  public async getAllowance(
+    targetAddress: string,
+    address?: string,
+    marketId?: number,
+    marketName?: string,
+  ): Promise<number> {
+    const synthContract = await this.getSynthContract(marketId, marketName);
+    const allowance = await synthContract.read.allowance([address as Hex, targetAddress as Hex]);
+    return convertWeiToEther(allowance);
+  }
 
-  public async wrap(size: string, marketId: Number, submit: boolean) {
-    const sizeInWei = parseUnits(size.toString(), 6);
-    const spotMarketProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
-    const tx: CallParameters = await this.sdk.utils.writeErc7412(spotMarketProxy.address, spotMarketProxy.abi, 'wrap', [
-      marketId,
-      sizeInWei,
-      sizeInWei,
-    ]);
+  /**
+   * Approve an address to transfer a specified synth from the connected address.
+   * Approves the ``targetAddress`` to transfer up to the ``amount`` from your account.
+   * If ``amount`` is ``undefined``, approves the maximum possible amount.
+   * Requires either a ``marketId`` or ``marketName`` to be provided to resolve the market.
+   * @param targetAddress The address to approve.
+   * @param amount The amount in ether to approve. Default is max uint256.
+   * @param marketId The ID of the market.
+   * @param marketName The name of the market.
+   * @param submit Whether to broadcast the transaction.
+   */
+  public async approve(
+    targetAddress: string,
+    amount?: number,
+    marketId?: number,
+    marketName?: string,
+    submit: boolean = false,
+  ) {
+    let amountInWei: bigint;
+    if (amount == undefined) {
+      amountInWei = maxUint256;
+    } else {
+      amountInWei = convertEtherToWei(amount);
+    }
+
+    const synthContract = this.getSynthContract(marketId, marketName);
+
+    const approveTx: CallParameters = {
+      account: this.sdk.accountAddress,
+      to: targetAddress as Hex,
+      data: encodeFunctionData({
+        abi: synthContract.abi,
+        functionName: 'approve',
+        args: [targetAddress as Hex, amountInWei],
+      }),
+    };
 
     if (submit) {
+      console.log(`Approving ${targetAddress} to spend ${amount}`);
+      const txHash = await this.sdk.executeTransaction(approveTx);
+      console.log('Approve txHash: ', txHash);
+      return txHash;
+    } else {
+      return approveTx;
+    }
+  }
+
+  /**
+   * Get details about an async order by its ID.
+   * Retrieves order details like owner, amount escrowed, settlement strategy, etc.
+   * Can also fetch the full settlement strategy parameters if ``fetchSettlementStrategy``
+   * is ``true``.
+   * Requires either a ``market_id`` or ``market_name`` to be provided to resolve the market.
+   * @param asyncOrderId The ID of the async order to retrieve.
+   * @param marketId The ID of the market.
+   * @param marketName The name of the market.
+   * @param fetchSettlementStrategy Whether to fetch the full settlement strategy parameters. Default is true.
+   * @returns The order details.
+   */
+  public async getOrder(
+    asyncOrderId: number,
+    marketId?: number,
+    marketName?: string,
+    fetchSettlementStrategy: boolean = true,
+  ) {
+    const { resolvedMarketId } = this.resolveMarket(marketId, marketName);
+
+    const spotProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
+
+    const order = (await spotProxy.read.getAsyncOrderClaim([resolvedMarketId, asyncOrderId])) as unknown as SpotOrder;
+    console.log('order', order);
+
+    if (fetchSettlementStrategy) {
+      const settlementStrategy = await this.getSettlementStrategy(
+        Number(order.settlementStrategyId) ?? 0n,
+        resolvedMarketId,
+      );
+      // order.settlementStrategy = settlementStrategy;
+    }
+
+    return order;
+  }
+  /**
+   * Fetch the settlement strategy for a spot market.
+   * @param settlementStrategyId The id of the settlement strategy to retrieve.
+   * @param marketId The id of the market.
+   * @param marketName The name of the market.
+   */
+  public async getSettlementStrategy(settlementStrategyId: number, marketId?: number, marketName?: string) {
+    const { resolvedMarketId } = this.resolveMarket(marketId, marketName);
+
+    const spotProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
+
+    const res = await spotProxy.read.getSettlementStrategy([resolvedMarketId, settlementStrategyId]);
+    console.log('res', res);
+
+    // @todo Check subgraph for a valid settlement strategy
+  }
+
+  /**
+   * Execute an atomic order on the spot market.
+   * Atomically executes a buy or sell order for the given size.
+   * Amounts are transferred directly, no need to settle later. This function
+   * is useful for swapping sUSDC with sUSD on Base Andromeda contracts. The default
+   * slippage is set to zero, since sUSDC and sUSD can be swapped 1:1
+   * For example:
+   *    const tx = await atomicOrder(Side.BUY, 100, 0, undefined, undefined, "sUSDC");
+   * Requires either a ``market_id`` or ``market_name`` to be provided to resolve the market.
+   * @param side The side of the order (buy/sell).
+   * @param size The order size in ether.
+   * @param slippageTolerance The slippage tolerance for the order as a percentage (0.01 = 1%). Default is 0.
+   * @param minAmountReceived The minimum amount to receive in ether units. This will override the slippage_tolerance.
+   * @param marketId The ID of the market.
+   * @param marketName The name of the market.
+   * @param submit Whether to broadcast the transaction.
+   */
+  public async atomicOrder(
+    side: Side,
+    size: number,
+    slippageTolerance: number = 0,
+    minAmountReceived?: number,
+    marketId?: number,
+    marketName?: string,
+    submit: boolean = false,
+  ) {
+    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketId, marketName);
+    const spotMarketProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
+
+    // If network is Base where USDC and sUSDC are 1:1, set minAmount to actual amount
+    if (
+      this.sdk.rpcConfig.chainId in [8453, 84532] &&
+      resolvedMarketName in ['sUSDC'] &&
+      minAmountReceived == undefined
+    ) {
+      minAmountReceived = size;
+    } else if (minAmountReceived == undefined) {
+      // Get asset price
+      const tokenSymbol = this.marketsById.get(resolvedMarketId)?.symbol;
+      if (tokenSymbol == undefined) {
+        throw new Error(`Invalid token symbol for market id: ${resolvedMarketId}`);
+      }
+
+      const feedId =
+        this.sdk.pyth.priceFeedIds.get(tokenSymbol) ??
+        '0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a';
+      const publishTimestamp = Math.floor(Date.now() / 1000) - 10;
+      console.log('feedId', feedId);
+      const pythPrice = await this.sdk.pyth.pythConnection.getPriceFeed(feedId, publishTimestamp);
+
+      try {
+        let price, tradeSize;
+        const priceUnchecked = pythPrice.getPriceUnchecked();
+        price = Number(formatUnits(BigInt(priceUnchecked.price), Math.abs(priceUnchecked.expo)));
+        if (side == Side.BUY) {
+          tradeSize = size / price;
+        } else {
+          tradeSize = size * price;
+        }
+        minAmountReceived = tradeSize * (1 - slippageTolerance);
+      } catch (error) {
+        throw error;
+      }
+    }
+
+    const minAmountReceivedInWei = convertEtherToWei(minAmountReceived);
+    const sizeInWei = convertEtherToWei(size);
+
+    const functionName = side == Side.BUY ? 'buy' : 'sell';
+    const args = [resolvedMarketId, sizeInWei, minAmountReceivedInWei, this.sdk.referrer];
+    const tx = await this.sdk.utils.writeErc7412(spotMarketProxy.address, spotMarketProxy.abi, functionName, args);
+
+    if (submit) {
+      console.log(
+        `Committing ${functionName} atomic order of size ${sizeInWei} (${size}) to ${resolvedMarketName} (id: ${marketId})`,
+      );
+      const txHash = await this.sdk.executeTransaction(tx);
+      console.log('Order transaction: ', txHash);
+      return txHash;
+    } else {
+      return tx;
+    }
+  }
+  /**
+   * Wrap an underlying asset into a synth or unwrap back to the asset.
+   * Wraps an asset into a synth if size > 0, unwraps if size < 0.
+   * The default slippage is set to zero, since the synth and asset can be swapped 1:1.
+   * For example:
+   *    const tx = wrap(100, undefined, "sUSDC")  # wrap 100 USDC into sUSDC
+   *    const tx = wrap(-100, undefined, "sUSDC") # unwrap 100 sUSDC into USDC
+   * Requires either a ``market_id`` or ``market_name`` to be provided to resolve the market.
+   * @param size The amount of the asset to wrap/unwrap.
+   * @param marketId The ID of the market.
+   * @param marketName The name of the market.
+   * @param submit Whether to broadcast the transaction.
+   * @returns
+   */
+  public async wrap(size: number, marketId?: number, marketName?: string, submit: boolean = false) {
+    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketId, marketName);
+    const spotMarketProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
+
+    let sizeInWei = this.formatSize(Math.abs(size), resolvedMarketId);
+    let functionName = size > 0 ? 'wrap' : 'unwrap';
+
+    const tx: CallParameters = await this.sdk.utils.writeErc7412(
+      spotMarketProxy.address,
+      spotMarketProxy.abi,
+      functionName,
+      [resolvedMarketId, sizeInWei, sizeInWei],
+    );
+
+    if (submit) {
+      console.log(`${functionName} of size ${sizeInWei} (${size}) to ${marketName} (id: ${marketId})`);
       const txHash = await this.sdk.executeTransaction(tx);
       console.log('Wrap tx hash', txHash);
       return txHash;
     } else {
       return tx;
+    }
+  }
+
+  /**
+   * Commit an async order to the spot market.
+   * Commits a buy or sell order of the given size. The order will be settled
+   * according to the settlement strategy.
+   * Requires either a ``marketId`` or ``marketName`` to be provided to resolve the market.
+   * @param side The side of the order (buy/sell).
+   * @param size The order size in ether. If ``side`` is "buy", this is the amount
+   * of the synth to buy. If ``side`` is "sell", this is the amount of the synth to sell.
+   * @param slippageTolerance The slippage tolerance for the order as a percentage (0.01 = 1%). Default is 0.
+   * @param minAmountReceived The minimum amount to receive in ether units. This will override the slippage_tolerance.
+   * @param settlementStrategyId The settlement strategy ID. Default 2.
+   * @param marketId The ID of the market.
+   * @param marketName The name of the market.
+   * @param submit Whether to broadcast the transaction.
+   */
+  public async commitOrder(
+    side: Side,
+    size: number,
+    slippageTolerance: number,
+    minAmountReceived?: number,
+    settlementStrategyId: number = 0,
+    marketId?: number,
+    marketName?: string,
+    submit: boolean = false,
+  ) {
+    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketId, marketName);
+    const spotMarketProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
+
+    if (minAmountReceived == undefined) {
+      // Get asset price
+      const feedId =
+        this.marketsById.get(resolvedMarketId)?.settlementStrategy?.feedId ??
+        '0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a';
+      const settlementReward = this.marketsById.get(resolvedMarketId)?.settlementStrategy?.settlementReward ?? 0;
+      const publishTimestamp = Math.floor(Date.now() / 1000) - 10;
+      console.log('feedId', feedId);
+      const pythPrice = await this.sdk.pyth.pythConnection.getPriceFeed(feedId, publishTimestamp);
+
+      try {
+        let price, tradeSize;
+        const priceUnchecked = pythPrice.getPriceUnchecked();
+        price = Number(formatUnits(BigInt(priceUnchecked.price), Math.abs(priceUnchecked.expo)));
+        if (side == Side.BUY) {
+          tradeSize = size / price;
+        } else {
+          tradeSize = size * price;
+        }
+        minAmountReceived = tradeSize * (1 - slippageTolerance);
+      } catch (error) {
+        throw error;
+      }
+    }
+
+    const minAmountReceivedInWei = convertEtherToWei(minAmountReceived);
+    const sizeInWei = convertEtherToWei(size);
+    const orderType = side == Side.BUY ? 3 : 4;
+
+    const args = [
+      resolvedMarketId,
+      orderType,
+      sizeInWei,
+      settlementStrategyId,
+      minAmountReceivedInWei,
+      this.sdk.referrer,
+    ];
+    const tx = await this.sdk.utils.writeErc7412(spotMarketProxy.address, spotMarketProxy.abi, 'commitOrder', args);
+
+    if (submit) {
+      console.log(
+        `Committing ${size == Side.BUY ? 'buy' : 'sell'} atomic order of size ${sizeInWei} (${size}) to ${resolvedMarketName} (id: ${marketId})`,
+      );
+      const txHash = await this.sdk.executeTransaction(tx);
+      console.log('Commit order transaction: ', txHash);
+      return txHash;
+    } else {
+      return tx;
+    }
+  }
+
+  /**
+   * Settle an async Pyth order after price data is available.
+   * Fetches the price for the order from Pyth and settles the order.
+   * Retries up to ``maxTxTries`` times on failure with a delay of ``txDelay`` seconds.
+   * Requires either a ``marketId`` or ``marketName`` to be provided to resolve the market.
+   * @param asyncOrderId The ID of the async order to settle.
+   * @param marketId The ID of the market
+   * @param marketName The name of the market.
+   * @param maxTxTries Max retry attempts if price fetch fails.
+   * @param txDelay Seconds to wait between retries.
+   * @param submit Whether to broadcast the transaction.
+   */
+  public async settleOrder(
+    asyncOrderId: number,
+    marketId?: number,
+    marketName?: string,
+    maxTxTries: number = 5,
+    txDelay: number = 2,
+    submit: boolean = false,
+  ) {
+    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketId, marketName);
+    const spotMarketProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
+
+    const order = await this.getOrder(asyncOrderId, resolvedMarketId);
+    if (order.settledAt == undefined || order.commitmentTime == undefined) {
+      throw new Error('Invalid fields for order: undefined');
+    }
+    const settlementStrategy = order.settlementStrategy;
+    const settlementTime = order.commitmentTime + (settlementStrategy?.settlementDelay ?? 0);
+    const expirationTime = order.commitmentTime + (settlementStrategy?.settlementWindowDuration ?? 0);
+
+    const currentTimestamp = Math.floor(Date.now() / 1000);
+
+    if (order.settledAt > 0) {
+      throw new Error(`Order ${asyncOrderId} on market ${resolvedMarketId} is already settled for account`);
+    } else if (settlementTime > currentTimestamp) {
+      const duration = settlementTime - currentTimestamp;
+      console.log(`Waiting ${duration} seconds to settle order`);
+      await sleep(duration);
+    } else if (expirationTime < currentTimestamp) {
+      throw new Error(`Order ${asyncOrderId} on market ${resolvedMarketId} has expired`);
+    } else {
+      console.log(`Order ${asyncOrderId} on market ${resolvedMarketId} is ready to be settled`);
+    }
+
+    let totalTries = 0;
+    let tx;
+    while (totalTries < maxTxTries) {
+      try {
+        tx = await this.sdk.utils.writeErc7412(spotMarketProxy.address, spotMarketProxy.abi, 'settleOrder', [
+          resolvedMarketId,
+          asyncOrderId,
+        ]);
+      } catch (error) {
+        console.log('Settle order error: ', error);
+        totalTries += 1;
+        sleep(txDelay);
+        continue;
+      }
+
+      if (submit) {
+        console.log(`Settling order ${asyncOrderId} for market ${resolvedMarketId}`);
+        const txHash = await this.sdk.executeTransaction(tx);
+        console.log('Settle txHash: ', txHash);
+
+        const updatedOrder = await this.getOrder(asyncOrderId, resolvedMarketId);
+        if (updatedOrder.settledAt != undefined && updatedOrder.settledAt > 0) {
+          console.log('Order settlement successful for order id ', asyncOrderId);
+          return txHash;
+        }
+
+        // If order settlement failed, retry after a delay
+        totalTries += 1;
+        if (totalTries > maxTxTries) {
+          throw new Error('Failed to settle order');
+        } else {
+          console.log(`Failed to settle order, waiting ${txDelay} seconds and retrying`);
+          sleep(txDelay);
+        }
+      } else {
+        return tx;
+      }
     }
   }
 }
