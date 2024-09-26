@@ -142,4 +142,20 @@ describe('Perps', () => {
     const pythData = await sdk.perps.prepareOracleCall([marketId]);
     expect(pythData).not.toBe(undefined);
   });
+
+  it.skip('should create an isolated account order', async () => {
+    const collateralAmount = 10; // 10 USDC
+    const collateralMarketId = 0; // sUSDC
+    const marketName = 'Ethereum';
+    const orderSize = 0.01; // 0.01 ETH
+
+    const tx = await sdk.perps.createIsolatedAccountOrder(
+      collateralAmount,
+      collateralMarketId,
+      orderSize,
+      undefined,
+      marketName,
+    );
+    console.log(tx);
+  });
 });

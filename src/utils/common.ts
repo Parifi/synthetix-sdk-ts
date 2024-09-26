@@ -1,6 +1,6 @@
-import { formatEther, parseEther } from 'viem';
+import { formatEther, maxUint128, parseEther } from 'viem';
 import { mainnet, base, optimism, arbitrum, baseSepolia, arbitrumSepolia, Chain } from 'viem/chains';
-// import { mainnet } as chains from 'viem/chains';
+import { randomBytes } from 'crypto';
 
 export function getPublicRpcEndpoint(chainId: number) {
   console.log(chainId);
@@ -51,4 +51,13 @@ export function convertEtherToWei(amount: string | number | undefined): bigint {
 
 export function sleep(seconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+}
+
+export function generateRandomAccountId(): bigint {
+  const buffer = randomBytes(16); // 16 bytes * 8 bits/byte = 128 bits
+  const randomAccountId = BigInt('0x' + buffer.toString('hex'));
+  if (randomAccountId > maxUint128) {
+    throw new Error('Account ID greater than Maxuint128');
+  }
+  return randomAccountId;
 }
