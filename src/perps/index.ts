@@ -2,6 +2,7 @@ import {
   Address,
   CallParameters,
   encodeAbiParameters,
+  encodeFunctionData,
   formatEther,
   formatUnits,
   getAbiItem,
@@ -24,7 +25,7 @@ import {
   OrderQuote,
   SettlementStrategy,
 } from './interface';
-import { convertEtherToWei, convertWeiToEther, sleep } from '../utils';
+import { convertEtherToWei, convertWeiToEther, generateRandomAccountId, sleep } from '../utils';
 import { Call3Value } from '../interface/contractTypes';
 
 /**
@@ -1390,6 +1391,102 @@ export class Perps {
       } else {
         return tx;
       }
+    }
+  }
+
+  public async createIsolatedAccountOrder(
+    collateralAmount: number,
+    collateralMarketId: number,
+    size: number,
+    marketId?: number,
+    marketName?: string,
+    settlementStrategyId: number = 0,
+    accountId?: bigint,
+    desiredFillPrice?: number,
+    maxPriceImpact?: number,
+    submit: boolean = false,
+  ) {
+    if (accountId == undefined) {
+      accountId = generateRandomAccountId();
+    }
+    const multicallInstance = await this.sdk.contracts.getMulticallInstance();
+
+    // 1. Create Account
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    const createAccountCall: Call3Value = {
+      target: marketProxy.address,
+      callData: encodeFunctionData({
+        abi: marketProxy.abi,
+        functionName: 'createAccount',
+        args: [accountId],
+      }),
+      value: 0n,
+      requireSuccess: true,
+    };
+
+    // 2. Add Collateral
+    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketId, marketName);
+    const modifyCollateralCall: Call3Value = {
+      target: marketProxy.address,
+      callData: encodeFunctionData({
+        abi: marketProxy.abi,
+        functionName: 'modifyCollateral',
+        args: [accountId, collateralMarketId, parseUnits(collateralAmount.toString(), 6)],
+      }),
+      value: 0n,
+      requireSuccess: true,
+    };
+
+    // 3. Commit Order
+    if (desiredFillPrice != undefined && maxPriceImpact != undefined) {
+      throw new Error('Cannot set both desiredFillPrice and maxPriceImpact');
+    }
+    const isShort = size < 0 ? -1 : 1;
+    const sizeInWei = parseEther(Math.abs(size).toString()) * BigInt(isShort);
+    let acceptablePrice: number;
+
+    if (desiredFillPrice) {
+      // If desired price is provided, use the provided price, else fetch price
+      acceptablePrice = desiredFillPrice;
+    } else {
+      const updatedMaxPriceImpact = maxPriceImpact ?? 1; // @todo Replace with config value
+      const marketSummary = await this.getMarketSummary(resolvedMarketId);
+      const priceImpact = 1 + (isShort * updatedMaxPriceImpact) / 100;
+      acceptablePrice = (marketSummary.indexPrice ?? 0) * priceImpact;
+    }
+
+    const txArgs = {
+      marketId: resolvedMarketId,
+      accountId: accountId,
+      sizeDelta: sizeInWei,
+      settlementStrategyId: settlementStrategyId,
+      acceptablePrice: parseEther(acceptablePrice.toString()),
+      trackingCode: this.sdk.trackingCode,
+      referrer: this.sdk.referrer,
+    };
+
+    const commitOrderCall: Call3Value = {
+      target: marketProxy.address,
+      callData: encodeFunctionData({
+        abi: marketProxy.abi,
+        functionName: 'commitOrder',
+        args: [txArgs],
+      }),
+      value: 0n,
+      requireSuccess: true,
+    };
+
+    const callsArray: Call3Value[] = [createAccountCall, modifyCollateralCall, commitOrderCall];
+    const finalTx = await this.sdk.utils.writeErc7412(undefined, undefined, undefined, undefined, callsArray);
+
+    // Check if the final call is successful
+    await this.sdk.publicClient.call(finalTx);
+    if (submit) {
+      const txHash = await this.sdk.executeTransaction(finalTx);
+      console.log('Transaction hash: ', txHash);
+      return txHash;
+    } else {
+      return finalTx;
     }
   }
 }

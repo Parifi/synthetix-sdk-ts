@@ -20,7 +20,7 @@ import { OracleDataRequiredError } from '../error';
 import { IERC7412Abi } from '../contracts/abis/IERC7412';
 import { Call3Value, Result } from '../interface/contractTypes';
 import { parseError } from './parseError';
-import { SIG_FEE_REQUIRED, SIG_ORACLE_DATA_REQUIRED } from '../constants';
+import { MAX_ERC7412_RETRIES, SIG_FEE_REQUIRED, SIG_ORACLE_DATA_REQUIRED } from '../constants';
 
 /**
  * Utility class
@@ -226,6 +226,7 @@ export class Utils {
 
     const publicClient = this.sdk.getPublicClient();
 
+    let totalRetries = 0;
     while (true) {
       try {
         const multicallData = encodeFunctionData({
@@ -265,6 +266,11 @@ export class Utils {
           throw new Error('Invalid response from function call');
         }
       } catch (error) {
+        totalRetries += 1;
+        if (totalRetries > MAX_ERC7412_RETRIES) {
+          throw new Error('MAX_ERC7412_RETRIES retries reached, tx failed after multiple attempts');
+        }
+
         const parsedError = parseError(error as CallExecutionError);
 
         const isErc7412Error =
@@ -320,6 +326,7 @@ export class Utils {
     const numCalls = calls.length - numPrependedCalls;
     const publicClient = this.sdk.getPublicClient();
 
+    let totalRetries = 0;
     while (true) {
       try {
         const multicallData = encodeFunctionData({
@@ -353,6 +360,10 @@ export class Utils {
         const decodedResult = callsToDecode.map((result) => this.decodeResponse(abi, functionName, result.returnData));
         return decodedResult;
       } catch (error) {
+        totalRetries += 1;
+        if (totalRetries > MAX_ERC7412_RETRIES) {
+          throw new Error('MAX_ERC7412_RETRIES retries reached, tx failed after multiple attempts');
+        }
         const parsedError = parseError(error as CallExecutionError);
 
         const isErc7412Error =
@@ -380,27 +391,31 @@ export class Utils {
    * @returns Final transaction with ERC7412 tx data (if necessary)
    */
   public async writeErc7412(
-    contractAddress: Address,
-    abi: unknown,
-    functionName: string,
-    args: unknown[],
+    contractAddress?: Address,
+    abi?: unknown,
+    functionName?: string,
+    args?: unknown[],
     calls: Call3Value[] = [],
   ): Promise<CallParameters> {
     const multicallInstance = await this.sdk.contracts.getMulticallInstance();
 
-    const currentCall: Call3Value = {
-      target: contractAddress,
-      callData: encodeFunctionData({
-        abi: abi as Abi,
-        functionName: functionName,
-        args: args,
-      }),
-      value: 0n,
-      requireSuccess: true,
-    };
-    calls.push(currentCall);
+    if (contractAddress != undefined && functionName != undefined) {
+      const currentCall: Call3Value = {
+        target: contractAddress,
+        callData: encodeFunctionData({
+          abi: abi as Abi,
+          functionName: functionName,
+          args: args,
+        }),
+        value: 0n,
+        requireSuccess: true,
+      };
+      calls.push(currentCall);
+    }
+    
     const publicClient = this.sdk.getPublicClient();
 
+    let totalRetries = 0;
     while (true) {
       try {
         const multicallData = encodeFunctionData({
@@ -427,6 +442,11 @@ export class Utils {
         await publicClient.call(finalTx);
         return finalTx;
       } catch (error) {
+        totalRetries += 1;
+        if (totalRetries > MAX_ERC7412_RETRIES) {
+          throw new Error('MAX_ERC7412_RETRIES retries reached, tx failed after multiple attempts');
+        }
+
         const parsedError = parseError(error as CallExecutionError);
 
         const isErc7412Error =
@@ -496,6 +516,7 @@ export class Utils {
     const numCalls = calls.length - numPrependedCalls;
     const publicClient = this.sdk.getPublicClient();
 
+    let totalRetries = 0;
     while (true) {
       try {
         const multicallData = encodeFunctionData({
@@ -531,6 +552,10 @@ export class Utils {
         );
         return decodedResult;
       } catch (error) {
+        totalRetries += 1;
+        if (totalRetries > MAX_ERC7412_RETRIES) {
+          throw new Error('MAX_ERC7412_RETRIES retries reached, tx failed after multiple attempts');
+        }
         const parsedError = parseError(error as CallExecutionError);
 
         const isErc7412Error =
