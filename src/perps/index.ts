@@ -502,7 +502,7 @@ export class Perps {
     marketId: number | undefined = undefined,
     marketName: string | undefined = undefined,
   ): Promise<SettlementStrategy> {
-    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketId, marketName);
+    const { resolvedMarketId } = this.resolveMarket(marketId, marketName);
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     interface SettlementStrategyResponse {
@@ -856,8 +856,8 @@ export class Perps {
     const requiredMaintenanceMargin = requiredMarginsResponse.at(1) as bigint;
     const maxLiquidationReward = requiredMarginsResponse.at(2) as bigint;
 
-    let collateralAmountsRecord: Record<number, number> = [];
-    let debt = 0;
+    const collateralAmountsRecord: Record<number, number> = [];
+    // let debt = 0;
     if (this.isMulticollateralEnabled) {
       const fNames: string[] = []; // Function names
       const aList: unknown[] = []; // Argument list
@@ -880,7 +880,7 @@ export class Perps {
 
       // returns and array of collateral ids(uint256[] memory)
       const collateralIds = response.at(0) as bigint[];
-      debt = convertWeiToEther(response.at(1) as bigint);
+      // debt = convertWeiToEther(response.at(1) as bigint);
 
       // 'debt' function is only available for markets with Multicollateral enabled
       if (collateralIds.length != 0) {
@@ -968,12 +968,11 @@ export class Perps {
    * Fetch the balance of each collateral type for an account.
    * @param accountId The id of the account to fetch the collateral balances for. If not provided, the default account is used.
    */
-  public async getCollateralBalances(accountId: bigint | undefined = undefined) {
-    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-    if (accountId == undefined) {
-      accountId = this.defaultAccountId;
-    }
-
+  public async getCollateralBalances(_accountId: bigint | undefined = undefined) {
+    // const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    // if (accountId == undefined) {
+    // accountId = this.defaultAccountId;
+    // }
     // @todo Add function in spot to get market ids
   }
 
@@ -1507,14 +1506,8 @@ export class Perps {
     const finalTx = await this.sdk.utils.writeErc7412(undefined, undefined, undefined, undefined, callsArray);
     if (!submit) return finalTx;
 
-    // Check if the final call is successful
-    await this.sdk.publicClient.call(finalTx);
-    if (submit) {
-      const txHash = await this.sdk.executeTransaction(finalTx);
-      console.log('Transaction hash: ', txHash);
-      return { txHash: txHash, accountId: accountId };
-    } else {
-      return finalTx;
-    }
+    const txHash = await this.sdk.executeTransaction(finalTx);
+    console.log('Transaction hash: ', txHash);
+    return { txHash, accountId };
   }
 }

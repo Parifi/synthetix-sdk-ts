@@ -78,7 +78,9 @@ export class Utils {
       console.log('priceIds: ', priceIds);
 
       const stalenessTolerance = stalenessOrTime;
-      const updateData = await this.sdk.pyth.getPriceFeedsUpdateData(priceIds as Hex[]);
+      const updateData = (await this.sdk.pyth.pythConnection.getPriceFeedsUpdateData(
+        priceIds as string[],
+      )) as unknown as Address[];
 
       return encodeAbiParameters(
         [
