@@ -10,7 +10,7 @@ import {
   parseUnits,
 } from 'viem';
 import { SynthetixSdk } from '..';
-import { Side, SpotMarketData, SpotOrder } from '../spot/interface';
+import { Side, SpotMarketData, SpotOrder, SpotSettlementStrategy } from '../spot/interface';
 import { DISABLED_MARKETS, ZERO_ADDRESS } from '../constants';
 import { convertEtherToWei, convertWeiToEther, sleep } from '../utils';
 
@@ -382,21 +382,110 @@ export class Spot {
 
     return order;
   }
+
   /**
    * Fetch the settlement strategy for a spot market.
    * @param settlementStrategyId The id of the settlement strategy to retrieve.
    * @param marketId The id of the market.
    * @param marketName The name of the market.
    */
-  public async getSettlementStrategy(settlementStrategyId: number, marketId?: number, marketName?: string) {
-    const { resolvedMarketId } = this.resolveMarket(marketId, marketName);
-
+  public async getSettlementStrategy(
+    settlementStrategyId: number,
+    marketId: number | undefined = undefined,
+    marketName: string | undefined = undefined,
+  ): Promise<SpotSettlementStrategy> {
+    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketId, marketName);
     const spotProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
 
-    const res = await spotProxy.read.getSettlementStrategy([resolvedMarketId, settlementStrategyId]);
-    console.log('res', res);
+    interface SettlementStrategyResponse {
+      strategyType?: number;
+      settlementDelay?: bigint;
+      settlementWindowDuration?: bigint;
+      priceVerificationContract?: string;
+      feedId?: string;
+      url?: string;
+      settlementReward?: bigint;
+      priceDeviationTolerance?: bigint;
+      minimumUsdExchangeAmount?: bigint;
+      maxRoundingLoss?: bigint;
+      disabled?: boolean;
+    }
 
-    // @todo Check subgraph for a valid settlement strategy
+    const settlementStrategy: SettlementStrategyResponse = (await this.sdk.utils.callErc7412(
+      spotProxy.address,
+      spotProxy.abi,
+      'getSettlementStrategy',
+      [resolvedMarketId, settlementStrategyId],
+    )) as SettlementStrategyResponse;
+
+    return {
+      marketId: resolvedMarketId,
+      marketName: resolvedMarketName,
+      strategyType: settlementStrategy.strategyType,
+      settlementDelay: Number(settlementStrategy.settlementDelay),
+      settlementWindowDuration: Number(settlementStrategy.settlementWindowDuration),
+      priceVerificationContract: settlementStrategy.priceVerificationContract,
+      feedId: settlementStrategy.feedId,
+      url: settlementStrategy.url,
+      settlementReward: convertWeiToEther(settlementStrategy.settlementReward),
+      priceDeviationTolerance: convertWeiToEther(settlementStrategy.priceDeviationTolerance),
+      minimumUsdExchangeAmount: convertWeiToEther(settlementStrategy.minimumUsdExchangeAmount),
+      maxRoundingLoss: convertWeiToEther(settlementStrategy.maxRoundingLoss),
+      disabled: settlementStrategy.disabled,
+    } as SpotSettlementStrategy;
+  }
+
+  /**
+   * Fetch the settlement strategies for all spot markets.
+   * @param The id of the settlement strategy to retrieve.
+   * @param marketIds Array of marketIds to fetch settlement strategy
+   * @returns Settlement strategy array for markets
+   */
+  public async getSettlementStrategies(stragegyId: number, marketIds: number[]): Promise<SpotSettlementStrategy[]> {
+    const spotProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
+
+    interface SettlementStrategyResponse {
+      strategyType?: number;
+      settlementDelay?: bigint;
+      settlementWindowDuration?: bigint;
+      priceVerificationContract?: string;
+      feedId?: string;
+      url?: string;
+      settlementReward?: bigint;
+      priceDeviationTolerance?: bigint;
+      minimumUsdExchangeAmount?: bigint;
+      maxRoundingLoss?: bigint;
+      disabled?: boolean;
+    }
+
+    const settlementStrategies: SpotSettlementStrategy[] = [];
+
+    const argsList: [number, number][] = marketIds.map((marketId) => [marketId, stragegyId]);
+
+    const settlementStrategiesResponse: SettlementStrategyResponse[] = (await this.sdk.utils.multicallErc7412(
+      spotProxy.address,
+      spotProxy.abi,
+      'getSettlementStrategy',
+      argsList,
+    )) as SettlementStrategyResponse[];
+
+    settlementStrategiesResponse.forEach((strategy, index) => {
+      settlementStrategies.push({
+        marketId: marketIds[index],
+        strategyType: strategy.strategyType,
+        settlementDelay: Number(strategy.settlementDelay),
+        settlementWindowDuration: Number(strategy.settlementWindowDuration),
+        priceVerificationContract: strategy.priceVerificationContract,
+        feedId: strategy.feedId,
+        url: strategy.url,
+        settlementReward: convertWeiToEther(strategy.settlementReward),
+        priceDeviationTolerance: convertWeiToEther(strategy.priceDeviationTolerance),
+        minimumUsdExchangeAmount: convertWeiToEther(strategy.minimumUsdExchangeAmount),
+        maxRoundingLoss: convertWeiToEther(strategy.maxRoundingLoss),
+        disabled: strategy.disabled,
+      });
+    });
+    return settlementStrategies;
   }
 
   /**

@@ -518,7 +518,6 @@ export class Perps {
 
     return {
       marketId: resolvedMarketId,
-      marketName: resolvedMarketName,
       strategyType: settlementStrategy.strategyType,
       settlementDelay: Number(settlementStrategy.settlementDelay),
       settlementWindowDuration: Number(settlementStrategy.settlementWindowDuration),

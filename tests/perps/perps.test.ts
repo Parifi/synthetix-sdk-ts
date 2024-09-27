@@ -137,6 +137,16 @@ describe('Perps', () => {
     console.log('liquidateTx :', settleTx);
   });
 
+  it('should return max market value', async () => {
+    const ethMarketId = (await sdk.perps.marketsByName.get('Ethereum')?.marketId) ?? 100;
+
+    const maxMarketValue = await sdk.perps.getMaxMarketValues([ethMarketId]);
+    console.log(maxMarketValue);
+
+    const ethMarket = await sdk.perps.marketsByName.get('Ethereum');
+    console.log('ethMarket', ethMarket);
+  });
+
   it('should get pyth price data and prepare oracle call', async () => {
     const marketId = sdk.perps.marketsBySymbol.get('ETH')?.marketId ?? 100;
     const pythData = await sdk.perps.prepareOracleCall([marketId]);

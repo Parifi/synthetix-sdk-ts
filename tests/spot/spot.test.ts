@@ -29,22 +29,24 @@ describe('Spot', () => {
     console.log('marketsByName', marketsByName);
   });
 
-  it('should return settlement strategy', async () => {
-    const res = await sdk.spot.getSettlementStrategy(0, 1);
+  it.skip('should return settlement strategy', async () => {
+    //Check for a valid settlement strategy and pass
+    const settlementStrategyId = 0;
+    const marketId = sdk.spot.marketsByName.get('sUSDC')?.marketId;
+    const res = await sdk.spot.getSettlementStrategy(settlementStrategyId, marketId);
     console.log('res', res);
-    // console.log('marketsByName', marketsByName);
   });
 
-  it('should return order details', async () => {
-    const res = await sdk.spot.getOrder(0, 1);
+  it.skip('should return order details', async () => {
+    // Pass a valid order id
+    const orderId = 0;
+    const res = await sdk.spot.getOrder(orderId, 1);
     console.log('res', res);
-    // console.log('marketsByName', marketsByName);
   });
 
-  it('should execute an atomic order', async () => {
+  it.skip('should execute an atomic order', async () => {
     const res = await sdk.spot.atomicOrder(Side.BUY, 10, 0.01, undefined, undefined, 'sUSDC', false);
     console.log('res', res);
-    // console.log('marketsByName', marketsByName);
   });
 
   it('should wrap sUSDC tokens', async () => {

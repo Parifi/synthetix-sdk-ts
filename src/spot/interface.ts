@@ -8,23 +8,26 @@ export interface SpotOrder {
   orderType?: number;
   amountEscrowed?: number;
   settlementStrategyId?: number;
-  settlementStrategy?: SettlementStrategy;
+  settlementStrategy?: SpotSettlementStrategy;
   commitmentTime?: number;
   minimumSettlementAmount?: number;
   settledAt?: number;
   referrer?: string;
 }
 
-export interface SettlementStrategy {
+export interface SpotSettlementStrategy {
   marketId?: number;
   strategyType?: number;
   settlementDelay?: number;
   settlementWindowDuration?: number;
   priceVerificationContract?: string;
   feedId?: string;
+  url?: string;
   settlementReward?: number;
+  priceDeviationTolerance?: number;
+  minimumUsdExchangeAmount?: number;
+  maxRoundingLoss?: number;
   disabled?: boolean;
-  commitmentPriceDelay?: number;
 }
 
 export interface SpotMarketData {
@@ -33,5 +36,5 @@ export interface SpotMarketData {
   marketName?: string;
   symbol?: string;
   feedId?: string;
-  settlementStrategy?: SettlementStrategy;
+  settlementStrategy?: SpotSettlementStrategy;
 }
