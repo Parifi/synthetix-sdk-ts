@@ -377,7 +377,7 @@ export class Spot {
         Number(order.settlementStrategyId) ?? 0n,
         resolvedMarketId,
       );
-      // order.settlementStrategy = settlementStrategy;
+      order.settlementStrategy = settlementStrategy;
     }
 
     return order;
@@ -437,7 +437,7 @@ export class Spot {
 
   /**
    * Fetch the settlement strategies for all spot markets.
-   * @param The id of the settlement strategy to retrieve.
+   * @param stragegyId The id of the settlement strategy to retrieve.
    * @param marketIds Array of marketIds to fetch settlement strategy
    * @returns Settlement strategy array for markets
    */

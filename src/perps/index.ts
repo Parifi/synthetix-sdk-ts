@@ -143,7 +143,7 @@ export class Perps {
    * of ERC-7412 calls. If no market names are provided, all markets are fetched. This is useful for
    * read functions since the user does not pay gas for those oracle calls, and reduces RPC calls and
    * runtime.
-   * @param marketNames An array of market names to fetch prices for. If not provided, all markets are fetched
+   * @param marketIds An array of market ids to fetch prices for. If not provided, all markets are fetched
    */
   public async prepareOracleCall(marketIds: number[] = []): Promise<Call3Value[]> {
     let marketSymbols: string[] = [];
