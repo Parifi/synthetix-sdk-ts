@@ -57,6 +57,6 @@
     "@synthetixio/v3-contracts": "^6.9.0",
     "axios": "^1.7.5",
     "dotenv": "^16.4.5",
-    "viem": "^2.20.1"
+    "viem": "2.14.1"
   }
 }

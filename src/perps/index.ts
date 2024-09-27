@@ -1,14 +1,11 @@
 import {
-  Address,
   CallParameters,
   encodeAbiParameters,
   encodeFunctionData,
   formatEther,
-  formatUnits,
   getAbiItem,
   Hex,
   parseEther,
-  parseUnits,
 } from 'viem';
 import { SynthetixSdk } from '..';
 import { DISABLED_MARKETS, ZERO_ADDRESS } from '../constants';
@@ -177,7 +174,7 @@ export class Perps {
     }
 
     const stalenessTolerance = 30n; // 30 seconds
-    let updateData = await this.sdk.pyth.getPriceFeedsUpdateData(priceFeedIds as Hex[]);
+    const updateData = await this.sdk.pyth.getPriceFeedsUpdateData(priceFeedIds as Hex[]);
 
     const signedRequiredData = encodeAbiParameters(
       [
@@ -190,7 +187,7 @@ export class Perps {
     );
 
     const pythWrapper = await this.sdk.contracts.getPythErc7412WrapperInstance();
-    const dataVerificationTx = await this.sdk.utils.generateDataVerificationTx(pythWrapper.address, signedRequiredData);
+    const dataVerificationTx = this.sdk.utils.generateDataVerificationTx(pythWrapper.address, signedRequiredData);
 
     // set `requireSuccess` to false in this case, since sometimes
     // the wrapper will return an error if the price has already been updated
@@ -678,9 +675,9 @@ export class Perps {
    * @param marketId The id of the market to submit the order to. If not provided, `marketName` must be provided
    * @param marketName The name of the market to submit the order to. If not provided, `marketId` must be provided.
    * @param accountId The id of the account to submit the order for. Defaults to `defaultAccountId`.
-   * @param desiredFillPrice The max price for longs and minimum price for shorts. If not provided, 
+   * @param desiredFillPrice The max price for longs and minimum price for shorts. If not provided,
    * one will be calculated based on `maxPriceImpact`
-   * @param maxPriceImpact The maximum price impact to allow when filling the order as a percentage (1.0 = 1%). 
+   * @param maxPriceImpact The maximum price impact to allow when filling the order as a percentage (1.0 = 1%).
    * If not provided, it will inherit the default value from `snx.max_price_impact`
    * @param submit If ``true``, submit the transaction to the blockchain
    */
@@ -1407,20 +1404,20 @@ export class Perps {
    * The function is used to create an isolated order (position) for a user. The isolated order creation
    * process involves 3 steps: new account creation, collateral deposit and order creation (commitOrder)
    * The function returns the tx hash and new account id when `submit` is true, else returns the final
-   * encoded transaction object 
-   * @param collateralAmount The amount of collateral to be deposited to new account 
+   * encoded transaction object
+   * @param collateralAmount The amount of collateral to be deposited to new account
    * @param collateralMarketId Market ID of the collateral token
    * @param size Formatted Order size
    * @param marketId Id of the market for which order is to be created
    * @param marketName Name of the market for which order is to be created
    * @param settlementStrategyId Strategy ID for settlement
    * @param accountId Preferred account ID. If not provided, a random account id is generated an used
-   * @param desiredFillPrice The max price for longs and minimum price for shorts. If not provided, 
+   * @param desiredFillPrice The max price for longs and minimum price for shorts. If not provided,
    * one will be calculated based on `maxPriceImpact`
-   * @param maxPriceImpact The maximum price impact to allow when filling the order as a percentage (1.0 = 1%). 
+   * @param maxPriceImpact The maximum price impact to allow when filling the order as a percentage (1.0 = 1%).
    * @param submit Execute the order if true, else return the transaction object
    * @returns The tx hash and isolated order account id when `submit` is true, else returns the final
-   * encoded transaction object 
+   * encoded transaction object
    */
   public async createIsolatedAccountOrder(
     collateralAmount: number,
@@ -1508,6 +1505,7 @@ export class Perps {
 
     const callsArray: Call3Value[] = oracleCalls.concat([createAccountCall, modifyCollateralCall, commitOrderCall]);
     const finalTx = await this.sdk.utils.writeErc7412(undefined, undefined, undefined, undefined, callsArray);
+    if (!submit) return finalTx;
 
     // Check if the final call is successful
     await this.sdk.publicClient.call(finalTx);

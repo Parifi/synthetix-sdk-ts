@@ -5,7 +5,6 @@ import {
   Address,
   CallExecutionError,
   CallParameters,
-  ContractFunctionParameters,
   decodeAbiParameters,
   decodeErrorResult,
   decodeFunctionResult,
@@ -15,8 +14,6 @@ import {
   parseAbiParameters,
 } from 'viem';
 import { SynthetixSdk } from '..';
-import { dynamicImportAbi } from '../contracts/helpers';
-import { OracleDataRequiredError } from '../error';
 import { IERC7412Abi } from '../contracts/abis/IERC7412';
 import { Call3Value, Result } from '../interface/contractTypes';
 import { parseError } from './parseError';
@@ -131,6 +128,7 @@ export class Utils {
    * @returns call array with ERC7412 fulfillOracleQuery transaction
    */
   public async handleErc7412Error(error: unknown, calls: Call3Value[]): Promise<Call3Value[]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let err: any;
 
     try {
@@ -408,6 +406,7 @@ export class Utils {
     const publicClient = this.sdk.getPublicClient();
 
     let totalRetries = 0;
+    let finalTx: CallParameters | undefined;
     while (true) {
       try {
         const multicallData = encodeFunctionData({
@@ -421,7 +420,7 @@ export class Utils {
           totalValue += tx.value || 0n;
         }
 
-        const finalTx: CallParameters = {
+        finalTx = {
           account: this.sdk.accountAddress,
           to: multicallInstance.address,
           data: multicallData,
@@ -447,13 +446,14 @@ export class Utils {
           console.log('Error details: ', error);
           console.log('Parsed Error details: ', parsedError);
           try {
-            let err = decodeErrorResult({
-              abi: abi as Abi,
-              data: parsedError,
-            });
+            // let err = decodeErrorResult({
+            // abi: abi as Abi,
+            // data: parsedError,
+            // });
             // console.log('Decoded error:', err);
             throw new Error('Error is not related to Oracle data');
           } catch (e) {
+            if (finalTx) return finalTx;
             console.log('Error is not related to Oracle data');
             throw e;
           }
