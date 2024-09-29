@@ -1,13 +1,15 @@
-import { CallParameters, formatEther, Hex, parseUnits, SendTransactionParameters } from 'viem';
+import { Address, CallParameters, formatEther, Hex, parseUnits } from 'viem';
 import { SynthetixSdk } from '..';
 import { ZERO_ADDRESS } from '../constants/common';
+import { CoreRepository } from '../interface/Core';
+import { OverrideParamsWrite } from '../interface/commonTypes';
 
 /**
  * Class for interacting with Synthetix V3 core contracts
  * @remarks
  *
  */
-export class Core {
+export class Core implements CoreRepository {
   sdk: SynthetixSdk;
   defaultAccountId?: bigint;
   accountIds: bigint[];
@@ -53,11 +55,14 @@ export class Core {
    * @returns A list of account IDs owned by the address
    */
 
-  public async getAccountIds(
-    address: string | undefined = undefined,
-    defaultAccountId: bigint | undefined = undefined,
-  ): Promise<bigint[]> {
-    const accountAddress: string = address !== undefined ? address : this.sdk.accountAddress || ZERO_ADDRESS;
+  public async getAccountIds({
+    address: accountAddress = this.sdk.accountAddress || ZERO_ADDRESS,
+    accountId: defaultAccountId = undefined,
+  }: {
+    address?: string;
+    accountId?: bigint;
+  } = {}): Promise<bigint[]> {
+    // const accountAddress: string = address !== undefined ? address : this.sdk.accountAddress || ZERO_ADDRESS;
     if (accountAddress == ZERO_ADDRESS) {
       throw new Error('Invalid address');
     }
@@ -100,15 +105,13 @@ export class Core {
    * @param accountId The ID of the account to check. Uses default if not provided.
    * @returns The available collateral as an ether value.
    */
-  public async getAvailableCollateral(
-    tokenAddress: string,
-    accountId: bigint | undefined = undefined,
-  ): Promise<string> {
-    if (accountId == undefined) {
-      console.log('Using default account ID value :', this.defaultAccountId);
-      accountId = this.defaultAccountId;
-    }
-
+  public async getAvailableCollateral({
+    tokenAddress,
+    accountId = this.defaultAccountId,
+  }: {
+    tokenAddress: Address;
+    accountId?: bigint;
+  }): Promise<string> {
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
 
     const availableCollateral = await this.sdk.utils.callErc7412(
@@ -118,7 +121,6 @@ export class Core {
       [accountId, tokenAddress],
     );
 
-    console.log(availableCollateral);
     return formatEther(availableCollateral as bigint);
   }
 
@@ -135,7 +137,10 @@ export class Core {
     return preferredPool as bigint;
   }
 
-  public async createAccount(accountId: bigint | undefined = undefined, submit: boolean = false) {
+  public async createAccount(
+    accountId?: bigint,
+    override: OverrideParamsWrite = { submit: false, shouldRevertOnTxFailure: false },
+  ) {
     const txArgs = [];
     if (accountId != undefined) {
       txArgs.push(accountId);
@@ -143,43 +148,51 @@ export class Core {
 
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
     const tx: CallParameters = await this.sdk.utils.writeErc7412(
-      coreProxy.address,
-      coreProxy.abi,
-      'createAccount',
-      txArgs,
+      {
+        contractAddress: coreProxy.address,
+        abi: coreProxy.abi,
+        functionName: 'createAccount',
+        args: txArgs,
+      },
+      override,
     );
 
-    if (submit) {
-      const txHash = await this.sdk.executeTransaction(tx);
-      console.log('Transaction hash: ', txHash);
-      await this.getAccountIds();
-      return txHash;
-    } else {
-      return tx;
-    }
+    if (!override.submit) return tx;
+
+    const txHash = await this.sdk.executeTransaction(tx);
+    console.log('Transaction hash: ', txHash);
+    await this.getAccountIds();
+    return txHash;
   }
 
   public async deposit(
-    tokenAddress: string,
-    amount: number,
-    decimals: number = 18,
-    accountId: bigint | undefined = undefined,
-    submit: boolean = false,
+    {
+      tokenAddress,
+      amount,
+      decimals = 18,
+      accountId = this.defaultAccountId,
+    }: {
+      tokenAddress: string;
+      amount: number;
+      decimals: number;
+      accountId?: bigint;
+    },
+    override: OverrideParamsWrite = { submit: false, shouldRevertOnTxFailure: false },
   ) {
-    if (accountId == undefined) {
-      accountId = this.defaultAccountId;
-    }
-
     const amountInWei = parseUnits(amount.toString(), decimals);
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
 
-    const tx: CallParameters = await this.sdk.utils.writeErc7412(coreProxy.address, coreProxy.abi, 'deposit', [
-      accountId,
-      tokenAddress,
-      amountInWei,
-    ]);
+    const tx: CallParameters = await this.sdk.utils.writeErc7412(
+      {
+        contractAddress: coreProxy.address,
+        abi: coreProxy.abi,
+        functionName: 'deposit',
+        args: [accountId, tokenAddress, amountInWei],
+      },
+      override,
+    );
 
-    if (submit) {
+    if (override.submit) {
       const txHash = await this.sdk.executeTransaction(tx);
       console.log('Deposit tx hash', txHash);
       return txHash;
@@ -189,11 +202,18 @@ export class Core {
   }
 
   public async withdraw(
-    tokenAddress: string,
-    amount: number,
-    decimals: number = 18,
-    accountId: bigint | undefined = undefined,
-    submit: boolean = false,
+    {
+      tokenAddress,
+      amount,
+      decimals = 18,
+      accountId = this.defaultAccountId,
+    }: {
+      tokenAddress: string;
+      amount: number;
+      decimals: number;
+      accountId?: bigint;
+    },
+    override: OverrideParamsWrite = { submit: false, shouldRevertOnTxFailure: false },
   ) {
     if (accountId == undefined) {
       accountId = this.defaultAccountId;
@@ -202,13 +222,17 @@ export class Core {
     const amountInWei = parseUnits(amount.toString(), decimals);
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
 
-    const tx: CallParameters = await this.sdk.utils.writeErc7412(coreProxy.address, coreProxy.abi, 'withdraw', [
-      accountId,
-      tokenAddress,
-      amountInWei,
-    ]);
+    const tx: CallParameters = await this.sdk.utils.writeErc7412(
+      {
+        contractAddress: coreProxy.address,
+        abi: coreProxy.abi,
+        functionName: 'withdraw',
+        args: [accountId, tokenAddress, amountInWei],
+      },
+      override,
+    );
 
-    if (submit) {
+    if (override.submit) {
       console.log(`Withdrawing ${amount} ${tokenAddress} from account ${accountId}`);
       const txHash = await this.sdk.executeTransaction(tx);
       console.log('Withdraw tx hash', txHash);
@@ -219,68 +243,77 @@ export class Core {
   }
 
   public async delegateCollateral(
-    tokenAddress: string,
-    amount: number,
-    poolId: bigint,
-    leverage: number,
-    accountId: bigint | undefined = undefined,
-    submit: boolean = false,
+    {
+      tokenAddress,
+      amount,
+      poolId,
+      leverage,
+      accountId = this.defaultAccountId,
+    }: {
+      tokenAddress: string;
+      amount: number;
+      poolId: bigint;
+      leverage: number;
+      accountId?: bigint;
+    },
+    override: OverrideParamsWrite = { submit: false, shouldRevertOnTxFailure: false },
   ) {
-    if (accountId == undefined) {
-      accountId = this.defaultAccountId;
-    }
-
     const amountInWei = parseUnits(amount.toString(), 18);
     const leverageInWei = parseUnits(leverage.toString(), 18);
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
 
     const tx: CallParameters = await this.sdk.utils.writeErc7412(
-      coreProxy.address,
-      coreProxy.abi,
-      'delegateCollateral',
-      [accountId, poolId, tokenAddress, amountInWei, leverageInWei],
+      {
+        contractAddress: coreProxy.address,
+        abi: coreProxy.abi,
+        functionName: 'delegateCollateral',
+        args: [accountId, poolId, tokenAddress, amountInWei, leverageInWei],
+      },
+      override,
     );
 
-    if (submit) {
-      console.log(`Delegating ${amount} ${tokenAddress} to pool id ${poolId} for account ${accountId}`);
-      const txHash = await this.sdk.executeTransaction(tx);
-      console.log('Delegate tx hash', txHash);
-      return txHash;
-    } else {
-      return tx;
-    }
+    if (!override.submit) return tx;
+
+    console.log(`Delegating ${amount} ${tokenAddress} to pool id ${poolId} for account ${accountId}`);
+    const txHash = await this.sdk.executeTransaction(tx);
+    console.log('Delegate tx hash', txHash);
+
+    return txHash;
   }
 
   public async mintUsd(
-    tokenAddress: string,
-    amount: number,
-    poolId: bigint,
-    accountId: bigint | undefined = undefined,
-    submit: boolean = false,
+    {
+      tokenAddress,
+      amount,
+      poolId,
+      accountId = this.defaultAccountId,
+    }: {
+      tokenAddress: Address;
+      amount: number;
+      poolId: bigint;
+      accountId?: bigint;
+    },
+    override: OverrideParamsWrite = { submit: false, shouldRevertOnTxFailure: false },
   ) {
-    if (accountId == undefined) {
-      accountId = this.defaultAccountId;
-    }
-
     const amountInWei = parseUnits(amount.toString(), 18);
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
 
-    const tx: CallParameters = await this.sdk.utils.writeErc7412(coreProxy.address, coreProxy.abi, 'mintUsd', [
-      accountId,
-      poolId,
-      tokenAddress,
-      amountInWei,
-    ]);
+    const tx: CallParameters = await this.sdk.utils.writeErc7412(
+      {
+        contractAddress: coreProxy.address,
+        abi: coreProxy.abi,
+        functionName: 'mintUsd',
+        args: [accountId, poolId, tokenAddress, amountInWei],
+      },
+      override,
+    );
 
-    if (submit) {
-      console.log(
-        `Minting ${amount} sUSD with ${tokenAddress} collateral against pool id ${poolId} for account ${accountId}`,
-      );
-      const txHash = await this.sdk.executeTransaction(tx);
-      console.log('Mint tx hash', txHash);
-      return txHash;
-    } else {
-      return tx;
-    }
+    if (!override.submit) return tx;
+    console.log(
+      `Minting ${amount} sUSD with ${tokenAddress} collateral against pool id ${poolId} for account ${accountId}`,
+    );
+    const txHash = await this.sdk.executeTransaction(tx);
+    console.log('Mint tx hash', txHash);
+    return txHash;
   }
 }

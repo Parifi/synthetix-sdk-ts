@@ -18,7 +18,7 @@ import { IERC7412Abi } from '../contracts/abis/IERC7412';
 import { Call3Value, Result } from '../interface/contractTypes';
 import { parseError } from './parseError';
 import { MAX_ERC7412_RETRIES, SIG_FEE_REQUIRED, SIG_ORACLE_DATA_REQUIRED } from '../constants';
-
+import { OverrideParamsWrite, WriteContractParams, WriteErc7412 } from '../interface/commonTypes';
 /**
  * Utility class
  *
@@ -149,7 +149,7 @@ export class Utils {
       const oracleQuery = err.args![1] as Hex;
 
       const signedRequiredData = await this.fetchOracleUpdateData(oracleQuery);
-      const dataVerificationTx = await this.generateDataVerificationTx(oracleAddress, signedRequiredData);
+      const dataVerificationTx = this.generateDataVerificationTx(oracleAddress, signedRequiredData);
       calls.unshift(dataVerificationTx);
       return calls;
     } else if (err.errorName === 'FeeRequired') {
@@ -371,6 +371,9 @@ export class Utils {
       }
     }
   }
+  protected isWriteContractParams(data: WriteErc7412): data is WriteContractParams {
+    return (data as WriteContractParams).contractAddress !== undefined;
+  }
 
   /**
    * Simulates the `functionName` on `contractAddress` target using the Multicall contract and returns the
@@ -383,15 +386,17 @@ export class Utils {
    * @returns Final transaction with ERC7412 tx data (if necessary)
    */
   public async writeErc7412(
-    contractAddress?: Address,
-    abi?: unknown,
-    functionName?: string,
-    args?: unknown[],
-    calls: Call3Value[] = [],
+    data: WriteErc7412,
+    override: OverrideParamsWrite = {
+      shouldRevertOnTxFailure: true,
+      submit: false,
+    },
   ): Promise<CallParameters> {
+    let calls: Call3Value[] = data.calls ?? [];
     const multicallInstance = await this.sdk.contracts.getMulticallInstance();
 
-    if (contractAddress != undefined && functionName != undefined) {
+    if (this.isWriteContractParams(data)) {
+      const { contractAddress, abi, functionName, args } = data as WriteContractParams;
       const currentCall: Call3Value = {
         target: contractAddress,
         callData: encodeFunctionData({
@@ -455,7 +460,7 @@ export class Utils {
             // console.log('Decoded error:', err);
             throw new Error('Error is not related to Oracle data');
           } catch (e) {
-            if (finalTx) return finalTx;
+            if (finalTx && !override.shouldRevertOnTxFailure) return finalTx;
             console.log('Error is not related to Oracle data');
             throw e;
           }

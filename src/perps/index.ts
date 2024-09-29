@@ -24,6 +24,8 @@ import {
 } from './interface';
 import { convertEtherToWei, convertWeiToEther, generateRandomAccountId, sleep } from '../utils';
 import { Call3Value } from '../interface/contractTypes';
+import { CreateIsolateOrder } from '../interface/perps';
+import { OverrideParamsWrite } from '../interface/commonTypes';
 
 /**
  * Class for interacting with Synthetix Perps V3 contracts
@@ -262,12 +264,12 @@ export class Perps {
 
     // const perpsAccountProxy = await this.sdk.contracts.getPerpsAccountProxyInstance();
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-    const tx: CallParameters = await this.sdk.utils.writeErc7412(
-      perpsMarketProxy.address,
-      perpsMarketProxy.abi,
-      'createAccount',
-      txArgs,
-    );
+    const tx: CallParameters = await this.sdk.utils.writeErc7412({
+      contractAddress: perpsMarketProxy.address,
+      abi: perpsMarketProxy.abi,
+      functionName: 'createAccount',
+      args: txArgs,
+    });
 
     if (submit) {
       const txHash = await this.sdk.executeTransaction(tx);
@@ -725,14 +727,14 @@ export class Perps {
       this.sdk.referrer,
     ];
 
-    console.log('txArgs', txArgs);
-    const tx = await this.sdk.utils.writeErc7412(
-      perpsMarketProxy.address,
-      perpsMarketProxy.abi,
-      'commitOrder',
-      [txArgs],
-      oracleCalls,
-    );
+    const tx = await this.sdk.utils.writeErc7412({
+      contractAddress: perpsMarketProxy.address,
+      abi: perpsMarketProxy.abi,
+      functionName: 'commitOrder',
+      args: [txArgs],
+      calls: oracleCalls,
+    });
+
     if (submit) {
       console.log(
         `Committing order size ${sizeInWei} (${size}) to ${marketName} (id: ${resolvedMarketId}) for account ${accountId}`,
@@ -948,11 +950,17 @@ export class Perps {
       accountId = this.defaultAccountId;
     }
 
-    const tx = await this.sdk.utils.writeErc7412(marketProxy.address, marketProxy.abi, 'modifyCollateral', [
-      accountId,
-      resolvedMarketId,
-      this.sdk.spot.formatSize(amount, resolvedMarketId),
-    ]);
+    // const tx = await this.sdk.utils.writeErc7412(marketProxy.address, marketProxy.abi, 'modifyCollateral', [
+    // accountId,
+    // resolvedMarketId,
+    // this.sdk.spot.formatSize(amount, resolvedMarketId),
+    // // ]);
+    const tx = await this.sdk.utils.writeErc7412({
+      contractAddress: marketProxy.address,
+      abi: marketProxy.abi,
+      functionName: 'modifyCollateral',
+      args: [accountId, resolvedMarketId, this.sdk.spot.formatSize(amount, resolvedMarketId)],
+    });
 
     if (submit) {
       const txHash = await this.sdk.executeTransaction(tx);
@@ -973,7 +981,6 @@ export class Perps {
     // if (accountId == undefined) {
     // accountId = this.defaultAccountId;
     // }
-    // @todo Add function in spot to get market ids
   }
 
   /**
@@ -1265,10 +1272,12 @@ export class Perps {
       // amount = await this.getDebt(accountId);
       amount = 0;
     }
-    const tx = await this.sdk.utils.writeErc7412(marketProxy.address, marketProxy.abi, 'payDebt', [
-      accountId,
-      convertEtherToWei(amount),
-    ]);
+    const tx = await this.sdk.utils.writeErc7412({
+      contractAddress: marketProxy.address,
+      abi: marketProxy.abi,
+      functionName: 'payDebt',
+      args: [accountId, convertEtherToWei(amount)],
+    });
 
     if (submit) {
       console.log(`Repaying debt of ${amount} for account ${accountId}`);
@@ -1310,7 +1319,12 @@ export class Perps {
       ])) as bigint;
       return convertWeiToEther(liquidationReward);
     } else {
-      const tx = await this.sdk.utils.writeErc7412(marketProxy.address, marketProxy.abi, 'liquidate', [accountId]);
+      const tx = await this.sdk.utils.writeErc7412({
+        contractAddress: marketProxy.address,
+        abi: marketProxy.abi,
+        functionName: 'liquidate',
+        args: [accountId],
+      });
       if (submit) {
         console.log('Liquidating account :', accountId);
         const txHash = await this.sdk.executeTransaction(tx);
@@ -1366,7 +1380,12 @@ export class Perps {
     let tx;
     while (totalTries < maxTxTries) {
       try {
-        tx = await this.sdk.utils.writeErc7412(marketProxy.address, marketProxy.abi, 'settleOrder', [accountId]);
+        tx = await this.sdk.utils.writeErc7412({
+          contractAddress: marketProxy.address,
+          abi: marketProxy.abi,
+          functionName: 'settleOrder',
+          args: [accountId],
+        });
       } catch (error) {
         console.log('Settle order error: ', error);
         totalTries += 1;
@@ -1419,17 +1438,22 @@ export class Perps {
    * encoded transaction object
    */
   public async createIsolatedAccountOrder(
-    collateralAmount: number,
-    collateralMarketId: number,
-    size: number,
-    marketId?: number,
-    marketName?: string,
-    settlementStrategyId: number = 0,
-    accountId?: bigint,
-    desiredFillPrice?: number,
-    maxPriceImpact?: number,
-    submit: boolean = false,
-  ): Promise<{ txHash: string; accountId: bigint } | CallParameters> {
+    {
+      collateralAmount,
+      collateralMarketId,
+      size,
+      marketId,
+      marketName,
+      settlementStrategyId = 0,
+      accountId,
+      desiredFillPrice,
+      maxPriceImpact,
+    }: CreateIsolateOrder,
+    override: OverrideParamsWrite = {
+      shouldRevertOnTxFailure: true,
+      submit: false,
+    },
+  ) {
     if (accountId == undefined) {
       accountId = generateRandomAccountId();
     }
@@ -1503,8 +1527,8 @@ export class Perps {
     };
 
     const callsArray: Call3Value[] = oracleCalls.concat([createAccountCall, modifyCollateralCall, commitOrderCall]);
-    const finalTx = await this.sdk.utils.writeErc7412(undefined, undefined, undefined, undefined, callsArray);
-    if (!submit) return finalTx;
+    const finalTx = await this.sdk.utils.writeErc7412({ calls: callsArray }, override);
+    if (!override.submit) return finalTx;
 
     const txHash = await this.sdk.executeTransaction(finalTx);
     console.log('Transaction hash: ', txHash);

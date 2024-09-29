@@ -20,6 +20,7 @@
     "build": "tsup ./src",
     "prepare": "npm run build",
     "test": "jest",
+    "lint": "eslint . --ext .ts",
     "docs": "typedoc"
   },
   "repository": {

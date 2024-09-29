@@ -346,6 +346,17 @@ export class Spot {
         args: [targetAddress as Hex, amountInWei],
       }),
     };
+    // =======
+    //   public async wrap(size: string, marketId: number, submit: boolean) {
+    //     const sizeInWei = parseUnits(size.toString(), 6);
+    //     const spotMarketProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
+    //     const tx: CallParameters = await this.sdk.utils.writeErc7412({
+    //       contractAddress: spotMarketProxy.address,
+    //       abi: spotMarketProxy.abi,
+    //       functionName: 'wrap',
+    //       args: [marketId, sizeInWei, sizeInWei],
+    //     });
+    // >>>>>>> 5c2a267 (first refactor)
 
     if (submit) {
       console.log(`Approving ${targetAddress} to spend ${amount}`);
@@ -571,7 +582,12 @@ export class Spot {
 
     const functionName = side == Side.BUY ? 'buy' : 'sell';
     const args = [resolvedMarketId, sizeInWei, minAmountReceivedInWei, this.sdk.referrer];
-    const tx = await this.sdk.utils.writeErc7412(spotMarketProxy.address, spotMarketProxy.abi, functionName, args);
+    const tx = await this.sdk.utils.writeErc7412({
+      contractAddress: spotMarketProxy.address,
+      abi: spotMarketProxy.abi,
+      functionName,
+      args,
+    });
 
     if (submit) {
       console.log(
@@ -605,12 +621,12 @@ export class Spot {
     const sizeInWei = this.formatSize(Math.abs(size), resolvedMarketId);
     const functionName = size > 0 ? 'wrap' : 'unwrap';
 
-    const tx: CallParameters = await this.sdk.utils.writeErc7412(
-      spotMarketProxy.address,
-      spotMarketProxy.abi,
+    const tx: CallParameters = await this.sdk.utils.writeErc7412({
+      contractAddress: spotMarketProxy.address,
+      abi: spotMarketProxy.abi,
       functionName,
-      [resolvedMarketId, sizeInWei, sizeInWei],
-    );
+      args: [resolvedMarketId, sizeInWei, sizeInWei],
+    });
 
     if (submit) {
       console.log(`${functionName} of size ${sizeInWei} (${size}) to ${marketName} (id: ${marketId})`);
@@ -682,7 +698,12 @@ export class Spot {
       minAmountReceivedInWei,
       this.sdk.referrer,
     ];
-    const tx = await this.sdk.utils.writeErc7412(spotMarketProxy.address, spotMarketProxy.abi, 'commitOrder', args);
+    const tx = await this.sdk.utils.writeErc7412({
+      contractAddress: spotMarketProxy.address,
+      abi: spotMarketProxy.abi,
+      functionName: 'commitOrder',
+      args,
+    });
 
     if (submit) {
       console.log(
@@ -745,10 +766,12 @@ export class Spot {
     let tx;
     while (totalTries < maxTxTries) {
       try {
-        tx = await this.sdk.utils.writeErc7412(spotMarketProxy.address, spotMarketProxy.abi, 'settleOrder', [
-          resolvedMarketId,
-          asyncOrderId,
-        ]);
+        tx = await this.sdk.utils.writeErc7412({
+          contractAddress: spotMarketProxy.address,
+          abi: spotMarketProxy.abi,
+          functionName: 'settleOrder',
+          args: [resolvedMarketId, asyncOrderId],
+        });
       } catch (error) {
         console.log('Settle order error: ', error);
         totalTries += 1;
