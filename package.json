@@ -53,7 +53,7 @@
     "typescript-eslint": "^8.2.0"
   },
   "dependencies": {
-    "@pythnetwork/pyth-evm-js": "^1.66.0",
+    "@pythnetwork/pyth-evm-js": "^1.68.0",
     "@synthetixio/v3-contracts": "^6.9.0",
     "axios": "^1.7.5",
     "dotenv": "^16.4.5",
