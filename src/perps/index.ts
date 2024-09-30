@@ -11,7 +11,7 @@ import {
   parseUnits,
 } from 'viem';
 import { SynthetixSdk } from '..';
-import { ZERO_ADDRESS } from '../constants';
+import { DISABLED_MARKETS, ZERO_ADDRESS } from '../constants';
 import {
   CollateralData,
   FundingParameters,
@@ -65,6 +65,7 @@ export class Perps {
   isErc7412Enabled: boolean = true;
   // Set multicollateral to false by default
   isMulticollateralEnabled: boolean = false;
+  disabledMarkets: number[] = [];
 
   constructor(synthetixSdk: SynthetixSdk) {
     this.sdk = synthetixSdk;
@@ -75,6 +76,11 @@ export class Perps {
     this.marketsById = new Map<number, MarketData>();
     this.marketsByName = new Map<string, MarketData>();
     this.marketsBySymbol = new Map<string, MarketData>();
+
+    // Set disabled markets
+    if (synthetixSdk.rpcConfig.chainId in DISABLED_MARKETS) {
+      this.disabledMarkets = DISABLED_MARKETS[synthetixSdk.rpcConfig.chainId];
+    }
   }
 
   async initPerps() {
@@ -190,8 +196,8 @@ export class Perps {
     // the wrapper will return an error if the price has already been updated
     dataVerificationTx.requireSuccess = false;
 
-    // @todo Fetch the priceUpdateFee for tx dynamically from the contract
-    // instead of using arbitrary values for pyth price update fees
+    // @note A better approach would be to fetch the priceUpdateFee for tx dynamically
+    // from the Pyth contract instead of using arbitrary values for pyth price update fees
     dataVerificationTx.value = 500n;
     return [dataVerificationTx];
   }
@@ -328,36 +334,38 @@ export class Perps {
     const maxMarketValues = await this.getMaxMarketValues(marketIds);
 
     marketIds.forEach((marketId) => {
-      const marketSummary = marketSummaries.find((summary) => summary.marketId == marketId);
-      const fundingParam = fundingParameters.find((fundingParam) => fundingParam.marketId == marketId);
-      const orderFee = orderFees.find((orderFee) => orderFee.marketId == marketId);
-      const maxMarketValue = maxMarketValues.find((maxMarketValue) => maxMarketValue.marketId == marketId);
+      if (!this.disabledMarkets.includes(marketId)) {
+        const marketSummary = marketSummaries.find((summary) => summary.marketId == marketId);
+        const fundingParam = fundingParameters.find((fundingParam) => fundingParam.marketId == marketId);
+        const orderFee = orderFees.find((orderFee) => orderFee.marketId == marketId);
+        const maxMarketValue = maxMarketValues.find((maxMarketValue) => maxMarketValue.marketId == marketId);
 
-      const marketName = this.marketMetadata.get(marketId)?.marketName ?? '0x';
-      const marketSymbol = this.marketMetadata.get(marketId)?.symbol ?? 'INVALID';
+        const marketName = this.marketMetadata.get(marketId)?.marketName ?? '0x';
+        const marketSymbol = this.marketMetadata.get(marketId)?.symbol ?? 'INVALID';
 
-      const marketData = {
-        marketId: marketId,
-        marketName: marketName,
-        symbol: marketSymbol,
-        feedId: this.marketMetadata.get(marketId)?.feedId,
-        skew: marketSummary?.skew,
-        size: marketSummary?.size,
-        maxOpenInterest: marketSummary?.maxOpenInterest,
-        interestRate: marketSummary?.interestRate,
-        currentFundingRate: marketSummary?.currentFundingRate,
-        currentFundingVelocity: marketSummary?.currentFundingVelocity,
-        indexPrice: marketSummary?.indexPrice,
-        skewScale: fundingParam?.skewScale,
-        maxFundingVelocity: fundingParam?.maxFundingVelocity,
-        makerFee: orderFee?.makerFeeRatio,
-        takerFee: orderFee?.takerFeeRatio,
-        maxMarketValue: maxMarketValue?.maxMarketValue,
-      };
+        const marketData = {
+          marketId: marketId,
+          marketName: marketName,
+          symbol: marketSymbol,
+          feedId: this.marketMetadata.get(marketId)?.feedId,
+          skew: marketSummary?.skew,
+          size: marketSummary?.size,
+          maxOpenInterest: marketSummary?.maxOpenInterest,
+          interestRate: marketSummary?.interestRate,
+          currentFundingRate: marketSummary?.currentFundingRate,
+          currentFundingVelocity: marketSummary?.currentFundingVelocity,
+          indexPrice: marketSummary?.indexPrice,
+          skewScale: fundingParam?.skewScale,
+          maxFundingVelocity: fundingParam?.maxFundingVelocity,
+          makerFee: orderFee?.makerFeeRatio,
+          takerFee: orderFee?.takerFeeRatio,
+          maxMarketValue: maxMarketValue?.maxMarketValue,
+        };
 
-      this.marketsById.set(marketId, marketData);
-      this.marketsByName.set(marketName, marketData);
-      this.marketsBySymbol.set(marketSymbol, marketData);
+        this.marketsById.set(marketId, marketData);
+        this.marketsByName.set(marketName, marketData);
+        this.marketsBySymbol.set(marketSymbol, marketData);
+      }
     });
 
     return { marketsById: this.marketsById, marketsByName: this.marketsByName };

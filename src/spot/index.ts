@@ -199,9 +199,11 @@ export class Spot {
       }
     }
 
-    // @todo Add settlement strategies
+    let settlementStrategies: SpotSettlementStrategy[];
     if (this.asyncOrderEnabled) {
+      const marketIds = Array.from(finalSynths.keys());
       // Get settlement strategies
+      settlementStrategies = await this.getSettlementStrategies(0, marketIds);
     } else {
       console.log('Async orders not enabled on network ', this.sdk.rpcConfig.chainId);
     }
@@ -230,6 +232,10 @@ export class Spot {
 
     // Populate the final market objects
     finalSynths.forEach((synth) => {
+      if (settlementStrategies != undefined && settlementStrategies.length > 0) {
+        const strategy = settlementStrategies.find((strategy) => strategy.marketId == synth.marketId);
+        synth.settlementStrategy = strategy;
+      }
       this.marketsById.set(synth.marketId, synth);
       this.marketsByName.set(synth.marketName ?? 'INVALID', synth);
     });
