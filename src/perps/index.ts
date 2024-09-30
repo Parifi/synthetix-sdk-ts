@@ -223,23 +223,24 @@ export class Perps {
     for (let index = 0; index < Number(balance); index++) {
       argsList.push([accountAddress, index]);
     }
-    const accountIds = await this.sdk.utils.multicallErc7412(
+    const accountIds = (await this.sdk.utils.multicallErc7412(
       accountProxy.address,
       accountProxy.abi,
       'tokenOfOwnerByIndex',
       argsList,
-    );
+    )) as unknown[] as bigint[];
+
+    // Set Perps account ids
+    this.accountIds = accountIds;
 
     console.log('accountIds', accountIds);
-    this.sdk.accountIds = accountIds as bigint[];
     if (defaultAccountId) {
       this.defaultAccountId = defaultAccountId;
-    } else if (this.sdk.accountIds.length > 0) {
-      this.defaultAccountId = this.sdk.accountIds[0];
+    } else if (this.accountIds.length > 0) {
+      this.defaultAccountId = this.accountIds[0];
+      console.log('Using default account id as ', this.defaultAccountId);
     }
-    console.log('Using default account id as ', this.defaultAccountId);
-    this.accountIds = accountIds as bigint[];
-    return accountIds as bigint[];
+    return accountIds;
   }
 
   /**

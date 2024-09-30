@@ -1,8 +1,8 @@
-import { WalletClient } from 'viem';
+import { PrivateKeyAccount, WalletClient } from 'viem';
 
 export interface AccountConfig {
   address?: string;
-  walletClient?: WalletClient;
+  privateKeyAccount?: PrivateKeyAccount;
 }
 
 export interface PartnerConfig {

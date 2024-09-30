@@ -76,18 +76,19 @@ export class Core {
       accountProxy.abi,
       'tokenOfOwnerByIndex',
       argsList,
-    );
+    ) as unknown[] as bigint[];
+
+    // Set Core account ids
+    this.accountIds = accountIds;
 
     console.log('accountIds', accountIds);
-    this.sdk.accountIds = accountIds as bigint[];
     if (defaultAccountId) {
       this.defaultAccountId = defaultAccountId;
-    } else if (this.sdk.accountIds.length > 0) {
-      this.defaultAccountId = this.sdk.accountIds[0];
+    } else if (this.accountIds.length > 0) {
+      this.defaultAccountId = this.accountIds[0];
+      console.log('Using default account id as ', this.defaultAccountId);
     }
-    console.log('Using default account id as ', this.defaultAccountId);
-    this.accountIds = accountIds as bigint[];
-    return accountIds as bigint[];
+    return accountIds;
   }
 
   /**
