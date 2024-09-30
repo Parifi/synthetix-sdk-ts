@@ -1,8 +1,8 @@
-import { WalletClient } from 'viem';
+import { PrivateKeyAccount, WalletClient } from 'viem';
 
 export interface AccountConfig {
   address?: string;
-  walletClient?: WalletClient;
+  privateKeyAccount?: PrivateKeyAccount;
 }
 
 export interface PartnerConfig {
@@ -25,7 +25,7 @@ export interface RpcConfig {
 
 export interface SdkConfigParams {
   accountConfig: AccountConfig;
-  partnerConfig: PartnerConfig;
-  pythConfig: PythConfig;
+  partnerConfig?: PartnerConfig;
+  pythConfig?: PythConfig;
   rpcConfig: RpcConfig;
 }

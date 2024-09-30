@@ -199,9 +199,11 @@ export class Spot {
       }
     }
 
-    // @todo Add settlement strategies
+    let settlementStrategies: SpotSettlementStrategy[];
     if (this.asyncOrderEnabled) {
+      const marketIds = Array.from(finalSynths.keys());
       // Get settlement strategies
+      settlementStrategies = await this.getSettlementStrategies(0, marketIds);
     } else {
       console.log('Async orders not enabled on network ', this.sdk.rpcConfig.chainId);
     }
@@ -230,6 +232,10 @@ export class Spot {
 
     // Populate the final market objects
     finalSynths.forEach((synth) => {
+      if (settlementStrategies != undefined && settlementStrategies.length > 0) {
+        const strategy = settlementStrategies.find((strategy) => strategy.marketId == synth.marketId);
+        synth.settlementStrategy = strategy;
+      }
       this.marketsById.set(synth.marketId, synth);
       this.marketsByName.set(synth.marketName ?? 'INVALID', synth);
     });
@@ -534,23 +540,17 @@ export class Spot {
       const feedId =
         this.sdk.pyth.priceFeedIds.get(tokenSymbol) ??
         '0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a';
-      const publishTimestamp = Math.floor(Date.now() / 1000) - 10;
-      console.log('feedId', feedId);
-      const pythPrice = await this.sdk.pyth.pythConnection.getPriceFeed(feedId, publishTimestamp);
 
-      try {
-        let price, tradeSize;
-        const priceUnchecked = pythPrice.getPriceUnchecked();
-        price = Number(formatUnits(BigInt(priceUnchecked.price), Math.abs(priceUnchecked.expo)));
-        if (side == Side.BUY) {
-          tradeSize = size / price;
-        } else {
-          tradeSize = size * price;
-        }
-        minAmountReceived = tradeSize * (1 - slippageTolerance);
-      } catch (error) {
-        throw error;
+      const price = await this.sdk.pyth.getFormattedPrice(feedId as Hex);
+      console.log('Formatted price:', price);
+
+      let tradeSize;
+      if (side == Side.BUY) {
+        tradeSize = size / price;
+      } else {
+        tradeSize = size * price;
       }
+      minAmountReceived = tradeSize * (1 - slippageTolerance);
     }
 
     const minAmountReceivedInWei = convertEtherToWei(minAmountReceived);
@@ -638,28 +638,23 @@ export class Spot {
     const spotMarketProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
 
     if (minAmountReceived == undefined) {
+      const settlementReward = this.marketsById.get(resolvedMarketId)?.settlementStrategy?.settlementReward ?? 0;
+
       // Get asset price
       const feedId =
         this.marketsById.get(resolvedMarketId)?.settlementStrategy?.feedId ??
         '0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a';
-      const settlementReward = this.marketsById.get(resolvedMarketId)?.settlementStrategy?.settlementReward ?? 0;
-      const publishTimestamp = Math.floor(Date.now() / 1000) - 10;
-      console.log('feedId', feedId);
-      const pythPrice = await this.sdk.pyth.pythConnection.getPriceFeed(feedId, publishTimestamp);
 
-      try {
-        let price, tradeSize;
-        const priceUnchecked = pythPrice.getPriceUnchecked();
-        price = Number(formatUnits(BigInt(priceUnchecked.price), Math.abs(priceUnchecked.expo)));
-        if (side == Side.BUY) {
-          tradeSize = size / price;
-        } else {
-          tradeSize = size * price;
-        }
-        minAmountReceived = tradeSize * (1 - slippageTolerance);
-      } catch (error) {
-        throw error;
+      const price = await this.sdk.pyth.getFormattedPrice(feedId as Hex);
+      console.log('Formatted price:', price);
+
+      let tradeSize;
+      if (side == Side.BUY) {
+        tradeSize = size / price;
+      } else {
+        tradeSize = size * price;
       }
+      minAmountReceived = tradeSize * (1 - slippageTolerance) - settlementReward;
     }
 
     const minAmountReceivedInWei = convertEtherToWei(minAmountReceived);

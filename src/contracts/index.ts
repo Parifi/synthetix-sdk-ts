@@ -10,26 +10,6 @@ export class Contracts {
   }
 
   /**
-   * Returns a clients object to initialize the contract instances
-   * @returns clientObject - An object with a public and optionally wallet client to initialize a contract instance
-   */
-  private getClientsForContractInstance() {
-    if (this.sdk.publicClient == undefined) {
-      throw new Error('Invalid RPC config: Public client not initialized');
-    }
-    if (this.sdk.walletClient == undefined) {
-      return {
-        public: this.sdk.publicClient,
-      };
-    } else {
-      return {
-        public: this.sdk.publicClient,
-        wallet: this.sdk.walletClient,
-      };
-    }
-  }
-
-  /**
    * The function returns an instance of the Core Proxy smart contract
    * @returns Contract - Instance of Core Proxy smart contract
    */
@@ -44,7 +24,7 @@ export class Contracts {
       const multicallInstance = getContract({
         address: meta.contracts.TrustedMulticallForwarder as Hex,
         abi: abi,
-        client: this.getClientsForContractInstance(),
+        client: this.sdk.publicClient,
       });
       return multicallInstance;
     } catch (error) {
@@ -66,7 +46,7 @@ export class Contracts {
       const coreProxyInstance = getContract({
         address: meta.contracts.CoreProxy as Hex,
         abi: abi,
-        client: this.getClientsForContractInstance(),
+        client: this.sdk.publicClient,
       });
       return coreProxyInstance;
     } catch (error) {
@@ -88,7 +68,7 @@ export class Contracts {
       const accountProxyInstance = getContract({
         address: meta.contracts.AccountProxy as Hex,
         abi: abi,
-        client: this.getClientsForContractInstance(),
+        client: this.sdk.publicClient,
       });
       return accountProxyInstance;
     } catch (error) {
@@ -110,7 +90,7 @@ export class Contracts {
       const perpsMarketProxyInstance = getContract({
         address: meta.contracts.PerpsMarketProxy as Hex,
         abi: abi,
-        client: this.getClientsForContractInstance(),
+        client: this.sdk.publicClient,
       });
       return perpsMarketProxyInstance;
     } catch (error) {
@@ -132,7 +112,7 @@ export class Contracts {
       const perpsAccountProxyInstance = getContract({
         address: meta.contracts.PerpsAccountProxy as Hex,
         abi: abi,
-        client: this.getClientsForContractInstance(),
+        client: this.sdk.publicClient,
       });
       return perpsAccountProxyInstance;
     } catch (error) {
@@ -154,7 +134,7 @@ export class Contracts {
       const pythERC7412WrapperInstance = getContract({
         address: meta.contracts.PythERC7412Wrapper as Hex,
         abi: abi,
-        client: this.getClientsForContractInstance(),
+        client: this.sdk.publicClient,
       });
       return pythERC7412WrapperInstance;
     } catch (error) {
@@ -176,7 +156,7 @@ export class Contracts {
       const spotMarketProxyInstance = getContract({
         address: meta.contracts.SpotMarketProxy as Hex,
         abi: abi,
-        client: this.getClientsForContractInstance(),
+        client: this.sdk.publicClient,
       });
       return spotMarketProxyInstance;
     } catch (error) {
@@ -198,7 +178,7 @@ export class Contracts {
       const usdProxyInstance = getContract({
         address: meta.contracts.USDProxy as Hex,
         abi: abi,
-        client: this.getClientsForContractInstance(),
+        client: this.sdk.publicClient,
       });
       return usdProxyInstance;
     } catch (error) {

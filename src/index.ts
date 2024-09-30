@@ -1,16 +1,15 @@
-import { AccountConfig, PartnerConfig, PythConfig, RpcConfig, SdkConfigParams } from './interface/classConfigs';
+import { AccountConfig, RpcConfig, SdkConfigParams } from './interface/classConfigs';
 import { getPublicRpcEndpoint, getChain, Utils } from './utils';
 import { Core } from './core';
 import {
-  Account,
   Address,
   CallParameters,
   createPublicClient,
   createWalletClient,
   Hex,
   http,
+  PrivateKeyAccount,
   PublicClient,
-  WalletClient,
   webSocket,
 } from 'viem';
 import { ZERO_ADDRESS } from './constants/common';
@@ -36,18 +35,14 @@ import { DEFAULT_REFERRER, DEFAULT_TRACKING_CODE } from './constants';
  */
 export class SynthetixSdk {
   accountConfig: AccountConfig;
-  partnerConfig: PartnerConfig;
-  pythConfig: PythConfig;
   rpcConfig: RpcConfig;
 
   // Account fields
   accountAddress: Address = ZERO_ADDRESS;
-  accountIds?: bigint[];
 
   // Public client should always be defined either using the rpcConfig or using the public endpoint
   publicClient: PublicClient;
-  walletClient?: WalletClient;
-  account?: Account;
+  privateKeyAccount?: PrivateKeyAccount;
 
   // Partner config
   trackingCode: string;
@@ -62,18 +57,21 @@ export class SynthetixSdk {
 
   constructor({ accountConfig, partnerConfig, pythConfig, rpcConfig }: SdkConfigParams) {
     this.accountConfig = accountConfig;
-    this.partnerConfig = partnerConfig;
-    this.pythConfig = pythConfig;
     this.rpcConfig = rpcConfig;
     this.core = new Core(this);
     this.contracts = new Contracts(this);
     this.utils = new Utils(this);
-    this.pyth = new Pyth(this);
+    this.pyth = new Pyth(this, pythConfig);
     this.perps = new Perps(this);
     this.spot = new Spot(this);
 
-    this.trackingCode = partnerConfig.trackingCode ?? DEFAULT_TRACKING_CODE;
-    this.referrer = partnerConfig.referrer ?? DEFAULT_REFERRER;
+    if (partnerConfig != undefined) {
+      this.trackingCode = partnerConfig.trackingCode ?? DEFAULT_TRACKING_CODE;
+      this.referrer = partnerConfig.referrer ?? DEFAULT_REFERRER;
+    } else {
+      this.trackingCode = DEFAULT_TRACKING_CODE;
+      this.referrer = DEFAULT_REFERRER;
+    }
 
     /**
      * Initialize Public client to RPC chain rpc
@@ -112,24 +110,16 @@ export class SynthetixSdk {
 
   async init() {
     /**
-     * Initialize Wallet client for users wallet
+     * Initialize user wallet
      */
     try {
-      // @todo Remove/Update walletClient as a param from config and instead use env.PRIVATE_KEY
-      if (this.accountConfig.walletClient != undefined) {
+      if (this.accountConfig.privateKeyAccount != undefined) {
         // Set the wallet in SDK if passed
-        this.walletClient = this.accountConfig.walletClient;
-        this.account = this.walletClient.account;
-
-        const addresses = await this.walletClient.getAddresses();
-        let address0 = ZERO_ADDRESS;
-        if (addresses.length > 0) {
-          address0 = addresses[0];
-        }
-
+        this.privateKeyAccount = this.accountConfig.privateKeyAccount;
+        const address0 = await this.privateKeyAccount.address;
         if (this.accountConfig.address == undefined) {
           this.accountConfig.address = address0;
-          console.info('Using address from walletClient signer', address0);
+          console.info('Using address from private key account', address0);
         } else {
           // Check the address matches the wallet signer address
           if (this.accountConfig.address != address0) {
@@ -141,7 +131,7 @@ export class SynthetixSdk {
         if (this.accountConfig.address == undefined) {
           console.info('Wallet or Account address not provided');
         } else {
-          console.info('Using provided address without wallet signer: ', this.accountConfig.address);
+          console.info('Using provided address without signer: ', this.accountConfig.address);
         }
       }
       this.accountAddress = this.accountConfig.address as Hex;
@@ -166,45 +156,46 @@ export class SynthetixSdk {
     }
   }
 
-  public getWalletClient(): WalletClient {
-    if (this.walletClient != undefined) {
-      return this.walletClient;
-    } else {
-      throw new Error('Wallet not initialized');
-    }
-  }
-
   /**
-   * Executes a transaction from the user wallet. The private key for the wallet is used from the .env
+   * Executes a transaction from the user wallet.
+   * Checks if privateKeyAccount is initialized in the SDK. If uninitialized,
+   * it checks process.env PRIVATE_KEY if available. If both are unavailable, the SDK
+   * will throw an error
    * @param tx Call parameters for the tx
    * @returns txHash Transaction hash after tx execution
    */
   public async executeTransaction(tx: CallParameters): Promise<string> {
-    if (process.env.PRIVATE_KEY != undefined) {
-      const viemChain = getChain(this.rpcConfig.chainId);
-      const account = privateKeyToAccount(process.env.PRIVATE_KEY as Hex);
-
-      const wClient = createWalletClient({
-        chain: viemChain,
-        transport: http(this.rpcConfig.rpcEndpoint),
-      });
-
-      const request = await wClient.prepareTransactionRequest({
-        account: account,
-        to: tx.to,
-        data: tx.data,
-        value: tx.value,
-        gas: 1000000n,
-      });
-
-      const serializedTransaction = await wClient.signTransaction(request);
-      const txHash = await wClient.sendRawTransaction({ serializedTransaction });
-      await this.publicClient.waitForTransactionReceipt({
-        hash: txHash,
-      });
-      return txHash;
+    let account;
+    if (this.privateKeyAccount != undefined) {
+      account = this.privateKeyAccount;
     } else {
-      throw new Error('Invalid account signer');
+      if (process.env.PRIVATE_KEY != undefined) {
+        account = privateKeyToAccount(process.env.PRIVATE_KEY as Hex);
+        this.privateKeyAccount = account;
+      } else {
+        throw new Error('Signer account not initialized');
+      }
     }
+
+    const viemChain = getChain(this.rpcConfig.chainId);
+    const wClient = createWalletClient({
+      chain: viemChain,
+      transport: http(this.rpcConfig.rpcEndpoint),
+    });
+
+    const request = await wClient.prepareTransactionRequest({
+      account: account,
+      to: tx.to,
+      data: tx.data,
+      value: tx.value,
+      gas: 1000000n,
+    });
+
+    const serializedTransaction = await wClient.signTransaction(request);
+    const txHash = await wClient.sendRawTransaction({ serializedTransaction });
+    await this.publicClient.waitForTransactionReceipt({
+      hash: txHash,
+    });
+    return txHash;
   }
 }

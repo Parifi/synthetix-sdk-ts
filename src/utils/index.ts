@@ -78,9 +78,7 @@ export class Utils {
       );
 
       const stalenessTolerance = stalenessOrTime;
-      let updateData = (await this.sdk.pyth.pythConnection.getPriceFeedsUpdateData(
-        priceIds as string[],
-      )) as unknown as Address[];
+      const updateData = await this.sdk.pyth.getPriceFeedsUpdateData(priceIds as Hex[]);
 
       return encodeAbiParameters(
         [
@@ -101,7 +99,6 @@ export class Utils {
         data,
       );
 
-      // let updateData = await this.fetchPriceUpdateData([priceId]);
       const [priceFeedUpdateVaa] = await this.sdk.pyth.pythConnection.getVaa(
         priceId as string,
         Number((requestedTime as unknown as bigint).toString()),
@@ -161,16 +158,6 @@ export class Utils {
     } else {
       throw new Error('Handle ERC7412 error');
     }
-  }
-
-  /**
-   * Fetches off-chain price update data for ERC7412 Oracle contract
-   * @param priceIds Pyth price ids array
-   * @returns Pyth Price update data
-   */
-  public async fetchPriceUpdateData(priceIds: Hex[]): Promise<Hex[]> {
-    const priceUpdateData = await this.sdk.pyth.getVaaPriceUpdateData(priceIds);
-    return priceUpdateData as Hex[];
   }
 
   /**
@@ -412,7 +399,7 @@ export class Utils {
       };
       calls.push(currentCall);
     }
-    
+
     const publicClient = this.sdk.getPublicClient();
 
     let totalRetries = 0;

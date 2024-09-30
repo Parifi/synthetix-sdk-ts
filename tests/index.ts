@@ -19,21 +19,15 @@ export const getSdkInstanceForTesting = async (): Promise<SynthetixSdk> => {
   };
 
   // initialize WalletClient if private key is set
-  let walletClient;
+  let signerAccount;
   if (process.env.PRIVATE_KEY) {
-    const viemAccount = privateKeyToAccount(process.env.PRIVATE_KEY as Hex);
-
-    walletClient = createWalletClient({
-      account: viemAccount,
-      chain: getChain(rpcConfig.chainId),
-      transport: http(rpcConfig.rpcEndpoint || getPublicRpcEndpoint(chainId)),
-    });
+    signerAccount = privateKeyToAccount(process.env.PRIVATE_KEY as Hex);
   }
 
   // init Account config
   const accountConfig: AccountConfig = {
     address: process.env.DEFAULT_ADDRESS,
-    walletClient: walletClient,
+    privateKeyAccount: signerAccount,
   };
 
   const partnerConfig: PartnerConfig = {

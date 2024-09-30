@@ -11,7 +11,7 @@ import {
   parseUnits,
 } from 'viem';
 import { SynthetixSdk } from '..';
-import { ZERO_ADDRESS } from '../constants';
+import { DISABLED_MARKETS, ZERO_ADDRESS } from '../constants';
 import {
   CollateralData,
   FundingParameters,
@@ -65,6 +65,7 @@ export class Perps {
   isErc7412Enabled: boolean = true;
   // Set multicollateral to false by default
   isMulticollateralEnabled: boolean = false;
+  disabledMarkets: number[] = [];
 
   constructor(synthetixSdk: SynthetixSdk) {
     this.sdk = synthetixSdk;
@@ -75,6 +76,11 @@ export class Perps {
     this.marketsById = new Map<number, MarketData>();
     this.marketsByName = new Map<string, MarketData>();
     this.marketsBySymbol = new Map<string, MarketData>();
+
+    // Set disabled markets
+    if (synthetixSdk.rpcConfig.chainId in DISABLED_MARKETS) {
+      this.disabledMarkets = DISABLED_MARKETS[synthetixSdk.rpcConfig.chainId];
+    }
   }
 
   async initPerps() {
@@ -171,7 +177,7 @@ export class Perps {
     }
 
     const stalenessTolerance = 30n; // 30 seconds
-    let updateData = (await this.sdk.pyth.pythConnection.getPriceFeedsUpdateData(priceFeedIds)) as unknown as Address[];
+    let updateData = await this.sdk.pyth.getPriceFeedsUpdateData(priceFeedIds as Hex[]);
 
     const signedRequiredData = encodeAbiParameters(
       [
@@ -190,8 +196,8 @@ export class Perps {
     // the wrapper will return an error if the price has already been updated
     dataVerificationTx.requireSuccess = false;
 
-    // @todo Fetch the priceUpdateFee for tx dynamically from the contract
-    // instead of using arbitrary values for pyth price update fees
+    // @note A better approach would be to fetch the priceUpdateFee for tx dynamically
+    // from the Pyth contract instead of using arbitrary values for pyth price update fees
     dataVerificationTx.value = 500n;
     return [dataVerificationTx];
   }
@@ -223,23 +229,24 @@ export class Perps {
     for (let index = 0; index < Number(balance); index++) {
       argsList.push([accountAddress, index]);
     }
-    const accountIds = await this.sdk.utils.multicallErc7412(
+    const accountIds = (await this.sdk.utils.multicallErc7412(
       accountProxy.address,
       accountProxy.abi,
       'tokenOfOwnerByIndex',
       argsList,
-    );
+    )) as unknown[] as bigint[];
+
+    // Set Perps account ids
+    this.accountIds = accountIds;
 
     console.log('accountIds', accountIds);
-    this.sdk.accountIds = accountIds as bigint[];
     if (defaultAccountId) {
       this.defaultAccountId = defaultAccountId;
-    } else if (this.sdk.accountIds.length > 0) {
-      this.defaultAccountId = this.sdk.accountIds[0];
+    } else if (this.accountIds.length > 0) {
+      this.defaultAccountId = this.accountIds[0];
+      console.log('Using default account id as ', this.defaultAccountId);
     }
-    console.log('Using default account id as ', this.defaultAccountId);
-    this.accountIds = accountIds as bigint[];
-    return accountIds as bigint[];
+    return accountIds;
   }
 
   /**
@@ -327,36 +334,38 @@ export class Perps {
     const maxMarketValues = await this.getMaxMarketValues(marketIds);
 
     marketIds.forEach((marketId) => {
-      const marketSummary = marketSummaries.find((summary) => summary.marketId == marketId);
-      const fundingParam = fundingParameters.find((fundingParam) => fundingParam.marketId == marketId);
-      const orderFee = orderFees.find((orderFee) => orderFee.marketId == marketId);
-      const maxMarketValue = maxMarketValues.find((maxMarketValue) => maxMarketValue.marketId == marketId);
+      if (!this.disabledMarkets.includes(marketId)) {
+        const marketSummary = marketSummaries.find((summary) => summary.marketId == marketId);
+        const fundingParam = fundingParameters.find((fundingParam) => fundingParam.marketId == marketId);
+        const orderFee = orderFees.find((orderFee) => orderFee.marketId == marketId);
+        const maxMarketValue = maxMarketValues.find((maxMarketValue) => maxMarketValue.marketId == marketId);
 
-      const marketName = this.marketMetadata.get(marketId)?.marketName ?? '0x';
-      const marketSymbol = this.marketMetadata.get(marketId)?.symbol ?? 'INVALID';
+        const marketName = this.marketMetadata.get(marketId)?.marketName ?? '0x';
+        const marketSymbol = this.marketMetadata.get(marketId)?.symbol ?? 'INVALID';
 
-      const marketData = {
-        marketId: marketId,
-        marketName: marketName,
-        symbol: marketSymbol,
-        feedId: this.marketMetadata.get(marketId)?.feedId,
-        skew: marketSummary?.skew,
-        size: marketSummary?.size,
-        maxOpenInterest: marketSummary?.maxOpenInterest,
-        interestRate: marketSummary?.interestRate,
-        currentFundingRate: marketSummary?.currentFundingRate,
-        currentFundingVelocity: marketSummary?.currentFundingVelocity,
-        indexPrice: marketSummary?.indexPrice,
-        skewScale: fundingParam?.skewScale,
-        maxFundingVelocity: fundingParam?.maxFundingVelocity,
-        makerFee: orderFee?.makerFeeRatio,
-        takerFee: orderFee?.takerFeeRatio,
-        maxMarketValue: maxMarketValue?.maxMarketValue,
-      };
+        const marketData = {
+          marketId: marketId,
+          marketName: marketName,
+          symbol: marketSymbol,
+          feedId: this.marketMetadata.get(marketId)?.feedId,
+          skew: marketSummary?.skew,
+          size: marketSummary?.size,
+          maxOpenInterest: marketSummary?.maxOpenInterest,
+          interestRate: marketSummary?.interestRate,
+          currentFundingRate: marketSummary?.currentFundingRate,
+          currentFundingVelocity: marketSummary?.currentFundingVelocity,
+          indexPrice: marketSummary?.indexPrice,
+          skewScale: fundingParam?.skewScale,
+          maxFundingVelocity: fundingParam?.maxFundingVelocity,
+          makerFee: orderFee?.makerFeeRatio,
+          takerFee: orderFee?.takerFeeRatio,
+          maxMarketValue: maxMarketValue?.maxMarketValue,
+        };
 
-      this.marketsById.set(marketId, marketData);
-      this.marketsByName.set(marketName, marketData);
-      this.marketsBySymbol.set(marketSymbol, marketData);
+        this.marketsById.set(marketId, marketData);
+        this.marketsByName.set(marketName, marketData);
+        this.marketsBySymbol.set(marketSymbol, marketData);
+      }
     });
 
     return { marketsById: this.marketsById, marketsByName: this.marketsByName };
@@ -1167,15 +1176,8 @@ export class Perps {
     const oracleCalls = await this.prepareOracleCall([resolvedMarketId]);
 
     if (price == undefined) {
-      const publishTimestamp = Math.floor(Date.now() / 1000) - 30;
-      const pythPrice = await this.sdk.pyth.pythConnection.getPriceFeed(feedId, publishTimestamp);
-
-      try {
-        const priceUnchecked = pythPrice.getPriceUnchecked();
-        price = Number(formatUnits(BigInt(priceUnchecked.price), Math.abs(priceUnchecked.expo)));
-      } catch (error) {
-        throw error;
-      }
+      price = await this.sdk.pyth.getFormattedPrice(feedId as Hex);
+      console.log('Formatted price:', price);
     }
 
     // Smart contract call returns (uint256 orderFees, uint256 fillPrice)
