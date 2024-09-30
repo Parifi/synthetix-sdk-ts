@@ -171,7 +171,7 @@ export class Perps {
     }
 
     const stalenessTolerance = 30n; // 30 seconds
-    let updateData = (await this.sdk.pyth.pythConnection.getPriceFeedsUpdateData(priceFeedIds)) as unknown as Address[];
+    let updateData = await this.sdk.pyth.getPriceFeedsUpdateData(priceFeedIds as Hex[]);
 
     const signedRequiredData = encodeAbiParameters(
       [
@@ -1167,15 +1167,8 @@ export class Perps {
     const oracleCalls = await this.prepareOracleCall([resolvedMarketId]);
 
     if (price == undefined) {
-      const publishTimestamp = Math.floor(Date.now() / 1000) - 30;
-      const pythPrice = await this.sdk.pyth.pythConnection.getPriceFeed(feedId, publishTimestamp);
-
-      try {
-        const priceUnchecked = pythPrice.getPriceUnchecked();
-        price = Number(formatUnits(BigInt(priceUnchecked.price), Math.abs(priceUnchecked.expo)));
-      } catch (error) {
-        throw error;
-      }
+      price = await this.sdk.pyth.getFormattedPrice(feedId as Hex);
+      console.log('Formatted price:', price);
     }
 
     // Smart contract call returns (uint256 orderFees, uint256 fillPrice)
