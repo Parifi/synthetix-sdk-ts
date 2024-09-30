@@ -36,8 +36,6 @@ import { DEFAULT_REFERRER, DEFAULT_TRACKING_CODE } from './constants';
  */
 export class SynthetixSdk {
   accountConfig: AccountConfig;
-  partnerConfig: PartnerConfig;
-  pythConfig: PythConfig;
   rpcConfig: RpcConfig;
 
   // Account fields
@@ -62,18 +60,21 @@ export class SynthetixSdk {
 
   constructor({ accountConfig, partnerConfig, pythConfig, rpcConfig }: SdkConfigParams) {
     this.accountConfig = accountConfig;
-    this.partnerConfig = partnerConfig;
-    this.pythConfig = pythConfig;
     this.rpcConfig = rpcConfig;
     this.core = new Core(this);
     this.contracts = new Contracts(this);
     this.utils = new Utils(this);
-    this.pyth = new Pyth(this);
+    this.pyth = new Pyth(this, pythConfig);
     this.perps = new Perps(this);
     this.spot = new Spot(this);
 
-    this.trackingCode = partnerConfig.trackingCode ?? DEFAULT_TRACKING_CODE;
-    this.referrer = partnerConfig.referrer ?? DEFAULT_REFERRER;
+    if (partnerConfig != undefined) {
+      this.trackingCode = partnerConfig.trackingCode ?? DEFAULT_TRACKING_CODE;
+      this.referrer = partnerConfig.referrer ?? DEFAULT_REFERRER;
+    } else {
+      this.trackingCode = DEFAULT_TRACKING_CODE;
+      this.referrer = DEFAULT_REFERRER;
+    }
 
     /**
      * Initialize Public client to RPC chain rpc

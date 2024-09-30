@@ -25,7 +25,7 @@ export interface RpcConfig {
 
 export interface SdkConfigParams {
   accountConfig: AccountConfig;
-  partnerConfig: PartnerConfig;
-  pythConfig: PythConfig;
+  partnerConfig?: PartnerConfig;
+  pythConfig?: PythConfig;
   rpcConfig: RpcConfig;
 }
