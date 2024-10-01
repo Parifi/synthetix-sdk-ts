@@ -1445,7 +1445,7 @@ export class Perps {
       marketId,
       marketName,
       settlementStrategyId = 0,
-      accountId,
+      accountId = generateRandomAccountId(),
       desiredFillPrice,
       maxPriceImpact,
     }: CreateIsolateOrder,
@@ -1454,9 +1454,6 @@ export class Perps {
       submit: false,
     },
   ) {
-    if (accountId == undefined) {
-      accountId = generateRandomAccountId();
-    }
     const { resolvedMarketId } = this.resolveMarket(marketId, marketName);
 
     // 1. Create Account
@@ -1528,6 +1525,7 @@ export class Perps {
 
     const callsArray: Call3Value[] = oracleCalls.concat([createAccountCall, modifyCollateralCall, commitOrderCall]);
     const finalTx = await this.sdk.utils.writeErc7412({ calls: callsArray }, override);
+
     if (!override.submit) return finalTx;
 
     const txHash = await this.sdk.executeTransaction(finalTx);
