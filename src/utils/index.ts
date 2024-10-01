@@ -77,6 +77,9 @@ export class Utils {
         data,
       );
 
+      console.log('Update type: ', updateType);
+      console.log('priceIds: ', priceIds);
+
       const stalenessTolerance = stalenessOrTime;
       const updateData = await this.sdk.pyth.getPriceFeedsUpdateData(priceIds as Hex[]);
 
@@ -98,12 +101,16 @@ export class Utils {
         ],
         data,
       );
+      console.log('Update type: ', updateType);
+      console.log('priceIds: ', priceId);
 
-      const [priceFeedUpdateVaa] = await this.sdk.pyth.pythConnection.getVaa(
-        priceId as string,
-        Number((requestedTime as unknown as bigint).toString()),
-      );
-      const priceFeedUpdate = '0x' + Buffer.from(priceFeedUpdateVaa, 'base64').toString('hex');
+      // const [priceFeedUpdateVaa] = await this.sdk.pyth.pythConnection.getVaa(
+      //   priceId as string,
+      //   Number((requestedTime as unknown as bigint).toString()),
+      // );
+      // const priceFeedUpdate = '0x' + Buffer.from(priceFeedUpdateVaa, 'base64').toString('hex');
+      const publishTime = Number((requestedTime as unknown as bigint).toString());
+      const priceFeedUpdateVaa = await this.sdk.pyth.getVaaPriceUpdateData([priceId], publishTime);
 
       return encodeAbiParameters(
         [
@@ -112,7 +119,7 @@ export class Utils {
           { type: 'bytes32[]', name: 'priceIds' },
           { type: 'bytes[]', name: 'updateData' },
         ],
-        [updateType, requestedTime, [priceId], [priceFeedUpdate as Address]],
+        [updateType, requestedTime, [priceId], priceFeedUpdateVaa],
       );
     } else {
       throw new Error(`Error encoding/decoding data`);

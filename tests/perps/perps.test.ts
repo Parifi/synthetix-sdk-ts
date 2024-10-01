@@ -24,7 +24,7 @@ describe('Perps', () => {
 
   it('should return settlement strategies data', async () => {
     const settlementStrategyId = 0;
-    const marketId = 1600;
+    const marketId = sdk.perps.marketsByName.get('Ethereum')?.marketId;
     const settlementStrategy = await sdk.perps.getSettlementStrategy(settlementStrategyId, marketId);
     console.log('settlementStrategy :', settlementStrategy);
   });
@@ -35,18 +35,29 @@ describe('Perps', () => {
   });
 
   it('should return account ids and balance of an address', async () => {
-    const defaultAddress = process.env.DEFAULT_ADDRESS;
-    const accountIds = await sdk.perps.getAccountIds(defaultAddress);
+    const accountIds = await sdk.perps.getAccountIds();
     console.info('Account Ids :', accountIds);
   });
 
   it('should commit an order for settlement', async () => {
-    const tx = await sdk.perps.commitOrder(0.001, 0, 100, undefined, undefined, undefined, 1, false);
+    const marketName = 'Ethereum';
+    const size = 0.1; // 0.1 ETH;
+    const defaultSettlementStrategy = 0;
+    const tx = await sdk.perps.commitOrder(
+      size,
+      defaultSettlementStrategy,
+      undefined,
+      marketName,
+      undefined,
+      undefined,
+      1,
+      false,
+    );
     console.log(tx);
   });
 
   it('should get margin info', async () => {
-    const marginInfo = await sdk.perps.getMarginInfo(undefined);
+    const marginInfo = await sdk.perps.getMarginInfo();
     console.log('marginInfo :', marginInfo);
   });
 
@@ -110,7 +121,7 @@ describe('Perps', () => {
   });
 
   it('should return open position data for multiple markets', async () => {
-    const positionsData = await sdk.perps.getOpenPositions(undefined, ['Ethereum', 'Bitcoin', 'Synthetix', 'Solana']);
+    const positionsData = await sdk.perps.getOpenPositions(undefined, ['Ethereum', 'Bitcoin', 'Solana']);
     console.log('positionsData :', positionsData);
   });
 

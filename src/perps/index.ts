@@ -715,9 +715,6 @@ export class Perps {
       accountId = this.defaultAccountId;
     }
 
-    console.log('Tracking code: ', this.sdk.trackingCode);
-
-    const keeperFeeBufferUsd = 0n;
     const txArgs = [
       resolvedMarketId,
       accountId,

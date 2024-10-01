@@ -9,10 +9,9 @@ describe('Spot', () => {
   beforeAll(async () => {
     sdk = await getSdkInstanceForTesting();
 
-    // Get accounts for address and sets the default account
-    const defaultAddress = process.env.DEFAULT_ADDRESS;
-    const accountIds = await sdk.perps.getAccountIds(defaultAddress);
-    console.log('Account ids for default account: ', accountIds);
+    const { marketsById, marketsByName } = await sdk.spot.getMarkets();
+    expect(marketsById.size).toBeGreaterThan(0);
+    expect(marketsByName.size).toBeGreaterThan(0);
   });
 
   it('should return response for a get call on Core proxy contract', async () => {
