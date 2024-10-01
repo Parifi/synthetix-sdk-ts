@@ -203,7 +203,7 @@ export class Spot {
     if (this.asyncOrderEnabled) {
       const marketIds = Array.from(finalSynths.keys());
       // Get settlement strategies
-      settlementStrategies = await this.getSettlementStrategies(0, marketIds);
+      // settlementStrategies = await this.getSettlementStrategies(0, marketIds);
     } else {
       console.log('Async orders not enabled on network ', this.sdk.rpcConfig.chainId);
     }
@@ -465,15 +465,24 @@ export class Spot {
     }
 
     const settlementStrategies: SpotSettlementStrategy[] = [];
+    let settlementStrategiesResponse: SettlementStrategyResponse[];
 
     const argsList: [number, number][] = marketIds.map((marketId) => [marketId, stragegyId]);
 
-    const settlementStrategiesResponse: SettlementStrategyResponse[] = (await this.sdk.utils.multicallErc7412(
+    const response = (await this.sdk.utils.multicallErc7412(
       spotProxy.address,
       spotProxy.abi,
       'getSettlementStrategy',
       argsList,
-    )) as SettlementStrategyResponse[];
+    ));
+    
+    if (response == undefined) {
+      settlementStrategiesResponse = [];
+    } else {
+      settlementStrategiesResponse = response as unknown[] as SettlementStrategyResponse[];
+    }
+
+    console.log('settlementStrategiesResponse', settlementStrategiesResponse);
 
     settlementStrategiesResponse.forEach((strategy, index) => {
       settlementStrategies.push({

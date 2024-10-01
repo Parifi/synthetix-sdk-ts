@@ -234,19 +234,20 @@ export class Perps {
       accountProxy.abi,
       'tokenOfOwnerByIndex',
       argsList,
-    )) as unknown[] as bigint[];
+    )) as unknown[];
 
+    if (accountIds == undefined) return [];
     // Set Perps account ids
-    this.accountIds = accountIds;
+    this.accountIds = accountIds as bigint[];
 
     console.log('accountIds', accountIds);
     if (defaultAccountId) {
       this.defaultAccountId = defaultAccountId;
     } else if (this.accountIds.length > 0) {
-      this.defaultAccountId = this.accountIds[0];
+      this.defaultAccountId = this.accountIds[0] as bigint;
       console.log('Using default account id as ', this.defaultAccountId);
     }
-    return accountIds;
+    return accountIds as bigint[];
   }
 
   /**
@@ -714,15 +715,18 @@ export class Perps {
       accountId = this.defaultAccountId;
     }
 
-    const txArgs = {
-      marketId: resolvedMarketId,
-      accountId: accountId,
-      sizeDelta: sizeInWei,
-      settlementStrategyId: settlementStrategyId,
-      acceptablePrice: parseEther(acceptablePrice.toString()),
-      trackingCode: this.sdk.trackingCode,
-      referrer: this.sdk.referrer,
-    };
+    console.log('Tracking code: ', this.sdk.trackingCode);
+
+    const keeperFeeBufferUsd = 0n;
+    const txArgs = [
+      resolvedMarketId,
+      accountId,
+      sizeInWei,
+      settlementStrategyId,
+      convertEtherToWei(acceptablePrice),
+      this.sdk.trackingCode,
+      this.sdk.referrer,
+    ];
 
     console.log('txArgs', txArgs);
     const tx = await this.sdk.utils.writeErc7412(perpsMarketProxy.address, perpsMarketProxy.abi, 'commitOrder', [
@@ -732,7 +736,7 @@ export class Perps {
       console.log(
         `Committing order size ${sizeInWei} (${size}) to ${marketName} (id: ${resolvedMarketId}) for account ${accountId}`,
       );
-      const txHash = this.sdk.executeTransaction(tx);
+      const txHash = await this.sdk.executeTransaction(tx);
       console.log('Transaction hash for commit order tx: ', txHash);
       return txHash;
     } else {
