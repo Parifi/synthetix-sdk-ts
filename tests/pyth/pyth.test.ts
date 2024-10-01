@@ -29,4 +29,11 @@ describe('Pyth', () => {
     expect(tokenPrice).not.toBe(undefined);
     console.log(tokenPrice);
   });
+
+  it('should get benchmark price update data', async () => {
+    const priceIds = [ETH_PRICE_ID];
+    const publishTime = Math.floor(Date.now() / 1000) - 864000;   // Price from 10 days ago
+    const res = await sdk.pyth.getVaaPriceUpdateData(priceIds, publishTime);
+    expect(res.length > 0);
+  });
 });
