@@ -106,11 +106,14 @@ export class Spot {
    * @returns The formatted size in wei. (e.g. 100 = 100000000000000000000)
    */
   public formatSize(size: number, marketId: number): bigint {
-    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketId, undefined);
-
+    const { resolvedMarketName } = this.resolveMarket(marketId, undefined);
     let sizeInWei: bigint;
+
+    const chainIds = [8453, 84532, 42161, 421514];
+    const marketNames = ['sUSDC', 'sStataUSDC'];
+
     // Hard-coding a catch for USDC with 6 decimals
-    if (this.sdk.rpcConfig.chainId in [8453, 84532, 42161, 421514] && resolvedMarketName in ['sUSDC', 'sStataUSDC']) {
+    if (chainIds.includes(this.sdk.rpcConfig.chainId) && marketNames.includes(resolvedMarketName)) {
       sizeInWei = parseUnits(size.toString(), 6);
     } else {
       sizeInWei = parseUnits(size.toString(), 18);
