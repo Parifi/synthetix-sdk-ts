@@ -249,7 +249,7 @@ export class SynthetixSdk {
 
     const tx: CallParameters = {
       account: this.accountAddress,
-      to: targetAddress as Hex,
+      to: tokenAddress as Hex,
       data: encodeFunctionData({
         abi: erc20Abi,
         functionName: 'approve',

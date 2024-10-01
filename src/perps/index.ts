@@ -941,7 +941,7 @@ export class Perps {
   ) {
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
-    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketId, marketName);
+    const { resolvedMarketId, resolvedMarketName } = this.sdk.spot.resolveMarket(marketId, marketName);
     console.log('resolvedMarketId', resolvedMarketId);
     console.log('resolvedMarketName', resolvedMarketName);
 
@@ -952,7 +952,7 @@ export class Perps {
     const tx = await this.sdk.utils.writeErc7412(marketProxy.address, marketProxy.abi, 'modifyCollateral', [
       accountId,
       resolvedMarketId,
-      parseUnits(amount.toString(), 6),
+      convertEtherToWei(amount),
     ]);
 
     if (submit) {

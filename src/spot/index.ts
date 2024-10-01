@@ -335,7 +335,7 @@ export class Spot {
 
     const approveTx: CallParameters = {
       account: this.sdk.accountAddress,
-      to: targetAddress as Hex,
+      to: synthContract.address as Hex,
       data: encodeFunctionData({
         abi: synthContract.abi,
         functionName: 'approve',
@@ -469,13 +469,13 @@ export class Spot {
 
     const argsList: [number, number][] = marketIds.map((marketId) => [marketId, stragegyId]);
 
-    const response = (await this.sdk.utils.multicallErc7412(
+    const response = await this.sdk.utils.multicallErc7412(
       spotProxy.address,
       spotProxy.abi,
       'getSettlementStrategy',
       argsList,
-    ));
-    
+    );
+
     if (response == undefined) {
       settlementStrategiesResponse = [];
     } else {
