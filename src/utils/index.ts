@@ -143,26 +143,28 @@ export class Utils {
       throw new Error('Handle ERC7412 error');
     }
 
+    if (!['OracleDataRequired', 'FeeRequired'].includes(err?.errorName)) throw new Error('Handle ERC7412 error');
+
     if (err?.errorName === 'OracleDataRequired') {
       console.log('Oracle Data Required error, adding price update data to tx');
+
       const oracleAddress = err.args![0] as Address;
+
       const oracleQuery = err.args![1] as Hex;
 
       const signedRequiredData = await this.fetchOracleUpdateData(oracleQuery);
       const dataVerificationTx = this.generateDataVerificationTx(oracleAddress, signedRequiredData);
       calls.unshift(dataVerificationTx);
+
       return calls;
-    } else if (err.errorName === 'FeeRequired') {
-      console.log('Fee Required oracle error. Adding fee to tx.value');
-      if (calls.length > 0) {
-        calls[0].value = err.args[0] as bigint;
-        return calls;
-      } else {
-        throw new Error('Handle ERC7412 error: Calls.length == 0');
-      }
-    } else {
-      throw new Error('Handle ERC7412 error');
     }
+
+    console.log('Fee Required oracle error. Adding fee to tx.value', err);
+    if (!calls.length) throw new Error('Handle ERC7412 error: Calls.length == 0');
+
+    calls[0].value = err.args[0] as bigint;
+
+    return calls;
   }
 
   /**
@@ -415,6 +417,7 @@ export class Utils {
     let totalRetries = 0;
     let finalTx: CallParameters | undefined;
     while (true) {
+      console.log('=== calls', calls);
       try {
         const multicallData = encodeFunctionData({
           abi: multicallInstance.abi,
@@ -442,16 +445,21 @@ export class Utils {
       } catch (error) {
         totalRetries += 1;
         if (totalRetries > MAX_ERC7412_RETRIES) {
+          if (finalTx && !override.shouldRevertOnTxFailure) return finalTx;
+          console.log('Error is not related to Oracle data');
+
           throw new Error('MAX_ERC7412_RETRIES retries reached, tx failed after multiple attempts');
         }
 
         const parsedError = parseError(error as CallExecutionError);
 
+        console.log('Error details: ', error);
+        console.log('Parsed Error details: ', parsedError);
+
         const isErc7412Error =
           parsedError.startsWith(SIG_ORACLE_DATA_REQUIRED) || parsedError.startsWith(SIG_FEE_REQUIRED);
+
         if (!isErc7412Error) {
-          console.log('Error details: ', error);
-          console.log('Parsed Error details: ', parsedError);
           try {
             // let err = decodeErrorResult({
             // abi: abi as Abi,
