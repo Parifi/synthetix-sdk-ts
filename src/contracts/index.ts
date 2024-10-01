@@ -178,7 +178,7 @@ export class Contracts {
       const usdProxyInstance = getContract({
         address: meta.contracts.USDProxy as Hex,
         abi: abi,
-        client: this.getClientsForContractInstance(),
+        client: this.sdk.publicClient,
       });
       return usdProxyInstance;
     } catch (error) {

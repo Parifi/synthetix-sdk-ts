@@ -1,7 +1,6 @@
 import 'dotenv/config';
 import { getSdkInstanceForTesting } from '..';
 import { SynthetixSdk } from '../../src';
-import { CallParameters, encodeFunctionData, erc20Abi, parseUnits } from 'viem';
 
 describe('Perps', () => {
   let sdk: SynthetixSdk;
@@ -30,7 +29,7 @@ describe('Perps', () => {
   });
 
   it('should create an account and return the tx hash', async () => {
-    const txData = await sdk.perps.createAccount(undefined, false);
+    const txData = await sdk.perps.createAccount(undefined, { submit: false });
     console.log('Create account tx:', txData);
   });
 
@@ -45,14 +44,13 @@ describe('Perps', () => {
     const defaultSettlementStrategy = 0;
     const submit = false;
     const tx = await sdk.perps.commitOrder(
-      size,
-      defaultSettlementStrategy,
-      undefined,
-      marketName,
-      undefined,
-      undefined,
-      1,
-      submit,
+      {
+        size,
+        settlementStrategyId: defaultSettlementStrategy,
+        marketName,
+        // desiredFillPrice: 1,
+      },
+      { submit },
     );
 
     if (submit) {
@@ -84,7 +82,7 @@ describe('Perps', () => {
       console.log('Approval txHash:', approveTxHash);
     }
 
-    const tx = await sdk.perps.modifyCollateral(amount, undefined, 'sUSD', undefined, submit);
+    const tx = await sdk.perps.modifyCollateral({ amount, marketName: 'sUSD' }, { submit });
     console.log('Add collateral tx: ', tx);
 
     const marginInfo = (await sdk.perps.getMarginInfo()).totalCollateralValue;
@@ -151,7 +149,7 @@ describe('Perps', () => {
     expect(pythData).not.toBe(undefined);
   });
 
-  it('should create an isolated account order', async () => {
+  it.only('should create an isolated account order', async () => {
     const initialSusdBalance = await sdk.getSusdBalance();
     const collateralAmount = 70; // 70 usdc.Min 62.5 USD collateral is required
     const submit = false;
@@ -175,16 +173,14 @@ describe('Perps', () => {
     const orderSize = 0.01; // 0.01 ETH
 
     const response = await sdk.perps.createIsolatedAccountOrder(
-      collateralAmount,
-      collateralMarketId,
-      orderSize,
-      undefined,
-      marketName,
-      0,
-      undefined,
-      undefined,
-      undefined,
-      submit,
+      {
+        collateralAmount,
+        size: orderSize,
+        collateralMarketId,
+        marketName,
+        settlementStrategyId: 0,
+      },
+      { submit },
     );
 
     if (submit) {

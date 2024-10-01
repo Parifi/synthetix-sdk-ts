@@ -154,6 +154,8 @@ export class Utils {
 
       const signedRequiredData = await this.fetchOracleUpdateData(oracleQuery);
       const dataVerificationTx = this.generateDataVerificationTx(oracleAddress, signedRequiredData);
+      dataVerificationTx.requireSuccess = false;
+      dataVerificationTx.value = 500n;
       calls.unshift(dataVerificationTx);
 
       return calls;

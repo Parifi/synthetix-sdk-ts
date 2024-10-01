@@ -26,6 +26,7 @@ import { convertEtherToWei, convertWeiToEther, generateRandomAccountId, sleep } 
 import { Call3Value } from '../interface/contractTypes';
 import { CreateIsolateOrder } from '../interface/perps';
 import { OverrideParamsWrite } from '../interface/commonTypes';
+import { CommitOrder, ModifyCollateral } from '../interface/Perps';
 
 /**
  * Class for interacting with Synthetix Perps V3 contracts
@@ -249,6 +250,22 @@ export class Perps {
     return accountIds as bigint[];
   }
 
+  protected async _buildCreateAccount(accountId?: bigint): Promise<Call3Value[]> {
+    const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    return [
+      {
+        target: perpsMarketProxy.address,
+        callData: encodeFunctionData({
+          abi: perpsMarketProxy.abi,
+          functionName: 'createAccount',
+          args: [accountId],
+        }),
+        value: 0n,
+        requireSuccess: true,
+      },
+    ];
+  }
+
   /**
    * Create a perps account. An account NFT is minted to the sender,
    * who owns the account.
@@ -256,22 +273,18 @@ export class Perps {
    * @param submit Executes the transaction if true
    * @returns Transaction hash or transaction data
    */
-  public async createAccount(accountId: bigint | undefined = undefined, submit: boolean = false) {
+  public async createAccount(accountId?: bigint, override: OverrideParamsWrite = {}): Promise<string | CallParameters> {
     const txArgs = [];
     if (accountId != undefined) {
       txArgs.push(accountId);
     }
+    const buildedTxs = await this._buildCreateAccount(accountId);
 
-    // const perpsAccountProxy = await this.sdk.contracts.getPerpsAccountProxyInstance();
-    const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
     const tx: CallParameters = await this.sdk.utils.writeErc7412({
-      contractAddress: perpsMarketProxy.address,
-      abi: perpsMarketProxy.abi,
-      functionName: 'createAccount',
-      args: txArgs,
+      calls: buildedTxs,
     });
 
-    if (submit) {
+    if (override.submit) {
       const txHash = await this.sdk.executeTransaction(tx);
       console.log('Transaction hash: ', txHash);
       await this.getAccountIds();
@@ -667,32 +680,15 @@ export class Perps {
     return maxMarketValues;
   }
 
-  /**
-   * Submit an order to the specified market. Keepers will attempt to fill the order
-   * according to the settlement strategy. If ``desired_fill_price`` is provided, the order
-   * will be filled at that price or better. If ``max_price_impact`` is provided, the
-   * ``desired_fill_price`` is calculated from the current market price and the price impact.
-   * @param size The size of the order to submit
-   * @param settlementStrategyId The id of the settlement strategy to use
-   * @param marketId The id of the market to submit the order to. If not provided, `marketName` must be provided
-   * @param marketName The name of the market to submit the order to. If not provided, `marketId` must be provided.
-   * @param accountId The id of the account to submit the order for. Defaults to `defaultAccountId`.
-   * @param desiredFillPrice The max price for longs and minimum price for shorts. If not provided,
-   * one will be calculated based on `maxPriceImpact`
-   * @param maxPriceImpact The maximum price impact to allow when filling the order as a percentage (1.0 = 1%).
-   * If not provided, it will inherit the default value from `snx.max_price_impact`
-   * @param submit If ``true``, submit the transaction to the blockchain
-   */
-  public async commitOrder(
-    size: number,
-    settlementStrategyId: number = 0,
-    marketId: number | undefined,
-    marketName: string | undefined,
-    accountId: bigint | undefined,
-    desiredFillPrice: number | undefined,
-    maxPriceImpact: number | undefined,
-    submit: boolean = false,
-  ) {
+  protected async _buildCommitOrder({
+    size,
+    settlementStrategyId,
+    marketId,
+    marketName,
+    accountId = this.defaultAccountId,
+    desiredFillPrice,
+    maxPriceImpact,
+  }: CommitOrder): Promise<Call3Value[]> {
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     const { resolvedMarketId } = this.resolveMarket(marketId, marketName);
@@ -712,11 +708,7 @@ export class Perps {
       const priceImpact = 1 + (isShort * updatedMaxPriceImpact) / 100;
       acceptablePrice = (marketSummary.indexPrice ?? 0) * priceImpact;
     }
-    if (accountId == undefined) {
-      accountId = this.defaultAccountId;
-    }
 
-    const oracleCalls = await this.prepareOracleCall();
     const txArgs = [
       resolvedMarketId,
       accountId,
@@ -727,18 +719,42 @@ export class Perps {
       this.sdk.referrer,
     ];
 
+    console.log(
+      `Building order size ${sizeInWei} (${size}) to ${marketName} (id: ${resolvedMarketId}) for account ${accountId}`,
+    );
+
+    return [
+      {
+        target: perpsMarketProxy.address,
+        callData: encodeFunctionData({ abi: perpsMarketProxy.abi, functionName: 'commitOrder', args: [txArgs] }),
+        value: 0n,
+        requireSuccess: true,
+      },
+    ];
+  }
+
+  /**
+   * Submit an order to the specified market. Keepers will attempt to fill the order
+   * according to the settlement strategy. If ``desired_fill_price`` is provided, the order
+   * will be filled at that price or better. If ``max_price_impact`` is provided, the
+   * ``desired_fill_price`` is calculated from the current market price and the price impact.
+   * @param size The size of the order to submit
+   * @param settlementStrategyId The id of the settlement strategy to use
+   * @param marketId The id of the market to submit the order to. If not provided, `marketName` must be provided
+   * @param marketName The name of the market to submit the order to. If not provided, `marketId` must be provided.
+   * @param accountId The id of the account to submit the order for. Defaults to `defaultAccountId`.
+   * @param desiredFillPrice The max price for longs and minimum price for shorts. If not provided, one will be calculated based on `maxPriceImpact`
+   * @param maxPriceImpact The maximum price impact to allow when filling the order as a percentage (1.0 = 1%). If not provided, it will inherit the default value from `snx.max_price_impact`
+   * @param submit If ``true``, submit the transaction to the blockchain
+   */
+  public async commitOrder(data: CommitOrder, override: OverrideParamsWrite = {}): Promise<string | CallParameters> {
+    const txs = await this._buildCommitOrder(data);
+
     const tx = await this.sdk.utils.writeErc7412({
-      contractAddress: perpsMarketProxy.address,
-      abi: perpsMarketProxy.abi,
-      functionName: 'commitOrder',
-      args: [txArgs],
-      calls: oracleCalls,
+      calls: txs,
     });
 
-    if (submit) {
-      console.log(
-        `Committing order size ${sizeInWei} (${size}) to ${marketName} (id: ${resolvedMarketId}) for account ${accountId}`,
-      );
+    if (override.submit) {
       const txHash = await this.sdk.executeTransaction(tx);
       console.log('Transaction hash for commit order tx: ', txHash);
       return txHash;
@@ -921,6 +937,33 @@ export class Perps {
     return marginInfo;
   }
 
+  protected async _buildModifyCollateral({
+    amount,
+    marketId,
+    marketName,
+    accountId,
+  }: ModifyCollateral): Promise<Call3Value[]> {
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+
+    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketId, marketName);
+    console.log('resolvedMarketId', resolvedMarketId);
+    console.log('resolvedMarketName', resolvedMarketName);
+
+    console.log(`Building ${amount} ${resolvedMarketName} for account ${accountId}`);
+    return [
+      {
+        target: marketProxy.address,
+        callData: encodeFunctionData({
+          abi: marketProxy.abi,
+          functionName: 'modifyCollateral',
+          args: [accountId, resolvedMarketId, this.sdk.spot.formatSize(amount, resolvedMarketId)],
+        }),
+        value: 0n,
+        requireSuccess: true,
+      },
+    ];
+  }
+
   /**
    * Move collateral in or out of a specified perps account. The ``market_id`` or ``market_name``
    * must be provided to specify the collateral type.
@@ -934,42 +977,18 @@ export class Perps {
    * @param submit If ``True``, submit the transaction to the blockchain.
    */
   public async modifyCollateral(
-    amount: number,
-    marketId: number | undefined = undefined,
-    marketName: string | undefined = undefined,
-    accountId: bigint | undefined = undefined,
-    submit: boolean = false,
-  ) {
-    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-
-    const { resolvedMarketId, resolvedMarketName } = this.sdk.spot.resolveMarket(marketId, marketName);
-    console.log('resolvedMarketId', resolvedMarketId);
-    console.log('resolvedMarketName', resolvedMarketName);
-
-    if (accountId == undefined) {
-      accountId = this.defaultAccountId;
-    }
-
-    // const tx = await this.sdk.utils.writeErc7412(marketProxy.address, marketProxy.abi, 'modifyCollateral', [
-    // accountId,
-    // resolvedMarketId,
-    // this.sdk.spot.formatSize(amount, resolvedMarketId),
-    // // ]);
+    { amount, marketId, marketName, accountId = this.defaultAccountId }: ModifyCollateral,
+    override: OverrideParamsWrite = {},
+  ): Promise<string | CallParameters> {
+    const buildedTxs = await this._buildModifyCollateral({ amount, marketId, marketName, accountId });
     const tx = await this.sdk.utils.writeErc7412({
-      contractAddress: marketProxy.address,
-      abi: marketProxy.abi,
-      functionName: 'modifyCollateral',
-      args: [accountId, resolvedMarketId, this.sdk.spot.formatSize(amount, resolvedMarketId)],
+      calls: buildedTxs,
     });
 
-    if (submit) {
-      const txHash = await this.sdk.executeTransaction(tx);
-      console.log(`Transferring ${amount} ${resolvedMarketName} for account ${accountId}`);
-      console.log('Modify collateral tx: ', txHash);
-      return txHash;
-    } else {
-      return tx;
-    }
+    if (!override.submit) return tx;
+    const txHash = await this.sdk.executeTransaction(tx);
+    console.log('Modify collateral tx: ', txHash);
+    return txHash;
   }
 
   /**
@@ -1454,77 +1473,39 @@ export class Perps {
       submit: false,
     },
   ) {
-    const { resolvedMarketId } = this.resolveMarket(marketId, marketName);
+    // const { resolvedMarketId } = this.resolveMarket(marketId, marketName);
 
     // 1. Create Account
-    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-    const createAccountCall: Call3Value = {
-      target: marketProxy.address,
-      callData: encodeFunctionData({
-        abi: marketProxy.abi,
-        functionName: 'createAccount',
-        args: [accountId],
-      }),
-      value: 0n,
-      requireSuccess: true,
-    };
+    const createAccountCall = (await this._buildCreateAccount(accountId)) as Call3Value[];
 
     // 2. Add Collateral
-    const { resolvedMarketId: resolvedCollateralId } = this.sdk.spot.resolveMarket(collateralMarketId);
-    const collateralAmountInWei = this.sdk.spot.formatSize(collateralAmount, resolvedCollateralId);
-    const modifyCollateralCall: Call3Value = {
-      target: marketProxy.address,
-      callData: encodeFunctionData({
-        abi: marketProxy.abi,
-        functionName: 'modifyCollateral',
-        args: [accountId, resolvedCollateralId, collateralAmountInWei],
-      }),
-      value: 0n,
-      requireSuccess: true,
-    };
 
-    // 3. Commit Order
-    if (desiredFillPrice != undefined && maxPriceImpact != undefined) {
-      throw new Error('Cannot set both desiredFillPrice and maxPriceImpact');
-    }
-    const isShort = size < 0 ? -1 : 1;
-    const sizeInWei = parseEther(Math.abs(size).toString()) * BigInt(isShort);
-    let acceptablePrice: number;
+    const modifyCollateralCall = (await this._buildModifyCollateral({
+      amount: collateralAmount,
+      marketId: collateralMarketId,
+      accountId,
+    })) as Call3Value[];
 
-    if (desiredFillPrice) {
-      // If desired price is provided, use the provided price, else fetch price
-      acceptablePrice = desiredFillPrice;
-    } else {
-      const updatedMaxPriceImpact = maxPriceImpact ?? 1; // @todo Replace with config value
-      const marketSummary = await this.getMarketSummary(resolvedMarketId);
-      const priceImpact = 1 + (isShort * updatedMaxPriceImpact) / 100;
-      acceptablePrice = (marketSummary.indexPrice ?? 0) * priceImpact;
-    }
+    const commitOrderCall = (await this._buildCommitOrder({
+      size: size,
+      settlementStrategyId,
+      marketId,
+      marketName,
+      accountId,
+      desiredFillPrice,
+      maxPriceImpact,
+    })) as Call3Value[];
 
     const oracleCalls = await this.prepareOracleCall();
-    const txArgs = [
-      resolvedMarketId,
-      accountId,
-      sizeInWei,
-      settlementStrategyId,
-      convertEtherToWei(acceptablePrice),
-      this.sdk.trackingCode,
-      this.sdk.referrer,
+
+    const callsArray: Call3Value[] = [
+      ...oracleCalls,
+      ...createAccountCall,
+      ...modifyCollateralCall,
+      ...commitOrderCall,
     ];
-
-    const commitOrderCall: Call3Value = {
-      target: marketProxy.address,
-      callData: encodeFunctionData({
-        abi: marketProxy.abi,
-        functionName: 'commitOrder',
-        args: [txArgs],
-      }),
-      value: 0n,
-      requireSuccess: true,
-    };
-
-    const callsArray: Call3Value[] = oracleCalls.concat([createAccountCall, modifyCollateralCall, commitOrderCall]);
     const finalTx = await this.sdk.utils.writeErc7412({ calls: callsArray }, override);
+    await this.sdk.publicClient.call(finalTx);
 
     if (!override.submit) return finalTx;
 
