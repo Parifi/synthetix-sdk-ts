@@ -104,13 +104,11 @@ export class Utils {
       console.log('Update type: ', updateType);
       console.log('priceIds: ', priceId);
 
-      // const [priceFeedUpdateVaa] = await this.sdk.pyth.pythConnection.getVaa(
-      //   priceId as string,
-      //   Number((requestedTime as unknown as bigint).toString()),
-      // );
-      // const priceFeedUpdate = '0x' + Buffer.from(priceFeedUpdateVaa, 'base64').toString('hex');
-      const publishTime = Number((requestedTime as unknown as bigint).toString());
-      const priceFeedUpdateVaa = await this.sdk.pyth.getVaaPriceUpdateData([priceId], publishTime);
+      const [priceFeedUpdateVaa] = await this.sdk.pyth.pythConnection.getVaa(
+        priceId as string,
+        Number((requestedTime as unknown as bigint).toString()),
+      );
+      const priceFeedUpdate = '0x' + Buffer.from(priceFeedUpdateVaa, 'base64').toString('hex');
 
       return encodeAbiParameters(
         [
@@ -119,7 +117,7 @@ export class Utils {
           { type: 'bytes32[]', name: 'priceIds' },
           { type: 'bytes[]', name: 'updateData' },
         ],
-        [updateType, requestedTime, [priceId], priceFeedUpdateVaa],
+        [updateType, requestedTime, [priceId], [priceFeedUpdate as Address]],
       );
     } else {
       throw new Error(`Error encoding/decoding data`);

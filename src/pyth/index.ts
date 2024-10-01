@@ -111,8 +111,6 @@ export class Pyth {
           encoding: 'hex',
         },
       });
-
-      console.log(response);
       if (response.status == 200) {
         const responseData = response.data;
         priceUpdateData = responseData.binary?.data ?? [];
