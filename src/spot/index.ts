@@ -106,14 +106,17 @@ export class Spot {
    * @returns The formatted size in wei. (e.g. 100 = 100000000000000000000)
    */
   public formatSize(size: number, marketId: number): bigint {
-    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketId, undefined);
-
+    const { resolvedMarketName } = this.resolveMarket(marketId, undefined);
     let sizeInWei: bigint;
+
+    const chainIds = [8453, 84532, 42161, 421514];
+    const marketNames = ['sUSDC', 'sStataUSDC'];
+
     // Hard-coding a catch for USDC with 6 decimals
-    if (this.sdk.rpcConfig.chainId in [8453, 84532, 42161, 421514] && resolvedMarketName in ['sUSDC', 'sStataUSDC']) {
+    if (chainIds.includes(this.sdk.rpcConfig.chainId) && marketNames.includes(resolvedMarketName)) {
       sizeInWei = parseUnits(size.toString(), 6);
     } else {
-      sizeInWei = parseUnits(size.toString(), 6);
+      sizeInWei = parseUnits(size.toString(), 18);
     }
     console.log(`Size ${size} in wei for market ${resolvedMarketName}: ${sizeInWei}`);
     return sizeInWei;
@@ -203,7 +206,7 @@ export class Spot {
     if (this.asyncOrderEnabled) {
       const marketIds = Array.from(finalSynths.keys());
       // Get settlement strategies
-      settlementStrategies = await this.getSettlementStrategies(0, marketIds);
+      // settlementStrategies = await this.getSettlementStrategies(0, marketIds);
     } else {
       console.log('Async orders not enabled on network ', this.sdk.rpcConfig.chainId);
     }
@@ -335,7 +338,7 @@ export class Spot {
 
     const approveTx: CallParameters = {
       account: this.sdk.accountAddress,
-      to: targetAddress as Hex,
+      to: synthContract.address as Hex,
       data: encodeFunctionData({
         abi: synthContract.abi,
         functionName: 'approve',
@@ -465,15 +468,24 @@ export class Spot {
     }
 
     const settlementStrategies: SpotSettlementStrategy[] = [];
+    let settlementStrategiesResponse: SettlementStrategyResponse[];
 
     const argsList: [number, number][] = marketIds.map((marketId) => [marketId, stragegyId]);
 
-    const settlementStrategiesResponse: SettlementStrategyResponse[] = (await this.sdk.utils.multicallErc7412(
+    const response = await this.sdk.utils.multicallErc7412(
       spotProxy.address,
       spotProxy.abi,
       'getSettlementStrategy',
       argsList,
-    )) as SettlementStrategyResponse[];
+    );
+
+    if (response == undefined) {
+      settlementStrategiesResponse = [];
+    } else {
+      settlementStrategiesResponse = response as unknown[] as SettlementStrategyResponse[];
+    }
+
+    console.log('settlementStrategiesResponse', settlementStrategiesResponse);
 
     settlementStrategiesResponse.forEach((strategy, index) => {
       settlementStrategies.push({

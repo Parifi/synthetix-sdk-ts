@@ -1,13 +1,17 @@
 import { AccountConfig, RpcConfig, SdkConfigParams } from './interface/classConfigs';
-import { getPublicRpcEndpoint, getChain, Utils } from './utils';
+import { getPublicRpcEndpoint, getChain, Utils, convertWeiToEther, convertEtherToWei } from './utils';
 import { Core } from './core';
 import {
   Address,
   CallParameters,
   createPublicClient,
   createWalletClient,
+  encodeFunctionData,
+  erc20Abi,
+  getContract,
   Hex,
   http,
+  maxUint256,
   PrivateKeyAccount,
   PublicClient,
   webSocket,
@@ -188,7 +192,7 @@ export class SynthetixSdk {
       to: tx.to,
       data: tx.data,
       value: tx.value,
-      gas: 1000000n,
+      gas: 10000000n,
     });
 
     const serializedTransaction = await wClient.signTransaction(request);
@@ -197,5 +201,92 @@ export class SynthetixSdk {
       hash: txHash,
     });
     return txHash;
+  }
+
+  /**
+   * Gets current sUSD balance in wallet. Supports only V3 sUSD.
+   * @param address Address to check balances for
+   */
+  public async getSusdBalance(address?: string): Promise<number> {
+    if (address == undefined) {
+      address = this.accountAddress;
+    }
+
+    const susdToken = await this.contracts.getUSDProxyInstance();
+    const balance = (await susdToken.read.balanceOf([address])) as bigint;
+    return convertWeiToEther(balance);
+  }
+
+  /**
+   * Gets current ETH balance for the address
+   * @param address Address to check balances for
+   */
+  public async getEthBalance(address?: string) {
+    if (address == undefined) {
+      address = this.accountAddress;
+    }
+
+    const ethBalance = await this.publicClient.getBalance({
+      address: address as Hex,
+    });
+    return convertWeiToEther(ethBalance);
+  }
+
+  /**
+   *   Approve an address to spend a specified ERC20 token. This is a general
+   * implementation that can be used for any ERC20 token. Specify the amount
+   * as an ether value, otherwise it will default to the maximum amount
+   * For example:
+   * const tx = await sdk.approve(tokenAddress,marketProxyAddress,1000)
+   * @param tokenAddress address of the token to approve
+   * @param targetAddress address to approve to spend the token
+   * @param amount amount of the token to approve
+   * @param submit submit the transaction if true and return txHash, else return encoded txData
+   * @returns If ``submit``, returns a transaction hash. Otherwise, returns the transaction data.
+   */
+  public async approve(tokenAddress: string, targetAddress: string, amount?: number, submit: boolean = false) {
+    const amountInWei = amount == undefined ? maxUint256 : convertEtherToWei(amount);
+
+    const tx: CallParameters = {
+      account: this.accountAddress,
+      to: tokenAddress as Hex,
+      data: encodeFunctionData({
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [targetAddress as Hex, amountInWei],
+      }),
+    };
+
+    if (submit) {
+      const txHash = await this.executeTransaction(tx);
+      console.log('Transaction hash: ', txHash);
+      return txHash;
+    } else {
+      return tx;
+    }
+  }
+
+  /**
+   * Get the allowance for a target address to spend a specified ERC20 token for an owner.
+   * This is a general implementation that can be used for any ERC20 token.
+   * @param tokenAddress address of the token to check allowance for
+   * @param spenderAddress  address to spender of the token
+   * @param ownerAddress  address of the token owner. If not specified,
+   * the default address is used.
+   * @returns The formatted allowance for the target address to spend the token of the owner
+   */
+  public async getAllowance(tokenAddress: string, spenderAddress: string, ownerAddress?: string): Promise<number> {
+    if (ownerAddress == undefined) {
+      ownerAddress = this.accountAddress;
+    }
+
+    const erc20Token = getContract({
+      address: tokenAddress as Hex,
+      abi: erc20Abi,
+      client: this.publicClient,
+    });
+
+    const allowance = (await erc20Token.read.allowance([ownerAddress as Hex, spenderAddress as Hex])) as bigint;
+    return convertWeiToEther(allowance);
   }
 }

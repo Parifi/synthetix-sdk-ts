@@ -16,13 +16,18 @@ import { formatUnits, Hex } from 'viem';
  */
 export class Pyth {
   sdk: SynthetixSdk;
+  pythClient: AxiosInstance;
   pythConnection: EvmPriceServiceConnection;
+
+  pythConfig?: PythConfig;
 
   // To store Market Symbol to Pyth Price ID mapping
   priceFeedIds: Map<string, string>;
 
   constructor(synthetixSdk: SynthetixSdk, pythConfig?: PythConfig) {
     this.sdk = synthetixSdk;
+    this.pythClient = {} as AxiosInstance;
+    this.pythConfig = pythConfig;
 
     let pythEndpoint;
     if (pythConfig != undefined) {
@@ -39,7 +44,86 @@ export class Pyth {
     this.priceFeedIds = new Map<string, string>();
   }
 
-  async initPyth() {}
+  async initPyth() {
+    this.pythClient = await this.getPythClient();
+  }
+
+  /**
+   * Get Pyth client instance
+   * @returns Pyth client object based on the params provided
+   */
+  async getPythClient(): Promise<AxiosInstance> {
+    let pythServiceEndpoint, pythServiceUsername, pythServicePassword;
+
+    if (this.pythConfig == undefined || this.pythConfig.pythEndpoint == undefined) {
+      pythServiceEndpoint = PUBLIC_PYTH_ENDPOINT;
+    } else {
+      pythServiceEndpoint = this.pythConfig.pythEndpoint;
+      pythServiceUsername = this.pythConfig.username;
+      pythServicePassword = this.pythConfig.password;
+    }
+
+    try {
+      if (pythServiceEndpoint) {
+        if (pythServiceUsername && pythServicePassword) {
+          // If Username and password is provided, connect using credentials
+          return axios.create({
+            baseURL: pythServiceEndpoint,
+            auth: {
+              username: pythServiceUsername,
+              password: pythServicePassword,
+            },
+            timeout: this.pythConfig?.cacheTtl ?? DEFAULT_PYTH_TIMEOUT,
+          });
+        } else {
+          // Connect to the PYTH service endpoint without authentication
+          return axios.create({
+            baseURL: pythServiceEndpoint,
+          });
+        }
+      } else {
+        // If Pyth service endpoint is not provided, connect to public endpoints
+        return axios.create({
+          baseURL: PUBLIC_PYTH_ENDPOINT,
+          timeout: this.pythConfig?.cacheTtl ?? DEFAULT_PYTH_TIMEOUT,
+        });
+      }
+    } catch (error) {
+      console.error('Error when creating Pyth instance:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * The function accepts an array of priceIds and publish Timestamp and
+   * returns the priceUpdateData from Pyth for price ids array
+   * @param priceIds Pyth Price IDs array
+   * @param publishTime Publish time for benchmark data
+   * @returns Encoded Pyth price update data
+   */
+  public getVaaPriceUpdateData = async (priceIds: string[], publishTime: number): Promise<Hex[]> => {
+    let priceUpdateData: string[] = [];
+
+    try {
+      const response = await this.pythClient.get(`/v2/updates/price/${publishTime}`, {
+        params: {
+          ids: priceIds,
+          encoding: 'hex',
+        },
+      });
+      if (response.status == 200) {
+        const responseData = response.data;
+        priceUpdateData = responseData.binary?.data ?? [];
+      } else {
+        throw new Error('Error fetching data from Pyth');
+      }
+    } catch (error) {
+      console.log('Error fetching data from Pyth', error);
+      throw error;
+    }
+    const updateData = priceUpdateData.map((vaa) => '0x' + vaa);
+    return updateData as Hex[];
+  };
 
   /**
    * Update the price feed IDs for the Pyth price service.

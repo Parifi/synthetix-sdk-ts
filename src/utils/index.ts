@@ -77,6 +77,9 @@ export class Utils {
         data,
       );
 
+      console.log('Update type: ', updateType);
+      console.log('priceIds: ', priceIds);
+
       const stalenessTolerance = stalenessOrTime;
       const updateData = await this.sdk.pyth.getPriceFeedsUpdateData(priceIds as Hex[]);
 
@@ -98,6 +101,8 @@ export class Utils {
         ],
         data,
       );
+      console.log('Update type: ', updateType);
+      console.log('priceIds: ', priceId);
 
       const [priceFeedUpdateVaa] = await this.sdk.pyth.pythConnection.getVaa(
         priceId as string,

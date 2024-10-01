@@ -24,7 +24,7 @@ describe('Perps', () => {
 
   it('should return settlement strategies data', async () => {
     const settlementStrategyId = 0;
-    const marketId = 1600;
+    const marketId = sdk.perps.marketsByName.get('Ethereum')?.marketId;
     const settlementStrategy = await sdk.perps.getSettlementStrategy(settlementStrategyId, marketId);
     console.log('settlementStrategy :', settlementStrategy);
   });
@@ -35,65 +35,63 @@ describe('Perps', () => {
   });
 
   it('should return account ids and balance of an address', async () => {
-    const defaultAddress = process.env.DEFAULT_ADDRESS;
-    const accountIds = await sdk.perps.getAccountIds(defaultAddress);
+    const accountIds = await sdk.perps.getAccountIds();
     console.info('Account Ids :', accountIds);
   });
 
   it('should commit an order for settlement', async () => {
-    const tx = await sdk.perps.commitOrder(0.001, 0, 100, undefined, undefined, undefined, 1, false);
-    console.log(tx);
+    const marketName = 'Ethereum';
+    const size = 0.1; // 0.1 ETH;
+    const defaultSettlementStrategy = 0;
+    const submit = false;
+    const tx = await sdk.perps.commitOrder(
+      size,
+      defaultSettlementStrategy,
+      undefined,
+      marketName,
+      undefined,
+      undefined,
+      1,
+      submit,
+    );
+
+    if (submit) {
+      console.log('Transaction hash: ', tx);
+    }
   });
 
   it('should get margin info', async () => {
-    const marginInfo = await sdk.perps.getMarginInfo(undefined);
+    const marginInfo = await sdk.perps.getMarginInfo();
     console.log('marginInfo :', marginInfo);
   });
 
   it('should add collateral', async () => {
-    // const tokenAddress = await sdk.core.getUsdToken();
-    const marketProxy = await sdk.contracts.getPerpsMarketProxyInstance();
-    const tokenAddress = '0x8069c44244e72443722cfb22dce5492cba239d39'; // For base sepolia susdc
-
-    const tokenBalance: bigint = (await sdk.utils.callErc7412(tokenAddress, erc20Abi, 'balanceOf', [
-      sdk.accountAddress,
-    ])) as bigint;
-
-    const spenderAddress = '0x0df5bb521adbf0db1fedc39973a82075df2d8730';
-    console.log('tokenBalance', tokenBalance);
+    const initialMarginInfo = (await sdk.perps.getMarginInfo()).totalCollateralValue;
+    const initialSusdBalance = await sdk.getSusdBalance();
     const amount = 10; // 10 usdc
-    const amountInWei = parseUnits(amount.toString(), 6);
+    const submit = false;
 
-    if (tokenBalance == BigInt(0) || tokenBalance < amountInWei) {
+    if (initialSusdBalance == 0 || initialSusdBalance < amount) {
       console.log('USD Token balance of address is less than amount');
       return;
     }
 
-    const balanceApproved = (await sdk.utils.callErc7412(tokenAddress, erc20Abi, 'allowance', [
-      sdk.accountAddress,
-      spenderAddress,
-    ])) as bigint;
+    const marketProxy = await sdk.contracts.getPerpsMarketProxyInstance();
+    const allowance = await sdk.spot.getAllowance(marketProxy.address, sdk.accountAddress, undefined, 'sUSD');
 
-    console.log('balanceApproved', balanceApproved);
-
-    if (balanceApproved < amountInWei) {
-      const approvalTx: CallParameters = {
-        account: sdk.accountAddress,
-        to: tokenAddress,
-        data: encodeFunctionData({
-          abi: erc20Abi,
-          functionName: 'approve',
-          args: [spenderAddress, amountInWei],
-        }),
-      };
-      const approvalHash = await sdk.executeTransaction(approvalTx);
-      console.log('Approval txHash:', approvalHash);
+    if (allowance < amount) {
+      const approveTxHash = await sdk.spot.approve(marketProxy.address, amount, undefined, 'sUSD', true);
+      console.log('Approval txHash:', approveTxHash);
     }
-    const tx = await sdk.perps.modifyCollateral(amount, 0);
+
+    const tx = await sdk.perps.modifyCollateral(amount, undefined, 'sUSD', undefined, submit);
     console.log('Add collateral tx: ', tx);
 
-    const marginInfo = await sdk.perps.getMarginInfo();
-    console.log('marginInfo :', marginInfo);
+    const marginInfo = (await sdk.perps.getMarginInfo()).totalCollateralValue;
+
+    if (submit) {
+      expect(marginInfo).toBeGreaterThan(initialMarginInfo);
+    }
   });
 
   it('should return if an account can be liquidated', async () => {
@@ -110,7 +108,7 @@ describe('Perps', () => {
   });
 
   it('should return open position data for multiple markets', async () => {
-    const positionsData = await sdk.perps.getOpenPositions(undefined, ['Ethereum', 'Bitcoin', 'Synthetix', 'Solana']);
+    const positionsData = await sdk.perps.getOpenPositions(undefined, ['Ethereum', 'Bitcoin', 'Solana']);
     console.log('positionsData :', positionsData);
   });
 
@@ -153,19 +151,44 @@ describe('Perps', () => {
     expect(pythData).not.toBe(undefined);
   });
 
-  it.skip('should create an isolated account order', async () => {
-    const collateralAmount = 10; // 10 USDC
-    const collateralMarketId = 0; // sUSDC
+  it('should create an isolated account order', async () => {
+    const initialSusdBalance = await sdk.getSusdBalance();
+    const collateralAmount = 70; // 70 usdc.Min 62.5 USD collateral is required
+    const submit = false;
+
+    if (initialSusdBalance == 0 || initialSusdBalance < collateralAmount) {
+      console.log('USD Token balance of address is less than collateralAmount');
+      return;
+    }
+
+    const marketProxy = await sdk.contracts.getPerpsMarketProxyInstance();
+    const allowance = await sdk.spot.getAllowance(marketProxy.address, sdk.accountAddress, undefined, 'sUSD');
+
+    if (allowance < collateralAmount) {
+      const approveTxHash = await sdk.spot.approve(marketProxy.address, collateralAmount, undefined, 'sUSD', true);
+      console.log('Approval txHash:', approveTxHash);
+    }
+
+    const collateralMarketName = 'sUSD';
+    const collateralMarketId = sdk.spot.marketsByName.get(collateralMarketName)?.marketId ?? 0;
     const marketName = 'Ethereum';
     const orderSize = 0.01; // 0.01 ETH
 
-    const tx = await sdk.perps.createIsolatedAccountOrder(
+    const response = await sdk.perps.createIsolatedAccountOrder(
       collateralAmount,
       collateralMarketId,
       orderSize,
       undefined,
       marketName,
+      0,
+      undefined,
+      undefined,
+      undefined,
+      submit,
     );
-    console.log(tx);
+
+    if (submit) {
+      console.log(`Transaction hash and account details: ${response}`);
+    }
   });
 });

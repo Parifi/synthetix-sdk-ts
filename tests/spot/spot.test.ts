@@ -3,16 +3,16 @@ import { getSdkInstanceForTesting } from '..';
 import { Address, CallParameters, encodeFunctionData, erc20Abi, formatUnits, getContract, Hex, parseUnits } from 'viem';
 import { SynthetixSdk } from '../../src';
 import { Side } from '../../src/spot/interface';
+import { convertWeiToEther } from '../../src/utils';
 
 describe('Spot', () => {
   let sdk: SynthetixSdk;
   beforeAll(async () => {
     sdk = await getSdkInstanceForTesting();
 
-    // Get accounts for address and sets the default account
-    const defaultAddress = process.env.DEFAULT_ADDRESS;
-    const accountIds = await sdk.perps.getAccountIds(defaultAddress);
-    console.log('Account ids for default account: ', accountIds);
+    const { marketsById, marketsByName } = await sdk.spot.getMarkets();
+    expect(marketsById.size).toBeGreaterThan(0);
+    expect(marketsByName.size).toBeGreaterThan(0);
   });
 
   it('should return response for a get call on Core proxy contract', async () => {
@@ -49,45 +49,50 @@ describe('Spot', () => {
     console.log('res', res);
   });
 
-  it('should wrap sUSDC tokens', async () => {
+  it.only('should wrap sUSDC tokens', async () => {
     const spotMarketProxy = await sdk.contracts.getSpotMarketProxyInstance();
-    // const tokenAddress = await sdk.core.getUsdToken();
-    const tokenAddress = '0xc43708f8987df3f3681801e5e640667d86ce3c30'; // Temp value for fakeUSDC on base
+    const submit = false;
+    let tokenAddress;
+
+    if (sdk.rpcConfig.chainId == 84532) {
+      tokenAddress = '0xc43708f8987df3f3681801e5e640667d86ce3c30'; // Temp value for fakeUSDC on base
+    } else if (sdk.rpcConfig.chainId == 421614) {
+      tokenAddress = '0x';
+      return;
+    } else {
+      console.log('TODO: Add logic for token address on other chains.... skipping test case');
+      return;
+    }
+
     const size = 1;
-    const sizeInWei = parseUnits(size.toString(), 6);
+    const initialBalance = await sdk.spot.getBalance(undefined, undefined, 'sUSDC');
 
-    const tokenBalance: bigint = (await sdk.utils.callErc7412(tokenAddress, erc20Abi, 'balanceOf', [
-      sdk.accountAddress,
-    ])) as bigint;
-    console.log('Wallet balance: ', formatUnits(tokenBalance, 6));
+    const fakeUSDC = getContract({
+      address: tokenAddress as Hex,
+      abi: erc20Abi,
+      client: sdk.publicClient,
+    });
 
-    if (tokenBalance == BigInt(0) || tokenBalance < sizeInWei) {
+    const tokenBalance = Number(formatUnits(await fakeUSDC.read.balanceOf([sdk.accountAddress]), 6));
+    console.log('Wallet balance: ', tokenBalance);
+
+    if (tokenBalance == 0 || tokenBalance < size) {
       console.log('USD Token balance of address is less than amount');
       return;
     }
 
-    const balanceApproved = (await sdk.utils.callErc7412(tokenAddress, erc20Abi, 'allowance', [
-      sdk.accountAddress,
-      spotMarketProxy.address,
-    ])) as bigint;
-    console.log('balanceApproved: ', formatUnits(balanceApproved, 6));
-
-    if (balanceApproved < sizeInWei) {
-      const approvalTx: CallParameters = {
-        account: sdk.accountAddress,
-        to: tokenAddress as Address,
-        data: encodeFunctionData({
-          abi: erc20Abi,
-          functionName: 'approve',
-          args: [spotMarketProxy.address, sizeInWei],
-        }),
-      };
-      const approvalHash = await sdk.executeTransaction(approvalTx);
-      console.log('Approval txHash:', approvalHash);
+    const allowance = await sdk.getAllowance(tokenAddress, spotMarketProxy.address, sdk.accountAddress);
+    if (allowance < size) {
+      const approveTxHash = await sdk.approve(tokenAddress, spotMarketProxy.address, size, true);
+      console.log('Approval txHash:', approveTxHash);
     }
 
     const tx = await sdk.spot.wrap(size, undefined, 'sUSDC', false);
-    console.log('Wrap tx data:', tx);
+    if (submit) {
+      console.log('Wrap tx data:', tx);
+      const updatedBalance = await sdk.spot.getBalance(undefined, undefined, 'sUSDC');
+      expect(updatedBalance).toBeGreaterThan(initialBalance);
+    }
   });
 
   it.skip('should settle an order', async () => {

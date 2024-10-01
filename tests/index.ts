@@ -11,11 +11,11 @@ export const getSdkInstanceForTesting = async (): Promise<SynthetixSdk> => {
   console.log('Default address: ', process.env.DEFAULT_ADDRESS);
 
   // initialize RPC config
-  const chainId = Number(process.env.CHAIN_ID || '8453');
+  const chainId = Number(process.env.CHAIN_ID || '421614');
   const rpcConfig: RpcConfig = {
     chainId: chainId,
     rpcEndpoint: process.env.RPC_ENDPOINT || getPublicRpcEndpoint(chainId),
-    preset: process.env.PRESET || 'andromeda',
+    preset: process.env.PRESET || 'main',
   };
 
   // initialize WalletClient if private key is set
