@@ -715,6 +715,7 @@ export class Perps {
       accountId = this.defaultAccountId;
     }
 
+    const oracleCalls = await this.prepareOracleCall();
     const txArgs = [
       resolvedMarketId,
       accountId,
@@ -726,9 +727,13 @@ export class Perps {
     ];
 
     console.log('txArgs', txArgs);
-    const tx = await this.sdk.utils.writeErc7412(perpsMarketProxy.address, perpsMarketProxy.abi, 'commitOrder', [
-      txArgs,
-    ]);
+    const tx = await this.sdk.utils.writeErc7412(
+      perpsMarketProxy.address,
+      perpsMarketProxy.abi,
+      'commitOrder',
+      [txArgs],
+      oracleCalls,
+    );
     if (submit) {
       console.log(
         `Committing order size ${sizeInWei} (${size}) to ${marketName} (id: ${resolvedMarketId}) for account ${accountId}`,
