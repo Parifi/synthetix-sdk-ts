@@ -53,9 +53,11 @@ export function sleep(seconds: number): Promise<void> {
 }
 
 export function generateRandomAccountId(): bigint {
-  const buffer = randomBytes(16); // 16 bytes * 8 bits/byte = 128 bits
+  const maxUint128Half = maxUint128 / BigInt(2);
+
+  const buffer = randomBytes(8); // 8 bytes * 8 bits/byte = 64 bits
   const randomAccountId = BigInt('0x' + buffer.toString('hex'));
-  if (randomAccountId > maxUint128) {
+  if (randomAccountId > maxUint128Half) {
     throw new Error('Account ID greater than Maxuint128');
   }
   return randomAccountId;
