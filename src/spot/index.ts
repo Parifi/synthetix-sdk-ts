@@ -113,7 +113,7 @@ export class Spot {
     if (this.sdk.rpcConfig.chainId in [8453, 84532, 42161, 421514] && resolvedMarketName in ['sUSDC', 'sStataUSDC']) {
       sizeInWei = parseUnits(size.toString(), 6);
     } else {
-      sizeInWei = parseUnits(size.toString(), 6);
+      sizeInWei = parseUnits(size.toString(), 18);
     }
     console.log(`Size ${size} in wei for market ${resolvedMarketName}: ${sizeInWei}`);
     return sizeInWei;
