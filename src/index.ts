@@ -188,7 +188,7 @@ export class SynthetixSdk {
       to: tx.to,
       data: tx.data,
       value: tx.value,
-      gas: 1000000n,
+      gas: 10000000n,
     });
 
     const serializedTransaction = await wClient.signTransaction(request);

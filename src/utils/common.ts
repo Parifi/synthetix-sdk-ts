@@ -1,11 +1,10 @@
 import { formatEther, maxUint128, parseEther } from 'viem';
 import { mainnet, base, optimism, arbitrum, baseSepolia, arbitrumSepolia, Chain } from 'viem/chains';
 import { randomBytes } from 'crypto';
+import { publicRpcEndpoints } from '../constants';
 
 export function getPublicRpcEndpoint(chainId: number) {
-  console.log(chainId);
-  //   @todo Add chain specific logic for default public rpc endpoint
-  return 'https://base.llamarpc.com';
+  return publicRpcEndpoints[chainId];
 }
 
 /**
