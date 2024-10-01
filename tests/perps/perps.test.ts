@@ -43,6 +43,7 @@ describe('Perps', () => {
     const marketName = 'Ethereum';
     const size = 0.1; // 0.1 ETH;
     const defaultSettlementStrategy = 0;
+    const submit = false;
     const tx = await sdk.perps.commitOrder(
       size,
       defaultSettlementStrategy,
@@ -51,9 +52,12 @@ describe('Perps', () => {
       undefined,
       undefined,
       1,
-      false,
+      submit,
     );
-    console.log(tx);
+
+    if (submit) {
+      console.log('Transaction hash: ', tx);
+    }
   });
 
   it('should get margin info', async () => {
@@ -147,19 +151,44 @@ describe('Perps', () => {
     expect(pythData).not.toBe(undefined);
   });
 
-  it.skip('should create an isolated account order', async () => {
-    const collateralAmount = 10; // 10 USDC
-    const collateralMarketId = 0; // sUSDC
+  it('should create an isolated account order', async () => {
+    const initialSusdBalance = await sdk.getSusdBalance();
+    const collateralAmount = 70; // 70 usdc.Min 62.5 USD collateral is required
+    const submit = false;
+
+    if (initialSusdBalance == 0 || initialSusdBalance < collateralAmount) {
+      console.log('USD Token balance of address is less than collateralAmount');
+      return;
+    }
+
+    const marketProxy = await sdk.contracts.getPerpsMarketProxyInstance();
+    const allowance = await sdk.spot.getAllowance(marketProxy.address, sdk.accountAddress, undefined, 'sUSD');
+
+    if (allowance < collateralAmount) {
+      const approveTxHash = await sdk.spot.approve(marketProxy.address, collateralAmount, undefined, 'sUSD', true);
+      console.log('Approval txHash:', approveTxHash);
+    }
+
+    const collateralMarketName = 'sUSD';
+    const collateralMarketId = sdk.spot.marketsByName.get(collateralMarketName)?.marketId ?? 0;
     const marketName = 'Ethereum';
     const orderSize = 0.01; // 0.01 ETH
 
-    const tx = await sdk.perps.createIsolatedAccountOrder(
+    const response = await sdk.perps.createIsolatedAccountOrder(
       collateralAmount,
       collateralMarketId,
       orderSize,
       undefined,
       marketName,
+      0,
+      undefined,
+      undefined,
+      undefined,
+      submit,
     );
-    console.log(tx);
+
+    if (submit) {
+      console.log(`Transaction hash and account details: ${response}`);
+    }
   });
 });
