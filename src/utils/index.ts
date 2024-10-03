@@ -394,6 +394,7 @@ export class Utils {
     override: OverrideParamsWrite = {
       shouldRevertOnTxFailure: true,
       submit: false,
+      useMultiCall: true,
     },
   ): Promise<CallParameters> {
     let calls: Call3Value[] = data.calls ?? [];
