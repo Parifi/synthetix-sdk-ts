@@ -1,4 +1,4 @@
-import { CommitOrder, ModifyCollateral } from '.';
+import { CommitOrder, CreateIsolateOrder, GetPerpsQuote, ModifyCollateral, PayDebt } from '.';
 import {
   CollateralData,
   FundingParameters,
@@ -14,7 +14,6 @@ import {
 } from '../../perps/interface';
 import { MarketIdOrName, OverrideParamsWrite, ReturnWriteCall } from '../commonTypes';
 import { Call3Value } from '../contractTypes';
-import { CreateIsolateOrder, GetPerpsQuote, Liquidate, PayDebt } from '../perps';
 
 type MarketsBy<T> = Map<T, MarketData>;
 type MarketById = MarketsBy<number>;
