@@ -1458,7 +1458,8 @@ export class Perps implements PerpsRepository {
           }) as CallParameters,
       );
     const finalTx = await this.sdk.utils.writeErc7412({ calls: callsArray }, override);
-    await this.sdk.publicClient.call(finalTx);
+    // TODO: add needed allowance and transfer on sdk
+    // await this.sdk.publicClient.call(finalTx);
 
     if (!override.submit) return finalTx;
 
