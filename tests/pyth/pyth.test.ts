@@ -1,3 +1,4 @@
+import { Address } from 'viem';
 import { getSdkInstanceForTesting } from '..';
 import { SynthetixSdk } from '../../src';
 
@@ -9,7 +10,7 @@ describe('Pyth', () => {
 
     // Get accounts for address and sets the default account
     const defaultAddress = process.env.DEFAULT_ADDRESS;
-    const accountIds = await sdk.perps.getAccountIds(defaultAddress);
+    const accountIds = await sdk.perps.getAccountIds(defaultAddress as Address);
     console.log('Account ids for default account: ', accountIds);
     await sdk.perps.getMarkets();
   });
