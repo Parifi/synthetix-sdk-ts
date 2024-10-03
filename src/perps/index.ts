@@ -8,12 +8,10 @@ import {
   parseEther,
 } from 'viem';
 import { SynthetixSdk } from '..';
-import { DISABLED_MARKETS } from '../constants';
 import {
   CollateralData,
   FundingParameters,
   MarketData,
-  MarketMetadata,
   MarketSummary,
   MaxMarketValue,
   OpenPositionData,
@@ -27,6 +25,7 @@ import { Call3Value } from '../interface/contractTypes';
 import { MarketIdOrName, OverrideParamsWrite, ReturnWriteCall } from '../interface/commonTypes';
 import { CommitOrder, CreateIsolateOrder, GetPerpsQuote, ModifyCollateral, PayDebt } from '../interface/Perps';
 import { PerpsRepository } from '../interface/Perps/repositories';
+import { Market } from '../utils/market';
 
 /**
  * Class for interacting with Synthetix Perps V3 contracts
@@ -48,19 +47,12 @@ import { PerpsRepository } from '../interface/Perps/repositories';
  * - PythERC7412Wrapper
  * @param synthetixSdk An instance of the Synthetix class
  */
-export class Perps implements PerpsRepository {
+export class Perps extends Market implements PerpsRepository {
   sdk: SynthetixSdk;
   defaultAccountId?: bigint;
   accountIds: bigint[];
 
   // Markets data
-  marketMetadata: Map<number, MarketMetadata>;
-  marketsById: Map<number, MarketData>;
-  marketsByName: Map<string, MarketData>;
-
-  // Mapping of Market Symbol to MarketData.
-  // @note Ideally prefer using market symbol over market name
-  marketsBySymbol: Map<string, MarketData>;
 
   isErc7412Enabled: boolean = true;
   // Set multicollateral to false by default
@@ -68,19 +60,9 @@ export class Perps implements PerpsRepository {
   disabledMarkets: number[] = [];
 
   constructor(synthetixSdk: SynthetixSdk) {
+    super(synthetixSdk);
     this.sdk = synthetixSdk;
     this.accountIds = [];
-
-    // Initialize empty market data
-    this.marketMetadata = new Map<number, MarketMetadata>();
-    this.marketsById = new Map<number, MarketData>();
-    this.marketsByName = new Map<string, MarketData>();
-    this.marketsBySymbol = new Map<string, MarketData>();
-
-    // Set disabled markets
-    if (synthetixSdk.rpcConfig.chainId in DISABLED_MARKETS) {
-      this.disabledMarkets = DISABLED_MARKETS[synthetixSdk.rpcConfig.chainId];
-    }
   }
 
   async initPerps() {
@@ -102,27 +84,6 @@ export class Perps implements PerpsRepository {
       this.isMulticollateralEnabled = true;
       console.log('Multicollateral perps is enabled');
     }
-  }
-
-  /**
-   * Look up the market_id and market_name for a market. If only one is provided,
-   * the other is resolved. If both are provided, they are checked for consistency.
-   * @param marketId Id of the market to resolve
-   * @param marketName Name of the market to resolve
-   */
-  public resolveMarket(marketIdOrName: MarketIdOrName): { resolvedMarketId: number; resolvedMarketName: string } {
-    const isMarketId = typeof marketIdOrName === 'number';
-
-    if (!isMarketId) {
-      if (!this.marketsByName.has(marketIdOrName)) throw new Error('Invalid market name');
-      const resolvedMarketId = this.marketsByName.get(marketIdOrName)!.marketId;
-      return { resolvedMarketId: resolvedMarketId!, resolvedMarketName: marketIdOrName };
-    }
-
-    if (!this.marketsById.has(marketIdOrName)) throw new Error('Invalid market id');
-    const resolvedMarketName = this.marketsById.get(marketIdOrName)!.marketName;
-
-    return { resolvedMarketName: resolvedMarketName!, resolvedMarketId: marketIdOrName };
   }
 
   /**
