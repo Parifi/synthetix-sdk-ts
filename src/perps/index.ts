@@ -912,6 +912,7 @@ export class Perps implements PerpsRepository {
     amount,
     marketIdOrName,
     accountId,
+    collateralId,
   }: ModifyCollateral): Promise<Call3Value[]> {
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
@@ -926,7 +927,7 @@ export class Perps implements PerpsRepository {
         callData: encodeFunctionData({
           abi: marketProxy.abi,
           functionName: 'modifyCollateral',
-          args: [accountId, resolvedMarketId, this.sdk.spot.formatSize(amount, resolvedMarketId)],
+          args: [accountId, collateralId, this.sdk.spot.formatSize(amount, resolvedMarketId)],
         }),
         value: 0n,
         requireSuccess: true,
@@ -950,7 +951,7 @@ export class Perps implements PerpsRepository {
     { amount, marketIdOrName, accountId = this.defaultAccountId }: ModifyCollateral,
     override: OverrideParamsWrite = {},
   ): Promise<string | CallParameters> {
-    const buildedTxs = await this._buildModifyCollateral({ amount, marketIdOrName, accountId });
+    const buildedTxs = await this._buildModifyCollateral({ amount, marketIdOrName, accountId, collateralId: 0 });
     const tx = await this.sdk.utils.writeErc7412({
       calls: buildedTxs,
     });
@@ -1401,13 +1402,13 @@ export class Perps implements PerpsRepository {
   public async createIsolatedAccountOrder(
     {
       collateralAmount,
-      collateralMarketId,
       size,
       marketIdOrName,
       settlementStrategyId = 0,
       accountId = generateRandomAccountId(),
       desiredFillPrice,
       maxPriceImpact,
+      collateralMarketId,
     }: CreateIsolateOrder,
     override: OverrideParamsWrite = {
       shouldRevertOnTxFailure: true,
@@ -1423,8 +1424,9 @@ export class Perps implements PerpsRepository {
 
     const modifyCollateralCall = (await this._buildModifyCollateral({
       amount: collateralAmount,
-      marketIdOrName: collateralMarketId,
+      marketIdOrName,
       accountId,
+      collateralId: collateralMarketId,
     })) as Call3Value[];
 
     const commitOrderCall = (await this._buildCommitOrder({
