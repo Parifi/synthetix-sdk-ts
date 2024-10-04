@@ -1,24 +1,25 @@
+import { parseUnits } from 'viem';
 import { SynthetixSdk } from '..';
 import { DISABLED_MARKETS } from '../constants';
 import { MarketIdOrName } from '../interface/commonTypes';
-import { MarketMetadata, MarketData } from '../perps/interface';
+import { MarketData, SpotMarketData } from '../perps/interface';
 
-export abstract class Market {
-  marketMetadata: Map<number, MarketMetadata>;
-  marketsById: Map<number, MarketData>;
-  marketsByName: Map<string, MarketData>;
+export abstract class Market<T extends MarketData | SpotMarketData> {
+  sdk: SynthetixSdk;
+  marketsById: Map<number, T>;
+  marketsByName: Map<string, T>;
 
-  // Mapping of Market Symbol to MarketData.
+  // Mapping of Market Symbol to T.
   // @note Ideally prefer using market symbol over market name
-  marketsBySymbol: Map<string, MarketData>;
+  marketsBySymbol: Map<string, T>;
   disabledMarkets: number[] = [];
 
   constructor(synthetixSdk: SynthetixSdk) {
+    this.sdk = synthetixSdk;
     // Initialize empty market data
-    this.marketMetadata = new Map<number, MarketMetadata>();
-    this.marketsById = new Map<number, MarketData>();
-    this.marketsByName = new Map<string, MarketData>();
-    this.marketsBySymbol = new Map<string, MarketData>();
+    this.marketsById = new Map<number, T>();
+    this.marketsByName = new Map<string, T>();
+    this.marketsBySymbol = new Map<string, T>();
 
     // Set disabled markets
     if (synthetixSdk.rpcConfig.chainId in DISABLED_MARKETS) {
@@ -43,5 +44,30 @@ export abstract class Market {
     const resolvedMarketName = this.marketsById.get(marketIdOrName)!.marketName;
 
     return { resolvedMarketName: resolvedMarketName!, resolvedMarketId: marketIdOrName };
+  }
+
+  /**
+   * Format the size of a synth for an order. This is used for synths whose base asset
+   * does not use 18 decimals. For example, USDC uses 6 decimals, so we need to handle size
+   * differently from other assets.
+   * @param size The size as an ether value (e.g. 100).
+   * @param marketId The id of the market.
+   * @returns The formatted size in wei. (e.g. 100 = 100000000000000000000)
+   */
+  public formatSize(size: number, marketId: number): bigint {
+    const { resolvedMarketName } = this.resolveMarket(marketId);
+    let sizeInWei: bigint;
+
+    const chainIds = [8453, 84532, 42161, 421514];
+    const marketNames = ['sUSDC', 'sStataUSDC'];
+
+    // Hard-coding a catch for USDC with 6 decimals
+    if (chainIds.includes(this.sdk.rpcConfig.chainId) && marketNames.includes(resolvedMarketName)) {
+      sizeInWei = parseUnits(size.toString(), 6);
+    } else {
+      sizeInWei = parseUnits(size.toString(), 18);
+    }
+    console.log(`Size ${size} in wei for market ${resolvedMarketName}: ${sizeInWei}`);
+    return sizeInWei;
   }
 }

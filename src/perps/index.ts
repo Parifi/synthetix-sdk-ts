@@ -12,6 +12,7 @@ import {
   CollateralData,
   FundingParameters,
   MarketData,
+  MarketMetadata,
   MarketSummary,
   MaxMarketValue,
   OpenPositionData,
@@ -47,10 +48,11 @@ import { Market } from '../utils/market';
  * - PythERC7412Wrapper
  * @param synthetixSdk An instance of the Synthetix class
  */
-export class Perps extends Market implements PerpsRepository {
+export class Perps extends Market<MarketData> implements PerpsRepository {
   sdk: SynthetixSdk;
   defaultAccountId?: bigint;
   accountIds: bigint[];
+  marketMetadata: Map<number, MarketMetadata>;
 
   // Markets data
 
@@ -63,6 +65,8 @@ export class Perps extends Market implements PerpsRepository {
     super(synthetixSdk);
     this.sdk = synthetixSdk;
     this.accountIds = [];
+
+    this.marketMetadata = new Map<number, MarketMetadata>();
   }
 
   async initPerps() {
@@ -888,7 +892,7 @@ export class Perps extends Market implements PerpsRepository {
         callData: encodeFunctionData({
           abi: marketProxy.abi,
           functionName: 'modifyCollateral',
-          args: [accountId, collateralId, this.sdk.spot.formatSize(amount, resolvedMarketId)],
+          args: [accountId, collateralId, this.formatSize(amount, resolvedMarketId)],
         }),
         value: 0n,
         requireSuccess: true,

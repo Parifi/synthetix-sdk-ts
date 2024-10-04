@@ -7,13 +7,15 @@ import {
   getContract,
   Hex,
   maxUint256,
-  parseUnits,
 } from 'viem';
 import { SynthetixSdk } from '..';
 import { SpotMarketData } from '../perps/interface';
-import { DISABLED_MARKETS, ZERO_ADDRESS } from '../constants';
+import { ZERO_ADDRESS } from '../constants';
 import { convertEtherToWei, convertWeiToEther, sleep } from '../utils';
 import { SpotSettlementStrategy, SpotOrder, Side } from './interface';
+import { CommitOrderSpot } from '../interface/Spot';
+import { Market } from '../utils/market';
+import { MarketIdOrName, OverrideParamsWrite } from '../interface/commonTypes';
 
 /**
  * Class for interacting with Synthetix V3 spot market contracts.
@@ -27,100 +29,26 @@ import { SpotSettlementStrategy, SpotOrder, Side } from './interface';
  * The following contracts are required:
  * - SpotMarketProxy
  */
-export class Spot {
+export class Spot extends Market<SpotMarketData> {
   sdk: SynthetixSdk;
   defaultAccountId?: bigint;
   accountIds: bigint[];
-
-  marketsById: Map<number, SpotMarketData>;
-  marketsByName: Map<string, SpotMarketData>;
 
   asyncOrderEnabled: boolean = false;
   disabledMarkets: number[] = [];
 
   constructor(synthetixSdk: SynthetixSdk) {
+    super(synthetixSdk);
     this.sdk = synthetixSdk;
     this.accountIds = [];
 
-    this.marketsById = new Map<number, SpotMarketData>();
-    this.marketsByName = new Map<string, SpotMarketData>();
-
     if (synthetixSdk.rpcConfig.chainId == 42161 || synthetixSdk.rpcConfig.chainId == 421614) {
       this.asyncOrderEnabled = true;
-    }
-
-    // Set disabled markets
-    if (synthetixSdk.rpcConfig.chainId in DISABLED_MARKETS) {
-      this.disabledMarkets = DISABLED_MARKETS[synthetixSdk.rpcConfig.chainId];
     }
   }
 
   async initSpot() {
     await this.getMarkets();
-  }
-
-  /**
-   * Look up the market_id and market_name for a market. If only one is provided,
-   * the other is resolved. If both are provided, they are checked for consistency.
-   * @param marketId Id of the market to resolve
-   * @param marketName Name of the market to resolve
-   */
-  public resolveMarket(
-    marketId: number | undefined = undefined,
-    marketName: string | undefined = undefined,
-  ): { resolvedMarketId: number; resolvedMarketName: string } {
-    let resolvedMarketId, resolvedMarketName;
-
-    const hasMarketId = marketId != undefined;
-    const hasMarketName = marketName != undefined;
-
-    if (!hasMarketId && hasMarketName) {
-      if (this.marketsByName.has(marketName)) {
-        resolvedMarketId = this.marketsByName.get(marketName)?.marketId;
-      } else {
-        throw new Error('Invalid market name');
-      }
-    } else if (hasMarketId && !hasMarketName) {
-      if (this.marketsById.has(marketId)) {
-        resolvedMarketName = this.marketsById.get(marketId)?.marketName;
-      }
-    } else if (hasMarketId && hasMarketName) {
-      const marketNameLookup = this.marketsById.get(marketId)?.marketName;
-      if (marketNameLookup != marketName) {
-        throw new Error(`Market name ${marketName} does not match market id ${marketId}`);
-      }
-    } else {
-      throw new Error('Must provide either a marketId or marketName');
-    }
-    return {
-      resolvedMarketId: (resolvedMarketId ?? marketId) as number,
-      resolvedMarketName: resolvedMarketName ?? marketName ?? 'Unresolved market',
-    };
-  }
-
-  /**
-   * Format the size of a synth for an order. This is used for synths whose base asset
-   * does not use 18 decimals. For example, USDC uses 6 decimals, so we need to handle size
-   * differently from other assets.
-   * @param size The size as an ether value (e.g. 100).
-   * @param marketId The id of the market.
-   * @returns The formatted size in wei. (e.g. 100 = 100000000000000000000)
-   */
-  public formatSize(size: number, marketId: number): bigint {
-    const { resolvedMarketName } = this.resolveMarket(marketId, undefined);
-    let sizeInWei: bigint;
-
-    const chainIds = [8453, 84532, 42161, 421514];
-    const marketNames = ['sUSDC', 'sStataUSDC'];
-
-    // Hard-coding a catch for USDC with 6 decimals
-    if (chainIds.includes(this.sdk.rpcConfig.chainId) && marketNames.includes(resolvedMarketName)) {
-      sizeInWei = parseUnits(size.toString(), 6);
-    } else {
-      sizeInWei = parseUnits(size.toString(), 18);
-    }
-    console.log(`Size ${size} in wei for market ${resolvedMarketName}: ${sizeInWei}`);
-    return sizeInWei;
   }
 
   /**
@@ -255,8 +183,8 @@ export class Spot {
    * @param marketName The name of the market
    * @returns
    */
-  public getSynthContract(marketId?: number, marketName?: string) {
-    const { resolvedMarketId } = this.resolveMarket(marketId, marketName);
+  public getSynthContract(marketIdOrName: MarketIdOrName) {
+    const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
 
     const contractAddress = this.marketsById.get(resolvedMarketId)?.contractAddress;
     if (contractAddress == undefined) {
@@ -280,12 +208,8 @@ export class Spot {
    * @param marketName The name of the market.
    * @returns The balance of the synth in ether.
    */
-  public async getBalance(address?: string, marketId?: number, marketName?: string): Promise<number> {
-    if (address == undefined) {
-      address = this.sdk.accountAddress;
-    }
-
-    const synthContract = this.getSynthContract(marketId, marketName);
+  public async getBalance(address: string = this.sdk.accountAddress, marketIdOrName: MarketIdOrName): Promise<number> {
+    const synthContract = this.getSynthContract(marketIdOrName);
     const balance = await synthContract.read.balanceOf([address as Hex]);
     return convertWeiToEther(balance);
   }
@@ -301,11 +225,10 @@ export class Spot {
    */
   public async getAllowance(
     targetAddress: string,
-    address?: string,
-    marketId?: number,
-    marketName?: string,
+    address: string = this.sdk.accountAddress,
+    marketIdOrName: MarketIdOrName,
   ): Promise<number> {
-    const synthContract = this.getSynthContract(marketId, marketName);
+    const synthContract = this.getSynthContract(marketIdOrName);
     const allowance = await synthContract.read.allowance([address as Hex, targetAddress as Hex]);
     return convertWeiToEther(allowance);
   }
@@ -322,20 +245,23 @@ export class Spot {
    * @param submit Whether to broadcast the transaction.
    */
   public async approve(
-    targetAddress: string,
-    amount?: number,
-    marketId?: number,
-    marketName?: string,
-    submit: boolean = false,
+    {
+      targetAddress,
+      amount = 0,
+      marketIdOrName,
+    }: {
+      targetAddress: string;
+      amount?: number;
+      marketIdOrName: MarketIdOrName;
+    },
+    override: OverrideParamsWrite = {},
   ) {
-    let amountInWei: bigint;
-    if (amount == undefined) {
-      amountInWei = maxUint256;
-    } else {
+    let amountInWei: bigint = maxUint256;
+    if (amount) {
       amountInWei = convertEtherToWei(amount);
     }
 
-    const synthContract = this.getSynthContract(marketId, marketName);
+    const synthContract = this.getSynthContract(marketIdOrName);
 
     const approveTx: CallParameters = {
       account: this.sdk.accountAddress,
@@ -346,27 +272,15 @@ export class Spot {
         args: [targetAddress as Hex, amountInWei],
       }),
     };
-    // =======
-    //   public async wrap(size: string, marketId: number, submit: boolean) {
-    //     const sizeInWei = parseUnits(size.toString(), 6);
-    //     const spotMarketProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
-    //     const tx: CallParameters = await this.sdk.utils.writeErc7412({
-    //       contractAddress: spotMarketProxy.address,
-    //       abi: spotMarketProxy.abi,
-    //       functionName: 'wrap',
-    //       args: [marketId, sizeInWei, sizeInWei],
-    //     });
-    // >>>>>>> 5c2a267 (first refactor)
 
-    if (submit) {
-      console.log(`Approving ${targetAddress} to spend ${amount}`);
-      const txHash = await this.sdk.executeTransaction(approveTx);
-      console.log('Approve txHash: ', txHash);
-      return txHash;
-    } else {
-      return approveTx;
-    }
+    if (!override.submit) return approveTx;
+
+    console.log(`Approving ${targetAddress} to spend ${amount}`);
+    const txHash = await this.sdk.executeTransaction(approveTx);
+    console.log('Approve txHash: ', txHash);
+    return txHash;
   }
+  // NOTE: here
 
   /**
    * Get details about an async order by its ID.
@@ -654,16 +568,10 @@ export class Spot {
    * @param submit Whether to broadcast the transaction.
    */
   public async commitOrder(
-    side: Side,
-    size: number,
-    slippageTolerance: number,
-    minAmountReceived?: number,
-    settlementStrategyId: number = 0,
-    marketId?: number,
-    marketName?: string,
+    { side, size, slippageTolerance, minAmountReceived, settlementStrategyId = 0, marketIdOrName }: CommitOrderSpot,
     submit: boolean = false,
   ) {
-    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketId, marketName);
+    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketIdOrName);
     const spotMarketProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
 
     if (minAmountReceived == undefined) {
@@ -677,12 +585,11 @@ export class Spot {
       const price = await this.sdk.pyth.getFormattedPrice(feedId as Hex);
       console.log('Formatted price:', price);
 
-      let tradeSize;
+      let tradeSize = size * price;
       if (side == Side.BUY) {
         tradeSize = size / price;
-      } else {
-        tradeSize = size * price;
       }
+
       minAmountReceived = tradeSize * (1 - slippageTolerance) - settlementReward;
     }
 
@@ -758,9 +665,9 @@ export class Spot {
       await sleep(duration);
     } else if (expirationTime < currentTimestamp) {
       throw new Error(`Order ${asyncOrderId} on market ${resolvedMarketId} has expired`);
-    } else {
-      console.log(`Order ${asyncOrderId} on market ${resolvedMarketId} is ready to be settled`);
     }
+
+    console.log(`Order ${asyncOrderId} on market ${resolvedMarketId} is ready to be settled`);
 
     let totalTries = 0;
     let tx;
@@ -778,29 +685,24 @@ export class Spot {
         sleep(txDelay);
         continue;
       }
+      if (!submit) return tx;
 
-      if (submit) {
-        console.log(`Settling order ${asyncOrderId} for market ${resolvedMarketId}`);
-        const txHash = await this.sdk.executeTransaction(tx);
-        console.log('Settle txHash: ', txHash);
+      console.log(`Settling order ${asyncOrderId} for market ${resolvedMarketId}`);
+      const txHash = await this.sdk.executeTransaction(tx);
+      console.log('Settle txHash: ', txHash);
 
-        const updatedOrder = await this.getOrder(asyncOrderId, resolvedMarketId);
-        if (updatedOrder.settledAt != undefined && updatedOrder.settledAt > 0) {
-          console.log('Order settlement successful for order id ', asyncOrderId);
-          return txHash;
-        }
-
-        // If order settlement failed, retry after a delay
-        totalTries += 1;
-        if (totalTries > maxTxTries) {
-          throw new Error('Failed to settle order');
-        } else {
-          console.log(`Failed to settle order, waiting ${txDelay} seconds and retrying`);
-          sleep(txDelay);
-        }
-      } else {
-        return tx;
+      const updatedOrder = await this.getOrder(asyncOrderId, resolvedMarketId);
+      if (updatedOrder.settledAt != undefined && updatedOrder.settledAt > 0) {
+        console.log('Order settlement successful for order id ', asyncOrderId);
+        return txHash;
       }
+
+      // If order settlement failed, retry after a delay
+      totalTries += 1;
+      if (totalTries > maxTxTries) throw new Error('Failed to settle order');
+
+      console.log(`Failed to settle order, waiting ${txDelay} seconds and retrying`);
+      sleep(txDelay);
     }
   }
 }
