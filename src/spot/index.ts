@@ -13,7 +13,17 @@ import { SpotMarketData } from '../perps/interface';
 import { ZERO_ADDRESS } from '../constants';
 import { convertEtherToWei, convertWeiToEther, sleep } from '../utils';
 import { SpotSettlementStrategy, SpotOrder, Side } from './interface';
-import { CommitOrderSpot } from '../interface/Spot';
+import {
+  Approve,
+  AtomicOrder,
+  CommitOrderSpot,
+  GetOrder,
+  GetSettlementStrategies,
+  GetSettlementStrategy,
+  SettlementStrategyResponse,
+  SettleOrder,
+  Wrap,
+} from '../interface/Spot';
 import { Market } from '../utils/market';
 import { MarketIdOrName, OverrideParamsWrite } from '../interface/commonTypes';
 
@@ -244,18 +254,7 @@ export class Spot extends Market<SpotMarketData> {
    * @param marketName The name of the market.
    * @param submit Whether to broadcast the transaction.
    */
-  public async approve(
-    {
-      targetAddress,
-      amount = 0,
-      marketIdOrName,
-    }: {
-      targetAddress: string;
-      amount?: number;
-      marketIdOrName: MarketIdOrName;
-    },
-    override: OverrideParamsWrite = {},
-  ) {
+  public async approve({ targetAddress, amount = 0, marketIdOrName }: Approve, override: OverrideParamsWrite = {}) {
     let amountInWei: bigint = maxUint256;
     if (amount) {
       amountInWei = convertEtherToWei(amount);
@@ -280,7 +279,6 @@ export class Spot extends Market<SpotMarketData> {
     console.log('Approve txHash: ', txHash);
     return txHash;
   }
-  // NOTE: here
 
   /**
    * Get details about an async order by its ID.
@@ -294,13 +292,8 @@ export class Spot extends Market<SpotMarketData> {
    * @param fetchSettlementStrategy Whether to fetch the full settlement strategy parameters. Default is true.
    * @returns The order details.
    */
-  public async getOrder(
-    asyncOrderId: number,
-    marketId?: number,
-    marketName?: string,
-    fetchSettlementStrategy: boolean = true,
-  ) {
-    const { resolvedMarketId } = this.resolveMarket(marketId, marketName);
+  public async getOrder({ asyncOrderId, marketIrOrName, fetchSettlementStrategy = true }: GetOrder) {
+    const { resolvedMarketId } = this.resolveMarket(marketIrOrName);
 
     const spotProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
 
@@ -308,10 +301,10 @@ export class Spot extends Market<SpotMarketData> {
     console.log('order', order);
 
     if (fetchSettlementStrategy) {
-      const settlementStrategy = await this.getSettlementStrategy(
-        Number(order.settlementStrategyId) || 0,
-        resolvedMarketId,
-      );
+      const settlementStrategy = await this.getSettlementStrategy({
+        settlementStrategyId: Number(order.settlementStrategyId) || 0,
+        marketIrOrName: resolvedMarketId,
+      });
       order.settlementStrategy = settlementStrategy;
     }
 
@@ -324,27 +317,12 @@ export class Spot extends Market<SpotMarketData> {
    * @param marketId The id of the market.
    * @param marketName The name of the market.
    */
-  public async getSettlementStrategy(
-    settlementStrategyId: number,
-    marketId: number | undefined = undefined,
-    marketName: string | undefined = undefined,
-  ): Promise<SpotSettlementStrategy> {
-    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketId, marketName);
+  public async getSettlementStrategy({
+    settlementStrategyId,
+    marketIrOrName,
+  }: GetSettlementStrategy): Promise<SpotSettlementStrategy> {
+    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketIrOrName);
     const spotProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
-
-    interface SettlementStrategyResponse {
-      strategyType?: number;
-      settlementDelay?: bigint;
-      settlementWindowDuration?: bigint;
-      priceVerificationContract?: string;
-      feedId?: string;
-      url?: string;
-      settlementReward?: bigint;
-      priceDeviationTolerance?: bigint;
-      minimumUsdExchangeAmount?: bigint;
-      maxRoundingLoss?: bigint;
-      disabled?: boolean;
-    }
 
     const settlementStrategy: SettlementStrategyResponse = (await this.sdk.utils.callErc7412(
       spotProxy.address,
@@ -376,7 +354,10 @@ export class Spot extends Market<SpotMarketData> {
    * @param marketIds Array of marketIds to fetch settlement strategy
    * @returns Settlement strategy array for markets
    */
-  public async getSettlementStrategies(stragegyId: number, marketIds: number[]): Promise<SpotSettlementStrategy[]> {
+  public async getSettlementStrategies({
+    settlementStrategyId: stragegyId,
+    marketIds,
+  }: GetSettlementStrategies): Promise<SpotSettlementStrategy[]> {
     const spotProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
 
     interface SettlementStrategyResponse {
@@ -450,15 +431,10 @@ export class Spot extends Market<SpotMarketData> {
    * @param submit Whether to broadcast the transaction.
    */
   public async atomicOrder(
-    side: Side,
-    size: number,
-    slippageTolerance: number = 0,
-    minAmountReceived?: number,
-    marketId?: number,
-    marketName?: string,
-    submit: boolean = false,
+    { side, size, slippageTolerance = 0, minAmountReceived, marketIdOrName }: AtomicOrder,
+    override: OverrideParamsWrite = {},
   ) {
-    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketId, marketName);
+    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketIdOrName);
     const spotMarketProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
 
     // If network is Base where USDC and sUSDC are 1:1, set minAmount to actual amount
@@ -502,17 +478,14 @@ export class Spot extends Market<SpotMarketData> {
       functionName,
       args,
     });
+    if (!override.submit) return tx;
 
-    if (submit) {
-      console.log(
-        `Committing ${functionName} atomic order of size ${sizeInWei} (${size}) to ${resolvedMarketName} (id: ${marketId})`,
-      );
-      const txHash = await this.sdk.executeTransaction(tx);
-      console.log('Order transaction: ', txHash);
-      return txHash;
-    } else {
-      return tx;
-    }
+    console.log(
+      `Committing ${functionName} atomic order of size ${sizeInWei} (${size}) to ${resolvedMarketName} (id: ${resolvedMarketId})`,
+    );
+    const txHash = await this.sdk.executeTransaction(tx);
+    console.log('Order transaction: ', txHash);
+    return txHash;
   }
   /**
    * Wrap an underlying asset into a synth or unwrap back to the asset.
@@ -528,8 +501,8 @@ export class Spot extends Market<SpotMarketData> {
    * @param submit Whether to broadcast the transaction.
    * @returns
    */
-  public async wrap(size: number, marketId?: number, marketName?: string, submit: boolean = false) {
-    const { resolvedMarketId } = this.resolveMarket(marketId, marketName);
+  public async wrap({ size, marketIdOrName }: Wrap, override: OverrideParamsWrite = {}) {
+    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketIdOrName);
     const spotMarketProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
 
     const sizeInWei = this.formatSize(Math.abs(size), resolvedMarketId);
@@ -542,14 +515,12 @@ export class Spot extends Market<SpotMarketData> {
       args: [resolvedMarketId, sizeInWei, sizeInWei],
     });
 
-    if (submit) {
-      console.log(`${functionName} of size ${sizeInWei} (${size}) to ${marketName} (id: ${marketId})`);
-      const txHash = await this.sdk.executeTransaction(tx);
-      console.log('Wrap tx hash', txHash);
-      return txHash;
-    } else {
-      return tx;
-    }
+    if (!override.submit) return tx;
+
+    console.log(`${functionName} of size ${sizeInWei} (${size}) to ${resolvedMarketName} (id: ${resolvedMarketId})`);
+    const txHash = await this.sdk.executeTransaction(tx);
+    console.log('Wrap tx hash', txHash);
+    return txHash;
   }
 
   /**
@@ -569,7 +540,7 @@ export class Spot extends Market<SpotMarketData> {
    */
   public async commitOrder(
     { side, size, slippageTolerance, minAmountReceived, settlementStrategyId = 0, marketIdOrName }: CommitOrderSpot,
-    submit: boolean = false,
+    override: OverrideParamsWrite = {},
   ) {
     const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketIdOrName);
     const spotMarketProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
@@ -612,16 +583,13 @@ export class Spot extends Market<SpotMarketData> {
       args,
     });
 
-    if (submit) {
-      console.log(
-        `Committing ${size == Side.BUY ? 'buy' : 'sell'} atomic order of size ${sizeInWei} (${size}) to ${resolvedMarketName} (id: ${marketId})`,
-      );
-      const txHash = await this.sdk.executeTransaction(tx);
-      console.log('Commit order transaction: ', txHash);
-      return txHash;
-    } else {
-      return tx;
-    }
+    if (!override.submit) return tx;
+    console.log(
+      `Committing ${size == Side.BUY ? 'buy' : 'sell'} atomic order of size ${sizeInWei} (${size}) to ${resolvedMarketName} (id: ${resolvedMarketId})`,
+    );
+    const txHash = await this.sdk.executeTransaction(tx);
+    console.log('Commit order transaction: ', txHash);
+    return txHash;
   }
 
   /**
@@ -636,18 +604,11 @@ export class Spot extends Market<SpotMarketData> {
    * @param txDelay Seconds to wait between retries.
    * @param submit Whether to broadcast the transaction.
    */
-  public async settleOrder(
-    asyncOrderId: number,
-    marketId?: number,
-    marketName?: string,
-    maxTxTries: number = 5,
-    txDelay: number = 2,
-    submit: boolean = false,
-  ) {
-    const { resolvedMarketId } = this.resolveMarket(marketId, marketName);
+  public async settleOrder({ asyncOrderId, marketIdOrName }: SettleOrder, override: OverrideParamsWrite = {}) {
+    const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
     const spotMarketProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
 
-    const order = await this.getOrder(asyncOrderId, resolvedMarketId);
+    const order = await this.getOrder({ asyncOrderId, marketIdOrName: resolvedMarketId });
     if (order.settledAt == undefined || order.commitmentTime == undefined) {
       throw new Error('Invalid fields for order: undefined');
     }
@@ -657,21 +618,25 @@ export class Spot extends Market<SpotMarketData> {
 
     const currentTimestamp = Math.floor(Date.now() / 1000);
 
-    if (order.settledAt > 0) {
+    if (order.settledAt > 0)
       throw new Error(`Order ${asyncOrderId} on market ${resolvedMarketId} is already settled for account`);
-    } else if (settlementTime > currentTimestamp) {
+
+    if (expirationTime < currentTimestamp)
+      throw new Error(`Order ${asyncOrderId} on market ${resolvedMarketId} has expired`);
+
+    if (settlementTime > currentTimestamp) {
       const duration = settlementTime - currentTimestamp;
       console.log(`Waiting ${duration} seconds to settle order`);
       await sleep(duration);
-    } else if (expirationTime < currentTimestamp) {
-      throw new Error(`Order ${asyncOrderId} on market ${resolvedMarketId} has expired`);
     }
 
     console.log(`Order ${asyncOrderId} on market ${resolvedMarketId} is ready to be settled`);
 
     let totalTries = 0;
+    const maxTries = override.maxTries ?? 5;
+    const txDelay = override.txDelay ?? 2;
     let tx;
-    while (totalTries < maxTxTries) {
+    while (totalTries < maxTries) {
       try {
         tx = await this.sdk.utils.writeErc7412({
           contractAddress: spotMarketProxy.address,
@@ -685,13 +650,14 @@ export class Spot extends Market<SpotMarketData> {
         sleep(txDelay);
         continue;
       }
-      if (!submit) return tx;
+
+      if (!override.submit) return tx;
 
       console.log(`Settling order ${asyncOrderId} for market ${resolvedMarketId}`);
       const txHash = await this.sdk.executeTransaction(tx);
       console.log('Settle txHash: ', txHash);
 
-      const updatedOrder = await this.getOrder(asyncOrderId, resolvedMarketId);
+      const updatedOrder = await this.getOrder({ asyncOrderId, marketIdOrName: resolvedMarketId });
       if (updatedOrder.settledAt != undefined && updatedOrder.settledAt > 0) {
         console.log('Order settlement successful for order id ', asyncOrderId);
         return txHash;
@@ -699,7 +665,7 @@ export class Spot extends Market<SpotMarketData> {
 
       // If order settlement failed, retry after a delay
       totalTries += 1;
-      if (totalTries > maxTxTries) throw new Error('Failed to settle order');
+      if (totalTries > maxTries) throw new Error('Failed to settle order');
 
       console.log(`Failed to settle order, waiting ${txDelay} seconds and retrying`);
       sleep(txDelay);
