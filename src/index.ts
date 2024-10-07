@@ -23,6 +23,7 @@ import { Perps } from './perps';
 import { privateKeyToAccount } from 'viem/accounts';
 import { Spot } from './spot';
 import { DEFAULT_REFERRER, DEFAULT_TRACKING_CODE } from './constants';
+export { generateRandomAccountId } from './utils';
 
 /**
  * The main class for interacting with the Synthetix protocol. The class
