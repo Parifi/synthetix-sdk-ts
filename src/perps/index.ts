@@ -171,12 +171,12 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     for (let index = 0; index < Number(balance); index++) {
       argsList.push([accountAddress, index]);
     }
-    const accountIds = (await this.sdk.utils.multicallErc7412(
-      accountProxy.address,
-      accountProxy.abi,
-      'tokenOfOwnerByIndex',
-      argsList,
-    )) as unknown[];
+    const accountIds = (await this.sdk.utils.multicallErc7412({
+      contractAddress: accountProxy.address,
+      abi: accountProxy.abi,
+      functionName: 'tokenOfOwnerByIndex',
+      args: argsList,
+    })) as unknown[];
 
     if (accountIds == undefined) return [];
     // Set Perps account ids
@@ -252,12 +252,12 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     // Response type from metadata smart contract call - [MarketName, MarketSymbol]
     type MetadataResponse = [string, string];
 
-    const marketMetadataResponse = (await this.sdk.utils.multicallErc7412(
-      perpsMarketProxy.address,
-      perpsMarketProxy.abi,
-      'metadata',
-      marketIds as unknown[],
-    )) as MetadataResponse[];
+    const marketMetadataResponse = (await this.sdk.utils.multicallErc7412({
+      contractAddress: perpsMarketProxy.address,
+      abi: perpsMarketProxy.abi,
+      functionName: 'metadata',
+      args: marketIds as unknown[],
+    })) as MetadataResponse[];
 
     const settlementStrategies = await this.getSettlementStrategies(marketIds);
     const pythPriceIds: { symbol: string; feedId: string }[] = [];
@@ -346,22 +346,22 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const oracleCalls = await this.prepareOracleCall(marketIds);
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
-    const interestRate = await this.sdk.utils.callErc7412(
-      perpsMarketProxy.address,
-      perpsMarketProxy.abi,
-      'interestRate',
-      [],
-      oracleCalls,
-    );
+    const interestRate = await this.sdk.utils.callErc7412({
+      contractAddress: perpsMarketProxy.address,
+      abi: perpsMarketProxy.abi,
+      functionName: 'interestRate',
+      args: [],
+      calls: oracleCalls,
+    });
 
     const marketSummariesInput = marketIds.map((marketId) => [marketId]);
-    const marketSummariesResponse: MarketSummaryResponse[] = (await this.sdk.utils.multicallErc7412(
-      perpsMarketProxy.address,
-      perpsMarketProxy.abi,
-      'getMarketSummary',
-      marketSummariesInput,
-      oracleCalls,
-    )) as MarketSummaryResponse[];
+    const marketSummariesResponse: MarketSummaryResponse[] = (await this.sdk.utils.multicallErc7412({
+      contractAddress: perpsMarketProxy.address,
+      abi: perpsMarketProxy.abi,
+      functionName: 'getMarketSummary',
+      args: marketSummariesInput,
+      calls: oracleCalls,
+    })) as MarketSummaryResponse[];
 
     if (marketIds.length !== marketSummariesResponse.length) {
       console.log('Inconsistent data');
@@ -410,21 +410,22 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const oracleCalls = await this.prepareOracleCall([resolvedMarketId]);
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
-    const interestRate = await this.sdk.utils.callErc7412(
-      perpsMarketProxy.address,
-      perpsMarketProxy.abi,
-      'interestRate',
-      [],
-      oracleCalls,
-    );
+    const interestRate = await this.sdk.utils.callErc7412({
+      contractAddress: perpsMarketProxy.address,
 
-    const marketSummaryResponse: MarketSummaryResponse = (await this.sdk.utils.callErc7412(
-      perpsMarketProxy.address,
-      perpsMarketProxy.abi,
-      'getMarketSummary',
-      [resolvedMarketId],
-      oracleCalls,
-    )) as MarketSummaryResponse;
+      abi: perpsMarketProxy.abi,
+      functionName: 'interestRate',
+      args: [],
+      calls: oracleCalls,
+    });
+
+    const marketSummaryResponse: MarketSummaryResponse = (await this.sdk.utils.callErc7412({
+      contractAddress: perpsMarketProxy.address,
+      abi: perpsMarketProxy.abi,
+      functionName: 'getMarketSummary',
+      args: [resolvedMarketId],
+      calls: oracleCalls,
+    })) as MarketSummaryResponse;
 
     console.log('marketSummaryResponse', marketSummaryResponse);
 
@@ -468,12 +469,13 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       commitmentPriceDelay?: bigint;
     }
 
-    const settlementStrategy: SettlementStrategyResponse = (await this.sdk.utils.callErc7412(
-      perpsMarketProxy.address,
-      perpsMarketProxy.abi,
-      'getSettlementStrategy',
-      [resolvedMarketId, settlementStrategyId],
-    )) as SettlementStrategyResponse;
+    const settlementStrategy: SettlementStrategyResponse = (await this.sdk.utils.callErc7412({
+      contractAddress: perpsMarketProxy.address,
+      abi: perpsMarketProxy.abi,
+
+      functionName: 'getSettlementStrategy',
+      args: [resolvedMarketId, settlementStrategyId],
+    })) as SettlementStrategyResponse;
 
     return {
       marketId: resolvedMarketId,
@@ -512,12 +514,12 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
     const argsList: [number, number][] = marketIds.map((marketId) => [marketId, 0]);
 
-    const settlementStrategiesResponse: SettlementStrategyResponse[] = (await this.sdk.utils.multicallErc7412(
-      perpsMarketProxy.address,
-      perpsMarketProxy.abi,
-      'getSettlementStrategy',
-      argsList,
-    )) as SettlementStrategyResponse[];
+    const settlementStrategiesResponse: SettlementStrategyResponse[] = (await this.sdk.utils.multicallErc7412({
+      contractAddress: perpsMarketProxy.address,
+      abi: perpsMarketProxy.abi,
+      functionName: 'getSettlementStrategy',
+      args: argsList,
+    })) as SettlementStrategyResponse[];
 
     settlementStrategiesResponse.forEach((strategy, index) => {
       settlementStrategies.push({
@@ -546,12 +548,12 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     type FundingParamsResponse = [bigint, bigint];
     const fundingParams: FundingParameters[] = [];
 
-    const fundingParamsResponse = (await this.sdk.utils.multicallErc7412(
-      perpsMarketProxy.address,
-      perpsMarketProxy.abi,
-      'getFundingParameters',
-      marketIds,
-    )) as FundingParamsResponse[];
+    const fundingParamsResponse = (await this.sdk.utils.multicallErc7412({
+      contractAddress: perpsMarketProxy.address,
+      abi: perpsMarketProxy.abi,
+      functionName: 'getFundingParameters',
+      args: marketIds,
+    })) as FundingParamsResponse[];
 
     fundingParamsResponse.forEach((param, index) => {
       fundingParams.push({
@@ -574,12 +576,12 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     type OrderFeesResponse = [bigint, bigint];
     const orderFees: OrderFees[] = [];
 
-    const orderFeesResponse = (await this.sdk.utils.multicallErc7412(
-      perpsMarketProxy.address,
-      perpsMarketProxy.abi,
-      'getOrderFees',
-      marketIds,
-    )) as OrderFeesResponse[];
+    const orderFeesResponse = (await this.sdk.utils.multicallErc7412({
+      contractAddress: perpsMarketProxy.address,
+      abi: perpsMarketProxy.abi,
+      functionName: 'getOrderFees',
+      args: marketIds,
+    })) as OrderFeesResponse[];
 
     orderFeesResponse.forEach((param, index) => {
       orderFees.push({
@@ -601,12 +603,12 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
     const maxMarketValues: MaxMarketValue[] = [];
 
-    const maxMarketValuesResponse = (await this.sdk.utils.multicallErc7412(
-      perpsMarketProxy.address,
-      perpsMarketProxy.abi,
-      'getMaxMarketValue',
-      marketIds,
-    )) as bigint[];
+    const maxMarketValuesResponse = (await this.sdk.utils.multicallErc7412({
+      contractAddress: perpsMarketProxy.address,
+      abi: perpsMarketProxy.abi,
+      functionName: 'getMaxMarketValue',
+      args: marketIds,
+    })) as bigint[];
 
     maxMarketValuesResponse.forEach((maxMarketValue, index) => {
       maxMarketValues.push({
@@ -729,12 +731,12 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     if (accountId == undefined) {
       accountId = this.defaultAccountId;
     }
-    const orderResponse = (await this.sdk.utils.callErc7412(
-      perpsMarketProxy.address,
-      perpsMarketProxy.abi,
-      'getOrder',
-      [accountId],
-    )) as AsyncOrderDataRes;
+    const orderResponse = (await this.sdk.utils.callErc7412({
+      contractAddress: perpsMarketProxy.address,
+      abi: perpsMarketProxy.abi,
+      functionName: 'getOrder',
+      args: [accountId],
+    })) as AsyncOrderDataRes;
     const orderReq = orderResponse.request;
 
     const orderData: OrderData = {
@@ -792,13 +794,13 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     argsList.push([accountId]);
     const oracleCalls = await this.prepareOracleCall();
 
-    const multicallResponse: unknown[] = await this.sdk.utils.multicallMultifunctionErc7412(
-      marketProxy.address,
-      marketProxy.abi,
+    const multicallResponse: unknown[] = await this.sdk.utils.multicallMultifunctionErc7412({
+      contractAddress: marketProxy.address,
+      abi: marketProxy.abi,
       functionNames,
-      argsList,
-      oracleCalls,
-    );
+      args: argsList,
+      calls: oracleCalls,
+    });
 
     const totalCollateralValue = multicallResponse.at(0) as bigint;
     const availableMargin = multicallResponse.at(1) as bigint;
@@ -824,13 +826,13 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       fNames.push('debt');
       aList.push([accountId]);
 
-      const response: unknown[] = await this.sdk.utils.multicallMultifunctionErc7412(
-        marketProxy.address,
-        marketProxy.abi,
-        fNames,
-        aList,
-        oracleCalls,
-      );
+      const response: unknown[] = await this.sdk.utils.multicallMultifunctionErc7412({
+        contractAddress: marketProxy.address,
+        abi: marketProxy.abi,
+        functionNames: fNames,
+        args: aList,
+        calls: oracleCalls,
+      });
 
       // returns and array of collateral ids(uint256[] memory)
       const collateralIds = response.at(0) as bigint[];
@@ -842,13 +844,13 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
           return [accountId, id];
         });
         console.log('inputs', inputs);
-        const collateralAmounts = (await this.sdk.utils.multicallErc7412(
-          marketProxy.address,
-          marketProxy.abi,
-          'getCollateralAmount',
-          inputs,
-          oracleCalls,
-        )) as bigint[];
+        const collateralAmounts = (await this.sdk.utils.multicallErc7412({
+          contractAddress: marketProxy.address,
+          abi: marketProxy.abi,
+          functionName: 'getCollateralAmount',
+          args: inputs,
+          calls: oracleCalls,
+        })) as bigint[];
 
         collateralIds.forEach((collateralId, index) => {
           collateralAmountsRecord[Number(collateralId)] = convertWeiToEther(collateralAmounts.at(index));
@@ -953,13 +955,13 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const oracleCalls = await this.prepareOracleCall();
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
-    const canBeLiquidated = (await this.sdk.utils.callErc7412(
-      perpsMarketProxy.address,
-      perpsMarketProxy.abi,
-      'canLiquidate',
-      [accountId],
-      oracleCalls,
-    )) as boolean;
+    const canBeLiquidated = (await this.sdk.utils.callErc7412({
+      contractAddress: perpsMarketProxy.address,
+      abi: perpsMarketProxy.abi,
+      functionName: 'canLiquidate',
+      args: [accountId],
+      calls: oracleCalls,
+    })) as boolean;
     console.log('canBeLiquidated', canBeLiquidated);
     return canBeLiquidated;
   }
@@ -986,13 +988,13 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     // Format the args to the required array format
     const input = accountIds.map((accountId) => [accountId]);
 
-    const canLiquidatesResponse = (await this.sdk.utils.multicallErc7412(
-      perpsMarketProxy.address,
-      perpsMarketProxy.abi,
-      'canLiquidate',
-      input,
-      oracleCalls,
-    )) as boolean[];
+    const canLiquidatesResponse = (await this.sdk.utils.multicallErc7412({
+      contractAddress: perpsMarketProxy.address,
+      abi: perpsMarketProxy.abi,
+      functionName: 'canLiquidate',
+      args: input,
+      calls: oracleCalls,
+    })) as boolean[];
 
     const canLiquidates = canLiquidatesResponse.map((response, index) => {
       return {
@@ -1024,13 +1026,13 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
     // Smart contract response:
     // returns (int256 totalPnl, int256 accruedFunding, int128 positionSize, uint256 owedInterest);
-    const response = (await this.sdk.utils.callErc7412(
-      marketProxy.address,
-      marketProxy.abi,
-      'getOpenPosition',
-      [accountId, resolvedMarketId],
-      oracleCalls,
-    )) as bigint[];
+    const response = (await this.sdk.utils.callErc7412({
+      contractAddress: marketProxy.address,
+      abi: marketProxy.abi,
+      functionName: 'getOpenPosition',
+      args: [accountId, resolvedMarketId],
+      calls: oracleCalls,
+    })) as bigint[];
 
     const openPositionData: OpenPositionData = {
       marketId: resolvedMarketId,
@@ -1071,13 +1073,13 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
     // Smart contract response:
     // returns (int256 totalPnl, int256 accruedFunding, int128 positionSize, uint256 owedInterest);
-    const response = (await this.sdk.utils.multicallErc7412(
-      marketProxy.address,
-      marketProxy.abi,
-      'getOpenPosition',
-      inputs,
-      oracleCalls,
-    )) as bigint[][];
+    const response = (await this.sdk.utils.multicallErc7412({
+      contractAddress: marketProxy.address,
+      abi: marketProxy.abi,
+      functionName: 'getOpenPosition',
+      args: inputs,
+      calls: oracleCalls,
+    })) as bigint[][];
 
     const openPositionsData: OpenPositionData[] = [];
     response.forEach((positionData, idx) => {
@@ -1137,21 +1139,21 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     }
 
     // Smart contract call returns (uint256 orderFees, uint256 fillPrice)
-    const orderFeesWithPriceResponse = (await this.sdk.utils.callErc7412(
-      marketProxy.address,
-      marketProxy.abi,
-      'computeOrderFeesWithPrice',
-      [resolvedMarketId, convertEtherToWei(size), convertEtherToWei(price)],
-      oracleCalls,
-    )) as [bigint, bigint];
+    const orderFeesWithPriceResponse = (await this.sdk.utils.callErc7412({
+      contractAddress: marketProxy.address,
+      abi: marketProxy.abi,
+      functionName: 'computeOrderFeesWithPrice',
+      args: [resolvedMarketId, convertEtherToWei(size), convertEtherToWei(price)],
+      calls: oracleCalls,
+    })) as [bigint, bigint];
 
-    const settlementRewardCost = (await this.sdk.utils.callErc7412(
-      marketProxy.address,
-      marketProxy.abi,
-      'getSettlementRewardCost',
-      [resolvedMarketId, settlementStrategyId],
-      oracleCalls,
-    )) as bigint;
+    const settlementRewardCost = (await this.sdk.utils.callErc7412({
+      contractAddress: marketProxy.address,
+      abi: marketProxy.abi,
+      functionName: 'getSettlementRewardCost',
+      args: [resolvedMarketId, settlementStrategyId],
+      calls: oracleCalls,
+    })) as bigint;
 
     const orderQuote: OrderQuote = {
       orderSize: size,
@@ -1162,13 +1164,13 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     };
 
     if (includeRequiredMargin && accountId) {
-      const requiredMargin = (await this.sdk.utils.callErc7412(
-        marketProxy.address,
-        marketProxy.abi,
-        'requiredMarginForOrderWithPrice',
-        [accountId, resolvedMarketId, convertEtherToWei(size), convertEtherToWei(price)],
-        oracleCalls,
-      )) as bigint;
+      const requiredMargin = (await this.sdk.utils.callErc7412({
+        contractAddress: marketProxy.address,
+        abi: marketProxy.abi,
+        functionName: 'requiredMarginForOrderWithPrice',
+        args: [accountId, resolvedMarketId, convertEtherToWei(size), convertEtherToWei(price)],
+        calls: oracleCalls,
+      })) as bigint;
 
       orderQuote.requiredMargin = convertWeiToEther(requiredMargin);
     }
@@ -1187,9 +1189,12 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       accountId = this.defaultAccountId;
     }
 
-    const debt = (await this.sdk.utils.callErc7412(marketProxy.address, marketProxy.abi, 'debt', [
-      accountId,
-    ])) as bigint;
+    const debt = (await this.sdk.utils.callErc7412({
+      contractAddress: marketProxy.address,
+      abi: marketProxy.abi,
+      functionName: 'debt',
+      args: [accountId],
+    })) as bigint;
     console.log('Account Debt: ', debt);
     return convertWeiToEther(debt);
   }
@@ -1249,9 +1254,12 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     }
 
     if (override.staticCall) {
-      const liquidationReward = (await this.sdk.utils.callErc7412(marketProxy.address, marketProxy.abi, 'liquidate', [
-        accountId,
-      ])) as bigint;
+      const liquidationReward = (await this.sdk.utils.callErc7412({
+        contractAddress: marketProxy.address,
+        abi: marketProxy.abi,
+        functionName: 'liquidate',
+        args: [accountId],
+      })) as bigint;
       return convertWeiToEther(liquidationReward);
     }
     const tx = await this.sdk.utils.writeErc7412({

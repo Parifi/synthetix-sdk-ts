@@ -117,12 +117,12 @@ export class Spot extends Market<SpotMarketData> {
 
     for (let index = 0; index < MAX_MARKETS; index += ITEMS_PER_ITER) {
       const argsList = Array.from({ length: ITEMS_PER_ITER }, (_, i) => index + i);
-      const synthAddresses = (await this.sdk.utils.multicallErc7412(
-        spotProxy.address,
-        spotProxy.abi,
-        'getSynth',
-        argsList,
-      )) as Address[];
+      const synthAddresses = (await this.sdk.utils.multicallErc7412({
+        contractAddress: spotProxy.address,
+        abi: spotProxy.abi,
+        functionName: 'getSynth',
+        args: argsList,
+      })) as Address[];
 
       synthAddresses.forEach((synthAddress, idx) => {
         // Filter disabled and invalid markets
@@ -292,8 +292,8 @@ export class Spot extends Market<SpotMarketData> {
    * @param fetchSettlementStrategy Whether to fetch the full settlement strategy parameters. Default is true.
    * @returns The order details.
    */
-  public async getOrder({ asyncOrderId, marketIrOrName, fetchSettlementStrategy = true }: GetOrder) {
-    const { resolvedMarketId } = this.resolveMarket(marketIrOrName);
+  public async getOrder({ asyncOrderId, marketIdOrName, fetchSettlementStrategy = true }: GetOrder) {
+    const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
 
     const spotProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
 
@@ -303,7 +303,7 @@ export class Spot extends Market<SpotMarketData> {
     if (fetchSettlementStrategy) {
       const settlementStrategy = await this.getSettlementStrategy({
         settlementStrategyId: Number(order.settlementStrategyId) || 0,
-        marketIrOrName: resolvedMarketId,
+        marketIdOrName: resolvedMarketId,
       });
       order.settlementStrategy = settlementStrategy;
     }
@@ -319,17 +319,17 @@ export class Spot extends Market<SpotMarketData> {
    */
   public async getSettlementStrategy({
     settlementStrategyId,
-    marketIrOrName,
+    marketIdOrName,
   }: GetSettlementStrategy): Promise<SpotSettlementStrategy> {
-    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketIrOrName);
+    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketIdOrName);
     const spotProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
 
-    const settlementStrategy: SettlementStrategyResponse = (await this.sdk.utils.callErc7412(
-      spotProxy.address,
-      spotProxy.abi,
-      'getSettlementStrategy',
-      [resolvedMarketId, settlementStrategyId],
-    )) as SettlementStrategyResponse;
+    const settlementStrategy: SettlementStrategyResponse = (await this.sdk.utils.callErc7412({
+      contractAddress: spotProxy.address,
+      abi: spotProxy.abi,
+      functionName: 'getSettlementStrategy',
+      args: [resolvedMarketId, settlementStrategyId],
+    })) as SettlementStrategyResponse;
 
     return {
       marketId: resolvedMarketId,
@@ -379,12 +379,12 @@ export class Spot extends Market<SpotMarketData> {
 
     const argsList: [number, number][] = marketIds.map((marketId) => [marketId, stragegyId]);
 
-    const response = await this.sdk.utils.multicallErc7412(
-      spotProxy.address,
-      spotProxy.abi,
-      'getSettlementStrategy',
-      argsList,
-    );
+    const response = await this.sdk.utils.multicallErc7412({
+      contractAddress: spotProxy.address,
+      abi: spotProxy.abi,
+      functionName: 'getSettlementStrategy',
+      args: argsList,
+    });
 
     if (response == undefined) {
       settlementStrategiesResponse = [];
