@@ -26,7 +26,12 @@ export class Core implements CoreRepository {
    */
   public async getAccountOwner(accountId: number): Promise<Hex> {
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
-    const response = await this.sdk.utils.callErc7412(coreProxy.address, coreProxy.abi, 'getAccountOwner', [accountId]);
+    const response = await this.sdk.utils.callErc7412({
+      contractAddress: coreProxy.address,
+      abi: coreProxy.abi,
+      functionName: 'getAccountOwner',
+      args: [accountId],
+    });
 
     console.log(`Core account Owner for id ${accountId} is ${response}`);
     return response as Hex;
@@ -39,7 +44,12 @@ export class Core implements CoreRepository {
    */
   public async getUsdToken(): Promise<Hex> {
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
-    const response = await this.sdk.utils.callErc7412(coreProxy.address, coreProxy.abi, 'getUsdToken', []);
+    const response = await this.sdk.utils.callErc7412({
+      contractAddress: coreProxy.address,
+      abi: coreProxy.abi,
+      functionName: 'getUsdToken',
+      args: [],
+    });
 
     console.log('USD Token address: ', response);
     return response as Hex;
@@ -76,12 +86,12 @@ export class Core implements CoreRepository {
     for (let index = 0; index < Number(balance); index++) {
       argsList.push([accountAddress, index]);
     }
-    const accountIds = await this.sdk.utils.multicallErc7412(
-      accountProxy.address,
-      accountProxy.abi,
-      'tokenOfOwnerByIndex',
-      argsList,
-    ) as unknown[] as bigint[];
+    const accountIds = (await this.sdk.utils.multicallErc7412({
+      contractAddress: accountProxy.address,
+      abi: accountProxy.abi,
+      functionName: 'tokenOfOwnerByIndex',
+      args: argsList,
+    })) as unknown[] as bigint[];
 
     // Set Core account ids
     this.accountIds = accountIds;
@@ -114,12 +124,12 @@ export class Core implements CoreRepository {
   }): Promise<string> {
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
 
-    const availableCollateral = await this.sdk.utils.callErc7412(
-      coreProxy.address,
-      coreProxy.abi,
-      'getAccountAvailableCollateral',
-      [accountId, tokenAddress],
-    );
+    const availableCollateral = await this.sdk.utils.callErc7412({
+      contractAddress: coreProxy.address,
+      abi: coreProxy.abi,
+      functionName: 'getAccountAvailableCollateral',
+      args: [accountId, tokenAddress],
+    });
 
     return formatEther(availableCollateral as bigint);
   }
@@ -131,7 +141,12 @@ export class Core implements CoreRepository {
   public async getPreferredPool(): Promise<bigint> {
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
 
-    const preferredPool = await this.sdk.utils.callErc7412(coreProxy.address, coreProxy.abi, 'getPreferredPool', []);
+    const preferredPool = await this.sdk.utils.callErc7412({
+      contractAddress: coreProxy.address,
+      abi: coreProxy.abi,
+      functionName: 'getPreferredPool',
+      args: [],
+    });
 
     console.log(preferredPool);
     return preferredPool as bigint;

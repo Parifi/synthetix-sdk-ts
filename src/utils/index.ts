@@ -199,14 +199,9 @@ export class Utils {
    * @param calls Array of Call3Value calls for Multicall contract
    * @returns Response from the contract function call
    */
-  public async callErc7412(
-    contractAddress: Address,
-    abi: unknown,
-    functionName: string,
-    args: unknown[],
-    calls: Call3Value[] = [],
-  ) {
+  public async callErc7412({ contractAddress, abi, args, functionName, calls = [] }: WriteContractParams) {
     const multicallInstance = await this.sdk.contracts.getMulticallInstance();
+
     const currentCall: Call3Value = {
       target: contractAddress,
       callData: encodeFunctionData({
@@ -231,10 +226,9 @@ export class Utils {
           args: [calls],
         });
 
-        let totalValue = 0n;
-        for (const tx of calls) {
-          totalValue += tx.value || 0n;
-        }
+        const totalValue = calls.reduce((acc, tx) => {
+          return acc + (tx.value || 0n);
+        }, 0n);
 
         const finalTx = {
           account: this.sdk.accountAddress,
@@ -252,6 +246,7 @@ export class Utils {
           ) as unknown as Result[];
 
           const returnData = multicallResult.at(-1);
+
           if (returnData?.success && returnData.returnData != undefined) {
             const decodedResult = this.decodeResponse(abi, functionName, returnData.returnData);
             return decodedResult;
@@ -292,13 +287,13 @@ export class Utils {
    * @param calls Array of Call3Value calls for Multicall contract
    * @returns Array of responses from the contract function call for the multicalls
    */
-  public async multicallErc7412(
-    contractAddress: Address,
-    abi: unknown,
-    functionName: string,
-    argsList: unknown[],
-    calls: Call3Value[] = [],
-  ) {
+  public async multicallErc7412({
+    contractAddress,
+    abi,
+    functionName,
+    args: argsList,
+    calls = [],
+  }: WriteContractParams) {
     const multicallInstance = await this.sdk.contracts.getMulticallInstance();
 
     // Format the args to the required array format
@@ -331,10 +326,9 @@ export class Utils {
           args: [calls],
         });
 
-        let totalValue = 0n;
-        for (const tx of calls) {
-          totalValue += tx.value || 0n;
-        }
+        const totalValue = calls.reduce((acc, tx) => {
+          return acc + (tx.value || 0n);
+        }, 0n);
 
         const finalTx = {
           account: this.sdk.accountAddress,
@@ -493,13 +487,13 @@ export class Utils {
    * @param calls Array of Call3Value calls for Multicall contract
    * @returns Array of responses from the contract function call for the multicalls
    */
-  public async multicallMultifunctionErc7412(
-    contractAddress: Address,
-    abi: unknown,
-    functionNames: string[],
-    argsList: unknown[],
-    calls: Call3Value[] = [],
-  ) {
+  public async multicallMultifunctionErc7412({
+    contractAddress,
+    abi,
+    functionNames,
+    args: argsList,
+    calls = [],
+  }: Omit<WriteContractParams, 'functionName'> & { functionNames: string[] }) {
     const multicallInstance = await this.sdk.contracts.getMulticallInstance();
 
     // Format the args to the required array format

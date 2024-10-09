@@ -44,9 +44,13 @@ describe('Core', () => {
 
   it('should deposit tokens to account', async () => {
     const tokenAddress = await sdk.core.getUsdToken();
-    const tokenBalance: bigint = (await sdk.utils.callErc7412(tokenAddress, erc20Abi, 'balanceOf', [
-      sdk.accountAddress,
-    ])) as bigint;
+    const tokenBalance: bigint = (await sdk.utils.callErc7412({
+      contractAddress: tokenAddress,
+      abi: erc20Abi,
+      functionName: 'balanceOf',
+      args: [sdk.accountAddress],
+    })) as bigint;
+
     const coreProxy = await sdk.contracts.getCoreProxyInstance();
     const amount = 100; // 100 USD
     const amountInWei = parseUnits(amount.toString(), 18);
@@ -61,10 +65,12 @@ describe('Core', () => {
       return;
     }
 
-    const balanceApproved = (await sdk.utils.callErc7412(tokenAddress, erc20Abi, 'allowance', [
-      sdk.accountAddress,
-      coreProxy.address,
-    ])) as bigint;
+    const balanceApproved = (await sdk.utils.callErc7412({
+      contractAddress: tokenAddress,
+      abi: erc20Abi,
+      functionName: 'allowance',
+      args: [sdk.accountAddress, coreProxy.address],
+    })) as bigint;
 
     if (balanceApproved < amountInWei) {
       const approvalTx: CallParameters = {
