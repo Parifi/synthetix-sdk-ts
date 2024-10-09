@@ -220,10 +220,10 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     if (accountId != undefined) {
       txArgs.push(accountId);
     }
-    const buildedTxs = await this._buildCreateAccount(accountId);
+    const processedTx = await this._buildCreateAccount(accountId);
 
     const tx: CallParameters = await this.sdk.utils.writeErc7412({
-      calls: buildedTxs,
+      calls: processedTx,
     });
 
     if (override.submit) {
@@ -918,9 +918,9 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     { amount, marketIdOrName, accountId = this.defaultAccountId }: ModifyCollateral,
     override: OverrideParamsWrite = {},
   ): Promise<string | CallParameters> {
-    const buildedTxs = await this._buildModifyCollateral({ amount, marketIdOrName, accountId, collateralId: 0 });
+    const processedTx = await this._buildModifyCollateral({ amount, marketIdOrName, accountId, collateralId: 0 });
     const tx = await this.sdk.utils.writeErc7412({
-      calls: buildedTxs,
+      calls: processedTx,
     });
 
     if (!override.submit) return tx;
@@ -1431,8 +1431,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
           }) as CallParameters,
       );
     const finalTx = await this.sdk.utils.writeErc7412({ calls: callsArray }, override);
-    // TODO: add needed allowance and transfer on sdk
-    // await this.sdk.publicClient.call(finalTx);
 
     if (!override.submit) return finalTx;
 
