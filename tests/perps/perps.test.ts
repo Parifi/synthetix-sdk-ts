@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { getSdkInstanceForTesting } from '..';
 import { SynthetixSdk } from '../../src';
-import { CallParameters, encodeFunctionData, erc20Abi, parseUnits } from 'viem';
+import { Address } from 'viem';
 
 describe('Perps', () => {
   let sdk: SynthetixSdk;
@@ -10,7 +10,7 @@ describe('Perps', () => {
 
     // Get accounts for address and sets the default account
     const defaultAddress = process.env.DEFAULT_ADDRESS;
-    const accountIds = await sdk.perps.getAccountIds(defaultAddress);
+    const accountIds = await sdk.perps.getAccountIds(defaultAddress as Address);
     console.log('Account ids for default account: ', accountIds);
 
     await sdk.perps.getMarkets();
@@ -24,13 +24,13 @@ describe('Perps', () => {
 
   it('should return settlement strategies data', async () => {
     const settlementStrategyId = 0;
-    const marketId = sdk.perps.marketsByName.get('Ethereum')?.marketId;
+    const marketId = sdk.perps.marketsByName.get('Ethereum')?.marketId ?? 100;
     const settlementStrategy = await sdk.perps.getSettlementStrategy(settlementStrategyId, marketId);
     console.log('settlementStrategy :', settlementStrategy);
   });
 
   it('should create an account and return the tx hash', async () => {
-    const txData = await sdk.perps.createAccount(undefined, false);
+    const txData = await sdk.perps.createAccount(undefined, { submit: false });
     console.log('Create account tx:', txData);
   });
 
@@ -45,14 +45,13 @@ describe('Perps', () => {
     const defaultSettlementStrategy = 0;
     const submit = false;
     const tx = await sdk.perps.commitOrder(
-      size,
-      defaultSettlementStrategy,
-      undefined,
-      marketName,
-      undefined,
-      undefined,
-      1,
-      submit,
+      {
+        size,
+        settlementStrategyId: defaultSettlementStrategy,
+        marketIdOrName: marketName,
+        // desiredFillPrice: 1,
+      },
+      { submit },
     );
 
     if (submit) {
@@ -84,7 +83,7 @@ describe('Perps', () => {
       console.log('Approval txHash:', approveTxHash);
     }
 
-    const tx = await sdk.perps.modifyCollateral(amount, undefined, 'sUSD', undefined, submit);
+    const tx = await sdk.perps.modifyCollateral({ amount, marketIdOrName: 'sUSD' }, { submit });
     console.log('Add collateral tx: ', tx);
 
     const marginInfo = (await sdk.perps.getMarginInfo()).totalCollateralValue;
@@ -108,12 +107,17 @@ describe('Perps', () => {
   });
 
   it('should return open position data for multiple markets', async () => {
-    const positionsData = await sdk.perps.getOpenPositions(undefined, ['Ethereum', 'Bitcoin', 'Solana']);
+    const positionsData = await sdk.perps.getOpenPositions(['Ethereum', 'Bitcoin', 'Solana']);
     console.log('positionsData :', positionsData);
   });
 
   it('should return order quote', async () => {
-    const orderQuote = await sdk.perps.getQuote(1, undefined, undefined, 'Ethereum', undefined, 0, true);
+    const orderQuote = await sdk.perps.getQuote({
+      size: 1,
+      marketIdOrName: 'Ethereum',
+      settlementStrategyId: 0,
+      includeRequiredMargin: true,
+    });
     console.log('orderQuote :', orderQuote);
   });
 
@@ -125,7 +129,7 @@ describe('Perps', () => {
 
   // Account ID should be marked as liquidatable
   it.skip('should liquidate an account', async () => {
-    const liquidateTx = await sdk.perps.liquidate(undefined, false, true);
+    const liquidateTx = await sdk.perps.liquidate(undefined, { staticCall: true });
     console.log('liquidateTx :', liquidateTx);
   });
 
@@ -136,12 +140,11 @@ describe('Perps', () => {
   });
 
   it('should return max market value', async () => {
-    const ethMarketId = (await sdk.perps.marketsByName.get('Ethereum')?.marketId) ?? 100;
+    const ethMarket = sdk.perps.marketsByName.get('Ethereum');
+    const ethMarketId = ethMarket?.marketId ?? 100;
 
     const maxMarketValue = await sdk.perps.getMaxMarketValues([ethMarketId]);
     console.log(maxMarketValue);
-
-    const ethMarket = await sdk.perps.marketsByName.get('Ethereum');
     console.log('ethMarket', ethMarket);
   });
 
@@ -151,7 +154,7 @@ describe('Perps', () => {
     expect(pythData).not.toBe(undefined);
   });
 
-  it('should create an isolated account order', async () => {
+  it.only('should create an isolated account order', async () => {
     const initialSusdBalance = await sdk.getSusdBalance();
     const collateralAmount = 70; // 70 usdc.Min 62.5 USD collateral is required
     const submit = false;
@@ -175,16 +178,14 @@ describe('Perps', () => {
     const orderSize = 0.01; // 0.01 ETH
 
     const response = await sdk.perps.createIsolatedAccountOrder(
-      collateralAmount,
-      collateralMarketId,
-      orderSize,
-      undefined,
-      marketName,
-      0,
-      undefined,
-      undefined,
-      undefined,
-      submit,
+      {
+        collateralAmount,
+        size: orderSize,
+        collateralMarketId,
+        marketIdOrName: marketName,
+        settlementStrategyId: 0,
+      },
+      { submit },
     );
 
     if (submit) {

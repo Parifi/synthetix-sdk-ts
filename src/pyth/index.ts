@@ -1,7 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import { SynthetixSdk } from '..';
 import { DEFAULT_PYTH_TIMEOUT, PUBLIC_PYTH_ENDPOINT } from '../constants';
-import { EvmPriceServiceConnection, PriceFeed, PriceServiceConnectionConfig } from '@pythnetwork/pyth-evm-js';
+import { EvmPriceServiceConnection, PriceFeed } from '@pythnetwork/pyth-evm-js';
 import { PythConfig } from '../interface/classConfigs';
 import { formatUnits, Hex } from 'viem';
 
@@ -16,10 +16,10 @@ import { formatUnits, Hex } from 'viem';
  */
 export class Pyth {
   sdk: SynthetixSdk;
-  pythClient: AxiosInstance;
   pythConnection: EvmPriceServiceConnection;
 
   pythConfig?: PythConfig;
+  pythClient: AxiosInstance;
 
   // To store Market Symbol to Pyth Price ID mapping
   priceFeedIds: Map<string, string>;
@@ -197,16 +197,12 @@ export class Pyth {
       }
     }
 
-    try {
-      const priceUnchecked = pythPrice.getPriceUnchecked();
-      const price = Number(formatUnits(BigInt(priceUnchecked.price), Math.abs(priceUnchecked.expo)));
-      if (price == 0) {
-        throw new Error('Invalid price: 0');
-      }
-      return price;
-    } catch (error) {
-      throw error;
+    const priceUnchecked = pythPrice.getPriceUnchecked();
+    const price = Number(formatUnits(BigInt(priceUnchecked.price), Math.abs(priceUnchecked.expo)));
+    if (price == 0) {
+      throw new Error('Invalid price: 0');
     }
+    return price;
   }
 
   /**

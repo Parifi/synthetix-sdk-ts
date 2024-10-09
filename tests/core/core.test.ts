@@ -1,7 +1,6 @@
 import 'dotenv/config';
 import { getSdkInstanceForTesting } from '..';
-import { CallParameters, decodeErrorResult, encodeFunctionData, erc20Abi, getContract, parseUnits } from 'viem';
-import { IERC7412Abi } from '../../src/contracts/abis/IERC7412';
+import { Address, CallParameters, encodeFunctionData, erc20Abi, parseUnits } from 'viem';
 import { SynthetixSdk } from '../../src';
 
 describe('Core', () => {
@@ -11,7 +10,7 @@ describe('Core', () => {
 
     // Get accounts for address and sets the default account
     const defaultAddress = process.env.DEFAULT_ADDRESS;
-    const accountIds = await sdk.core.getAccountIds(defaultAddress);
+    const accountIds = await sdk.core.getAccountIds({ address: defaultAddress as Address });
     console.log('Account ids for default account: ', accountIds);
   });
 
@@ -27,27 +26,31 @@ describe('Core', () => {
 
   it('should return account ids and balance of an address', async () => {
     const defaultAddress = process.env.DEFAULT_ADDRESS;
-    const accountIds = await sdk.core.getAccountIds(defaultAddress);
+    const accountIds = await sdk.core.getAccountIds({ address: defaultAddress });
     console.info('Account Ids :', accountIds);
   });
 
   it('should return available collateral of an account', async () => {
     const tokenAddress = await sdk.core.getUsdToken();
-    const availableCollateral = await sdk.core.getAvailableCollateral(tokenAddress);
+    const availableCollateral = await sdk.core.getAvailableCollateral({ tokenAddress });
 
     console.info('getAvailableCollateral :', availableCollateral);
   });
 
   it('should create an account and return the tx hash', async () => {
-    const txHash = await sdk.core.createAccount(undefined, false);
+    const txHash = await sdk.core.createAccount(undefined);
     console.log('Create account txHash:', txHash);
   });
 
   it('should deposit tokens to account', async () => {
     const tokenAddress = await sdk.core.getUsdToken();
-    const tokenBalance: bigint = (await sdk.utils.callErc7412(tokenAddress, erc20Abi, 'balanceOf', [
-      sdk.accountAddress,
-    ])) as bigint;
+    const tokenBalance: bigint = (await sdk.utils.callErc7412({
+      contractAddress: tokenAddress,
+      abi: erc20Abi,
+      functionName: 'balanceOf',
+      args: [sdk.accountAddress],
+    })) as bigint;
+
     const coreProxy = await sdk.contracts.getCoreProxyInstance();
     const amount = 100; // 100 USD
     const amountInWei = parseUnits(amount.toString(), 18);
@@ -62,10 +65,12 @@ describe('Core', () => {
       return;
     }
 
-    const balanceApproved = (await sdk.utils.callErc7412(tokenAddress, erc20Abi, 'allowance', [
-      sdk.accountAddress,
-      coreProxy.address,
-    ])) as bigint;
+    const balanceApproved = (await sdk.utils.callErc7412({
+      contractAddress: tokenAddress,
+      abi: erc20Abi,
+      functionName: 'allowance',
+      args: [sdk.accountAddress, coreProxy.address],
+    })) as bigint;
 
     if (balanceApproved < amountInWei) {
       const approvalTx: CallParameters = {
@@ -81,7 +86,7 @@ describe('Core', () => {
       console.log('Approval txHash:', approvalHash);
     }
 
-    const txData = await sdk.core.deposit(tokenAddress, amount, 18);
+    const txData = await sdk.core.deposit({ tokenAddress, amount, decimals: 18 });
     console.log('Deposit tx data:', txData);
   });
 
@@ -89,16 +94,16 @@ describe('Core', () => {
     const tokenAddress = await sdk.core.getUsdToken();
     const amount = 5; // 5 USD
     const amountInWei = parseUnits(amount.toString(), 18);
-    const coreProxy = await sdk.contracts.getCoreProxyInstance();
+    // const coreProxy = await sdk.contracts.getCoreProxyInstance();
 
-    const availableCollateral = await sdk.core.getAvailableCollateral(tokenAddress);
+    const availableCollateral = await sdk.core.getAvailableCollateral({ tokenAddress });
     const collateralInWei = parseUnits(availableCollateral, 18);
 
     if (amountInWei >= collateralInWei) {
       console.log('Available collateral not available, unable to withdraw');
       return;
     } else {
-      const tx = await sdk.core.withdraw(tokenAddress, amount, 18);
+      const tx = await sdk.core.withdraw({ tokenAddress, amount, decimals: 18 });
       console.log('Withdraw tx data:', tx);
     }
   });
@@ -110,7 +115,7 @@ describe('Core', () => {
     console.log('Preferred pool id :', poolId);
     const leverage = 1; // 1x leverage
 
-    const txData = await sdk.core.delegateCollateral(tokenAddress, amount, poolId, leverage);
+    const txData = await sdk.core.delegateCollateral({ tokenAddress, amount, poolId, leverage });
     console.log('Delegate tx:', txData);
   });
 
@@ -120,7 +125,8 @@ describe('Core', () => {
     const poolId = await sdk.core.getPreferredPool();
     console.log('Preferred pool id :', poolId);
 
-    const txData = await sdk.core.mintUsd(tokenAddress, amount, poolId);
+    const txData = await sdk.core.mintUsd({ tokenAddress, amount, poolId });
+
     console.log('Mint tokens txData:', txData);
   });
 });

@@ -18,7 +18,7 @@ import { IERC7412Abi } from '../contracts/abis/IERC7412';
 import { Call3Value, Result } from '../interface/contractTypes';
 import { parseError } from './parseError';
 import { MAX_ERC7412_RETRIES, SIG_FEE_REQUIRED, SIG_ORACLE_DATA_REQUIRED } from '../constants';
-
+import { OverrideParamsWrite, WriteContractParams, WriteErc7412 } from '../interface/commonTypes';
 /**
  * Utility class
  *
@@ -78,7 +78,9 @@ export class Utils {
       console.log('priceIds: ', priceIds);
 
       const stalenessTolerance = stalenessOrTime;
-      const updateData = await this.sdk.pyth.getPriceFeedsUpdateData(priceIds as Hex[]);
+      const updateData = (await this.sdk.pyth.pythConnection.getPriceFeedsUpdateData(
+        priceIds as string[],
+      )) as unknown as Address[];
 
       return encodeAbiParameters(
         [
@@ -141,26 +143,30 @@ export class Utils {
       throw new Error('Handle ERC7412 error');
     }
 
+    if (!['OracleDataRequired', 'FeeRequired'].includes(err?.errorName)) throw new Error('Handle ERC7412 error');
+
     if (err?.errorName === 'OracleDataRequired') {
       console.log('Oracle Data Required error, adding price update data to tx');
+
       const oracleAddress = err.args![0] as Address;
+
       const oracleQuery = err.args![1] as Hex;
 
       const signedRequiredData = await this.fetchOracleUpdateData(oracleQuery);
-      const dataVerificationTx = await this.generateDataVerificationTx(oracleAddress, signedRequiredData);
+      const dataVerificationTx = this.generateDataVerificationTx(oracleAddress, signedRequiredData);
+      dataVerificationTx.requireSuccess = false;
+      dataVerificationTx.value = 500n;
       calls.unshift(dataVerificationTx);
+
       return calls;
-    } else if (err.errorName === 'FeeRequired') {
-      console.log('Fee Required oracle error. Adding fee to tx.value');
-      if (calls.length > 0) {
-        calls[0].value = err.args[0] as bigint;
-        return calls;
-      } else {
-        throw new Error('Handle ERC7412 error: Calls.length == 0');
-      }
-    } else {
-      throw new Error('Handle ERC7412 error');
     }
+
+    console.log('Fee Required oracle error. Adding fee to tx.value', err);
+    if (!calls.length) throw new Error('Handle ERC7412 error: Calls.length == 0');
+
+    calls[0].value = err.args[0] as bigint;
+
+    return calls;
   }
 
   /**
@@ -193,14 +199,9 @@ export class Utils {
    * @param calls Array of Call3Value calls for Multicall contract
    * @returns Response from the contract function call
    */
-  public async callErc7412(
-    contractAddress: Address,
-    abi: unknown,
-    functionName: string,
-    args: unknown[],
-    calls: Call3Value[] = [],
-  ) {
+  public async callErc7412({ contractAddress, abi, args, functionName, calls = [] }: WriteContractParams) {
     const multicallInstance = await this.sdk.contracts.getMulticallInstance();
+
     const currentCall: Call3Value = {
       target: contractAddress,
       callData: encodeFunctionData({
@@ -225,10 +226,9 @@ export class Utils {
           args: [calls],
         });
 
-        let totalValue = 0n;
-        for (const tx of calls) {
-          totalValue += tx.value || 0n;
-        }
+        const totalValue = calls.reduce((acc, tx) => {
+          return acc + (tx.value || 0n);
+        }, 0n);
 
         const finalTx = {
           account: this.sdk.accountAddress,
@@ -246,6 +246,7 @@ export class Utils {
           ) as unknown as Result[];
 
           const returnData = multicallResult.at(-1);
+
           if (returnData?.success && returnData.returnData != undefined) {
             const decodedResult = this.decodeResponse(abi, functionName, returnData.returnData);
             return decodedResult;
@@ -286,13 +287,13 @@ export class Utils {
    * @param calls Array of Call3Value calls for Multicall contract
    * @returns Array of responses from the contract function call for the multicalls
    */
-  public async multicallErc7412(
-    contractAddress: Address,
-    abi: unknown,
-    functionName: string,
-    argsList: unknown[],
-    calls: Call3Value[] = [],
-  ) {
+  public async multicallErc7412({
+    contractAddress,
+    abi,
+    functionName,
+    args: argsList,
+    calls = [],
+  }: WriteContractParams) {
     const multicallInstance = await this.sdk.contracts.getMulticallInstance();
 
     // Format the args to the required array format
@@ -325,10 +326,9 @@ export class Utils {
           args: [calls],
         });
 
-        let totalValue = 0n;
-        for (const tx of calls) {
-          totalValue += tx.value || 0n;
-        }
+        const totalValue = calls.reduce((acc, tx) => {
+          return acc + (tx.value || 0n);
+        }, 0n);
 
         const finalTx = {
           account: this.sdk.accountAddress,
@@ -369,6 +369,9 @@ export class Utils {
       }
     }
   }
+  protected isWriteContractParams(data: WriteErc7412): data is WriteContractParams {
+    return (data as WriteContractParams).contractAddress !== undefined;
+  }
 
   /**
    * Simulates the `functionName` on `contractAddress` target using the Multicall contract and returns the
@@ -381,15 +384,18 @@ export class Utils {
    * @returns Final transaction with ERC7412 tx data (if necessary)
    */
   public async writeErc7412(
-    contractAddress?: Address,
-    abi?: unknown,
-    functionName?: string,
-    args?: unknown[],
-    calls: Call3Value[] = [],
+    data: WriteErc7412,
+    override: OverrideParamsWrite = {
+      shouldRevertOnTxFailure: true,
+      submit: false,
+      useMultiCall: true,
+    },
   ): Promise<CallParameters> {
+    let calls: Call3Value[] = data.calls ?? [];
     const multicallInstance = await this.sdk.contracts.getMulticallInstance();
 
-    if (contractAddress != undefined && functionName != undefined) {
+    if (this.isWriteContractParams(data)) {
+      const { contractAddress, abi, functionName, args } = data as WriteContractParams;
       const currentCall: Call3Value = {
         target: contractAddress,
         callData: encodeFunctionData({
@@ -408,6 +414,7 @@ export class Utils {
     let totalRetries = 0;
     let finalTx: CallParameters | undefined;
     while (true) {
+      console.log('=== calls', calls);
       try {
         const multicallData = encodeFunctionData({
           abi: multicallInstance.abi,
@@ -435,16 +442,21 @@ export class Utils {
       } catch (error) {
         totalRetries += 1;
         if (totalRetries > MAX_ERC7412_RETRIES) {
+          if (finalTx && !override.shouldRevertOnTxFailure) return finalTx;
+          console.log('Error is not related to Oracle data');
+
           throw new Error('MAX_ERC7412_RETRIES retries reached, tx failed after multiple attempts');
         }
 
         const parsedError = parseError(error as CallExecutionError);
 
+        console.log('Error details: ', error);
+        console.log('Parsed Error details: ', parsedError);
+
         const isErc7412Error =
           parsedError.startsWith(SIG_ORACLE_DATA_REQUIRED) || parsedError.startsWith(SIG_FEE_REQUIRED);
+
         if (!isErc7412Error) {
-          console.log('Error details: ', error);
-          console.log('Parsed Error details: ', parsedError);
           try {
             // let err = decodeErrorResult({
             // abi: abi as Abi,
@@ -453,7 +465,7 @@ export class Utils {
             // console.log('Decoded error:', err);
             throw new Error('Error is not related to Oracle data');
           } catch (e) {
-            if (finalTx) return finalTx;
+            if (finalTx && !override.shouldRevertOnTxFailure) return finalTx;
             console.log('Error is not related to Oracle data');
             throw e;
           }
@@ -475,13 +487,13 @@ export class Utils {
    * @param calls Array of Call3Value calls for Multicall contract
    * @returns Array of responses from the contract function call for the multicalls
    */
-  public async multicallMultifunctionErc7412(
-    contractAddress: Address,
-    abi: unknown,
-    functionNames: string[],
-    argsList: unknown[],
-    calls: Call3Value[] = [],
-  ) {
+  public async multicallMultifunctionErc7412({
+    contractAddress,
+    abi,
+    functionNames,
+    args: argsList,
+    calls = [],
+  }: Omit<WriteContractParams, 'functionName'> & { functionNames: string[] }) {
     const multicallInstance = await this.sdk.contracts.getMulticallInstance();
 
     // Format the args to the required array format

@@ -1,3 +1,4 @@
+import { Address } from 'viem';
 import { getSdkInstanceForTesting } from '..';
 import { SynthetixSdk } from '../../src';
 
@@ -9,13 +10,13 @@ describe('Pyth', () => {
 
     // Get accounts for address and sets the default account
     const defaultAddress = process.env.DEFAULT_ADDRESS;
-    const accountIds = await sdk.perps.getAccountIds(defaultAddress);
+    const accountIds = await sdk.perps.getAccountIds(defaultAddress as Address);
     console.log('Account ids for default account: ', accountIds);
     await sdk.perps.getMarkets();
   });
 
   it('should return price update data for ETH price id', async () => {
-    let updateData = await sdk.pyth.getPriceFeedsUpdateData([ETH_PRICE_ID]);
+    const updateData = await sdk.pyth.getPriceFeedsUpdateData([ETH_PRICE_ID]);
     expect(updateData.length).toBeGreaterThan(0);
   });
 
@@ -32,7 +33,7 @@ describe('Pyth', () => {
 
   it('should get benchmark price update data', async () => {
     const priceIds = [ETH_PRICE_ID];
-    const publishTime = Math.floor(Date.now() / 1000) - 864000;   // Price from 10 days ago
+    const publishTime = Math.floor(Date.now() / 1000) - 864000; // Price from 10 days ago
     const res = await sdk.pyth.getVaaPriceUpdateData(priceIds, publishTime);
     expect(res.length > 0);
   });

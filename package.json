@@ -1,6 +1,6 @@
 {
   "name": "@parifi/synthetix-sdk-ts",
-  "version": "0.2.7",
+  "version": "0.2.10-dev",
   "description": "A Typescript SDK for interactions with the Synthetix protocol",
   "files": [
     "dist",
@@ -20,6 +20,7 @@
     "build": "tsup ./src",
     "prepare": "npm run build",
     "test": "jest",
+    "lint": "eslint . --ext .ts",
     "docs": "typedoc"
   },
   "repository": {
