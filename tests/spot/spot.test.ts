@@ -54,7 +54,7 @@ describe('Spot', () => {
     expect(typeof res).toBe('object');
   });
 
-  it.only('should wrap sUSDC tokens', async () => {
+  it('should wrap sUSDC tokens', async () => {
     const spotMarketProxy = await sdk.contracts.getSpotMarketProxyInstance();
     const submit = false;
     let tokenAddress = '0x';
@@ -63,12 +63,14 @@ describe('Spot', () => {
     // in order to do address = object[chainId]; if(!address) return
     if (sdk.rpcConfig.chainId == 84532) {
       tokenAddress = '0xc43708f8987df3f3681801e5e640667d86ce3c30'; // Temp value for fakeUSDC on base
+    } else if (sdk.rpcConfig.chainId == 421614) {
+      tokenAddress = '0xCf45784084Ca3fd91C215a87265014c3DC67182D'; // Temp value for fakeUSDe on Arb Sepolia
+    } else {
+      console.log('TODO: Add logic for token address on other chains.... skipping test case');
+      return;
     }
-    // TODO: Add logic for other chains
-    if (tokenAddress == '0x') return;
-
-    const size = 1;
-    const initialBalance = await sdk.spot.getBalance(undefined, 'sUSDC');
+    const size = 10;
+    const initialBalance = await sdk.spot.getBalance(undefined, 'sUSDe');
 
     const fakeUSDC = getContract({
       address: tokenAddress as Hex,
@@ -86,14 +88,14 @@ describe('Spot', () => {
 
     const allowance = await sdk.getAllowance(tokenAddress, spotMarketProxy.address, sdk.accountAddress);
     if (allowance < size) {
-      const approveTxHash = await sdk.approve(tokenAddress, spotMarketProxy.address, size, true);
+      const approveTxHash = await sdk.approve(tokenAddress, spotMarketProxy.address, undefined, true);
       console.log('Approval txHash:', approveTxHash);
     }
 
-    const tx = await sdk.spot.wrap({ size, marketIdOrName: 'sUSDC' });
+    const tx = await sdk.spot.wrap({ size, marketIdOrName: 'sUSDe' }, { submit: submit });
     if (submit) {
       console.log('Wrap tx data:', tx);
-      const updatedBalance = await sdk.spot.getBalance(undefined, 'sUSDC');
+      const updatedBalance = await sdk.spot.getBalance(undefined, 'sUSDe');
       expect(updatedBalance).toBeGreaterThan(initialBalance);
     }
   });

@@ -58,7 +58,7 @@ export abstract class Market<T extends MarketData | SpotMarketData> {
     const { resolvedMarketName } = this.resolveMarket(marketId);
     let sizeInWei: bigint;
 
-    const chainIds = [8453, 84532, 42161, 421514];
+    const chainIds = [8453, 84532, 42161, 421614];
     const marketNames = ['sUSDC', 'sStataUSDC'];
 
     // Hard-coding a catch for USDC with 6 decimals
