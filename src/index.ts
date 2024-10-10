@@ -148,9 +148,10 @@ export class SynthetixSdk {
     // Initialize Pyth
     await this.pyth.initPyth();
 
-    // Initialize Perps & Spot
+    // Initialize Perps & Spot & Core
     await this.perps.initPerps();
     await this.spot.initSpot();
+    await this.core.initCore();
   }
 
   public getPublicClient(): PublicClient {

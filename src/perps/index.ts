@@ -879,13 +879,10 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     amount,
     marketIdOrName,
     accountId,
-    collateralId,
   }: ModifyCollateral): Promise<Call3Value[]> {
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketIdOrName);
-    console.log('resolvedMarketId', resolvedMarketId);
-    console.log('resolvedMarketName', resolvedMarketName);
 
     console.log(`Building ${amount} ${resolvedMarketName} for account ${accountId}`);
     return [
@@ -894,7 +891,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
         callData: encodeFunctionData({
           abi: marketProxy.abi,
           functionName: 'modifyCollateral',
-          args: [accountId, collateralId, this.formatSize(amount, resolvedMarketId)],
+          args: [accountId, resolvedMarketId, this.formatSize(amount, resolvedMarketId)],
         }),
         value: 0n,
         requireSuccess: true,
@@ -918,7 +915,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     { amount, marketIdOrName, accountId = this.defaultAccountId }: ModifyCollateral,
     override: OverrideParamsWrite = {},
   ): Promise<string | CallParameters> {
-    const processedTx = await this._buildModifyCollateral({ amount, marketIdOrName, accountId, collateralId: 0 });
+    const processedTx = await this._buildModifyCollateral({ amount, marketIdOrName, accountId });
     const tx = await this.sdk.utils.writeErc7412({
       calls: processedTx,
     });
@@ -1397,9 +1394,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
     const modifyCollateralCall = (await this._buildModifyCollateral({
       amount: collateralAmount,
-      marketIdOrName,
+      marketIdOrName: collateralMarketId,
       accountId,
-      collateralId: collateralMarketId,
     })) as Call3Value[];
 
     const commitOrderCall = (await this._buildCommitOrder({
