@@ -96,7 +96,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * of ERC-7412 calls. If no market names are provided, all markets are fetched. This is useful for
    * read functions since the user does not pay gas for those oracle calls, and reduces RPC calls and
    * runtime.
-   * @param marketIds An array of market ids to fetch prices for. If not provided, all markets are fetched
+   * @param {number[]} marketIds An array of market ids to fetch prices for. If not provided, all markets are fetched
+   * @returns {Promise<Call3Value[]>} objects representing the target contract, call data, value, requireSuccess flag and other necessary details for executing the function in the blockchain.
    */
   public async prepareOracleCall(marketIds: number[] = []): Promise<Call3Value[]> {
     let marketSymbols: string[] = [];
@@ -154,8 +155,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * Fetch a list of perps ``account_id`` owned by an address. Perps accounts
    * are minted as an NFT to the owner's address. The ``account_id`` is the
    * token id of the NFTs held by the address.
-   * @param address The address to get accounts for. Uses connected address if not provided.
-   * @param defaultAccountId The default account ID to set after fetching.
+   * @param {string} address The address to get accounts for. Uses connected address if not provided.
+   * @param {bigint} defaultAccountId The default account ID to set after fetching.
    * @returns A list of account IDs owned by the address
    */
 
@@ -192,6 +193,12 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     return accountIds as bigint[];
   }
 
+  /**
+   * @name _buildCreateAccount
+   * @description This function builds the data for creating an account in the PerpsMarketProxy contract using the given accountId.
+   * @param {bigint} accountId - The optional accountId to be created. If not provided, a new account will be generated.
+   * @returns {Call3Value[]} - An array of Call3Value objects representing the target contract, call data, value, requireSuccess flag and other necessary details for executing the function in the blockchain.
+   */
   protected async _buildCreateAccount(accountId?: bigint): Promise<Call3Value[]> {
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
     return [
@@ -209,11 +216,11 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   }
 
   /**
-   * Create a perps account. An account NFT is minted to the sender,
-   * who owns the account.
-   * @param accountId Id of the account. If not passed, default Perps account ID is used
-   * @param submit Executes the transaction if true
-   * @returns Transaction hash or transaction data
+   * @name createAccount
+   * @description Creates a new account and returns either the transaction hash or the transaction parameters. If `submit` is provided in `override`, the transaction will be submitted and the transaction hash will be returned. Otherwise, the transaction parameters will be returned.
+   * @param {bigint | undefined} accountId - The ID of the account to create (optional)
+   * @param {OverrideParamsWrite} override - Options for submitting or returning the transaction parameters
+   * @returns {string | CallParameters} - If `submit` is provided in `override`, a string representing the transaction hash. Otherwise, an object containing the transaction parameters as defined by the CallParameters type.
    */
   public async createAccount(accountId?: bigint, override: OverrideParamsWrite = {}): Promise<string | CallParameters> {
     const txArgs = [];
@@ -239,7 +246,9 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   /**
    * Fetch the ids and summaries for all perps markets. Market summaries include
    * information about the market's price, open interest, funding rate, and skew
+   * @returns {Promise<{ marketsById: Map<number, MarketData>; marketsByName: Map<string, MarketData> }>} - A map of market data objects indexed by market id and market name
    */
+
   // @todo Add logic for disabled markets
   public async getMarkets(): Promise<{ marketsById: Map<number, MarketData>; marketsByName: Map<string, MarketData> }> {
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
@@ -388,13 +397,12 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   }
 
   /**
-   * Fetch the market summary for a single market, including information about
-   * the market's price, open interest, funding rate, and skew.
-   * Provide either the `marketId` or `marketName`.
-   * @param marketId Market id to fetch the summary
-   * @param marketName Name of the market to fetch summary
-   * @returns Summary of market data fetched from the contract
+   * @name getMarketSummary
+   * @description Fetches the summary of a given market. This includes information like skew, size, max open interest, current funding rate, and more.
+   * @param {string|number} marketIdOrName - The identifier or name of the market to fetch the summary for.
+   * @returns {MarketSummary} - An object containing the summary data for the specified market.
    */
+
   public async getMarketSummary(marketIdOrName: MarketIdOrName): Promise<MarketSummary> {
     const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketIdOrName);
 
@@ -444,12 +452,11 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   }
 
   /**
-   * Fetch the settlement strategy for a market. Settlement strategies describe the
-   * conditions under which an order can be settled.
-   * Provide either a `marketId` or `marketName`
-   * @param marketId Id of the market to get settlement strategy
-   * @param marketName Name of the market to get settlement strategy
-   * @returns Settlement strategy for market
+   * @name getSettlementStrategy
+   * @description This function retrieves the settlement strategy for a given market by its ID and either Market ID or Name.
+   * @param {number} settlementStrategyId - The ID of the settlement strategy to retrieve.
+   * @param {MarketIdOrName} marketIdOrName - The unique identifier (ID or Name) of the market this settlement strategy belongs to.
+   * @returns {SettlementStrategy} - An object containing the details of the retrieved settlement strategy, including its strategy type, delay times, associated contract addresses, feed ID, settlement reward, and whether it is disabled or not.
    */
   public async getSettlementStrategy(
     settlementStrategyId: number,
@@ -619,6 +626,17 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     return maxMarketValues;
   }
 
+  /**
+   * @name _buildCommitOrder
+   * @description Builds a commit order for a given size, settlement strategy ID, market ID or name, account ID (default to the defaultAccountId), desired fill price, and max price impact.
+   * @param {number} size - The size of the order in the base asset unit.
+   * @param {string|number} data.settlementStrategyId - The ID of the settlement strategy for the market.
+   * @param {string|number} data.marketIdOrName - The ID or name of the market to trade on.
+   * @param {string|undefined} data.accountId - The ID of the account for which the order is being built (default to defaultAccountId).
+   * @param {number|undefined} data.desiredFillPrice - The desired fill price for the order in the base asset unit.
+   * @param {number|undefined} data.maxPriceImpact - The maximum price impact for the order as a percentage of the market index price.
+   * @returns {Call3Value[]} An array containing the details of the transaction to be executed on the contract, including the target contract address, call data, value, and requireSuccess flag.
+   */
   protected async _buildCommitOrder({
     size,
     settlementStrategyId,
@@ -672,18 +690,11 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   }
 
   /**
-   * Submit an order to the specified market. Keepers will attempt to fill the order
-   * according to the settlement strategy. If ``desired_fill_price`` is provided, the order
-   * will be filled at that price or better. If ``max_price_impact`` is provided, the
-   * ``desired_fill_price`` is calculated from the current market price and the price impact.
-   * @param size The size of the order to submit
-   * @param settlementStrategyId The id of the settlement strategy to use
-   * @param marketId The id of the market to submit the order to. If not provided, `marketName` must be provided
-   * @param marketName The name of the market to submit the order to. If not provided, `marketId` must be provided.
-   * @param accountId The id of the account to submit the order for. Defaults to `defaultAccountId`.
-   * @param desiredFillPrice The max price for longs and minimum price for shorts. If not provided, one will be calculated based on `maxPriceImpact`
-   * @param maxPriceImpact The maximum price impact to allow when filling the order as a percentage (1.0 = 1%). If not provided, it will inherit the default value from `snx.max_price_impact`
-   * @param submit If ``true``, submit the transaction to the blockchain
+   * @name commitOrder
+   * @description This function commits an order by building the necessary transactions and either executing them or returning them for later submission.
+   * @param {CommitOrder} data - The details of the order to be committed.
+   * @param {OverrideParamsWrite} [override] - Optional parameters to override default write settings, specifically whether to submit the transaction immediately (when `submit` is true). If not provided, the function will return the transaction object.
+   * @returns {string | CallParameters} - Returns either a transaction hash if `submit` is true, or the transaction object for later submission when `submit` is false.
    */
   public async commitOrder(data: CommitOrder, override: OverrideParamsWrite = {}): Promise<string | CallParameters> {
     const txs = await this._buildCommitOrder(data);
@@ -704,8 +715,9 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   /**
    *   Fetches the open order for an account. Optionally fetches the settlement strategy,
    * which can be useful for order settlement and debugging.
-   * @param accountId The id of the account. If not provided, the default account is used
-   * @param fetchSettlementStrategy Flag to indicate whether to fetch the settlement strategy
+   * @param {bigint} accountId The id of the account. If not provided, the default account is used
+   * @param {boolean} fetchSettlementStrategy Flag to indicate whether to fetch the settlement strategy
+   * @returns {OrderData} The order data for the account
    */
   public async getOrder(
     accountId: bigint | undefined = undefined,
@@ -765,7 +777,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * Accounts must maintain an ``available_margin`` above the ``maintenance_margin_requirement``
    * to avoid liquidation. Accounts with ``available_margin`` below the ``initial_margin_requirement``
    * can not interact with their position unless they deposit more collateral.
-   * @param accountId  The id of the account to fetch the margin info for. If not provided, the default account is used
+   * @param {bigint} accountId  The id of the account to fetch the margin info for. If not provided, the default account is used
+   * @returns {CollateralData} The margin information for the account
    */
   public async getMarginInfo(accountId: bigint | undefined = undefined): Promise<CollateralData> {
     if (accountId == undefined) {
@@ -875,6 +888,15 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     return marginInfo;
   }
 
+  /**
+   * @name _buildModifyCollateral
+   * @description This function builds the call to modify collateral in a perp market. It takes an amount, market ID or name, account ID, and collateral ID as parameters and returns an array of Call3Value objects.
+   * @param {string | number} data.amount - The amount of the underlying asset to modify collateral for.
+   * @param {string | number} data.marketIdOrName - The ID or name of the perp market where the collateral will be modified.
+   * @param {string} data.accountId - The ID of the account whose collateral is being modified.
+   * @param {string} data.collateralId - The ID of the collateral being modified.
+   * @returns {Call3Value[]} - An array of Call3Value objects containing the target contract address, call data, value, requireSuccess flag, and other relevant information for executing the 'modifyCollateral' function on the market proxy contract.
+   */
   protected async _buildModifyCollateral({
     amount,
     marketIdOrName,
@@ -903,16 +925,13 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   }
 
   /**
-   * Move collateral in or out of a specified perps account. The ``market_id`` or ``market_name``
-   * must be provided to specify the collateral type.
-   * Provide either a ``market_id`` or a ``market_name``.  Note that the ``market_id`` here refers
-   * to the spot market id, not the perps market id. Make sure to approve the market proxy to transfer
-   * tokens of the collateral type before calling this function.
-   * @param amount The amount of collateral to move. Positive values deposit collateral, negative values withdraw collateral
-   * @param marketId The id of the market to move collateral for
-   * @param marketName The name of the market to move collateral for.
-   * @param accountId The id of the account to move collateral for. If not provided, the default account is used.
-   * @param submit If ``True``, submit the transaction to the blockchain.
+   * @name modifyCollateral
+   * @description This function modifies the collateral for a given market and account. It builds the necessary transaction, then writes it to the ERC7412 contract. If submit is not provided in the override object, it returns the built transaction object. Otherwise, it executes the transaction and logs the transaction hash.
+   * @param {string} data.amount - The amount of collateral to modify
+   * @param {string | number} data.marketIdOrName - The identifier or name of the market for which the collateral is being modified
+   * @param {string} data.accountId - The ID of the account (default is the defaultAccountId)
+   * @param {OverrideParamsWrite} [override] - An optional object that overrides the function behavior. If provided, submit must be truthy to execute the transaction and log the transaction hash.
+   * @returns {string | CallParameters} The built transaction object if override.submit is falsy, otherwise the transaction hash.
    */
   public async modifyCollateral(
     { amount, marketIdOrName, accountId = this.defaultAccountId }: ModifyCollateral,
@@ -931,7 +950,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
   /**
    * Fetch the balance of each collateral type for an account.
-   * @param accountId The id of the account to fetch the collateral balances for. If not provided, the default account is used.
+   * @param {bigint} accountId The id of the account to fetch the collateral balances for. If not provided, the default account is used.
+   * @returns {Promise<number>} The balance of the account's collateral.
    */
 
   public async getCollateralBalances(accountId?: bigint): Promise<number> {
@@ -945,7 +965,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   /**
    * Check if an `accountId` is eligible for liquidation.
    * @param accountId The id of the account to check. If not provided, the default account is used.
-   * @returns
+   * @returns {Promise<boolean>} A boolean indicating whether the account can be liquidated.
    */
   public async getCanLiquidate(accountId: bigint | undefined = undefined): Promise<boolean> {
     if (accountId == undefined) {
@@ -968,8 +988,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
   /**
    * Check if a batch of `accountId`'s are eligible for liquidation.
-   * @param accountIds An array of account ids
-   * @returns
+   * @param {string[]} accountIds An array of account ids
+   * @returns {Promise<{ accountId: bigint; canLiquidate: boolean }[]>} An array of objects containing the account id and whether the account can be liquidated.
    */
   public async getCanLiquidates(
     accountIds: bigint[] | undefined = undefined,
@@ -1011,9 +1031,9 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * Fetch the position for a specified account and market. The result includes the unrealized
    * pnl since the last interaction with this position, any accrued funding, and the position size.
    * Provide either a ``marketId`` or a ``marketName``::
-   * @param marketId The id of the market to fetch the position for.
-   * @param marketName The name of the market to fetch the position for.
-   * @param accountId The id of the account to fetch the position for. If not provided, the default account is used.
+   * @param {string | number} marketIdOrName - The identifier or name of the market for which the collateral is being modified
+   * @param {bigint} accountId The id of the account to fetch the position for. If not provided, the default account is used.
+   * @returns {OpenPositionData} An object containing the open position data for the specified market.
    */
   public async getOpenPosition(
     marketIdOrName: MarketIdOrName,
@@ -1050,9 +1070,9 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * Fetch positions for an array of specified markets. The result includes the unrealized
    * pnl since the last interaction with this position, any accrued funding, and the position size.
    * Provide either an array of ``marketIds`` or a ``marketNames``::
-   * @param marketIds Array of market ids to fetch the position for.
-   * @param marketNames Array of market names to fetch the position for.
-   * @param accountId The id of the account to fetch the position for. If not provided, the default account is used.
+   * @param {MarketIdOrName} marketIdsOrNames - The ID or name of the Perpetual market to get a quote for.
+   * @param {bigint} accountId The id of the account to fetch the position for. If not provided, the default account is used.
+   * @returns {OpenPositionData[]} An array of objects containing the open position data for the specified markets.
    */
   public async getOpenPositions(
     marketIdsOrNames?: MarketIdOrName[],
@@ -1100,16 +1120,15 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   }
 
   /**
-   * Get a quote for the size of an order in a specified market. The quote includes the provided price
-   * and the fill price of the order after price impact. If a price is not provided, a price will be fetched
-   * from Pyth. Provide either a ``marketId`` or ``marketName``.
-   * @param size The size of the order to quote.
-   * @param price The price to quote the order at. If not provided, the current market price is used
-   * @param marketId The id of the market to quote the order for
-   * @param marketName The name of the market to quote the order for
-   * @param accountId The id of the account to quote the order for. If not provided, the default account is used
-   * @param settlementStrategyId The id of the settlement strategy to use for the settlement reward calculation
-   * @param includeRequiredMargin If ``true``, include the required margin for the account in the quote.
+   * @name getQuote
+   * @description Fetches a quote for a Perpetual market, calculating the fees, fill price and required margin.
+   * @param {number} data.size - The size of the order in base asset units
+   * @param {number} data.price - The price of the order in quote asset units. If not provided, it will be fetched from Pyth Oracle.
+   * @param {MarketIdOrName} data.marketIdOrName - The ID or name of the Perpetual market to get a quote for.
+   * @param {number} [data.accountId=this.defaultAccountId] - The account ID of the user requesting the quote. Defaults to the default account ID.
+   * @param {number} [data.settlementStrategyId=0] - The settlement strategy ID of the market. Defaults to 0 (no leverage).
+   * @param {boolean} [data.includeRequiredMargin=true] - Whether to include the required margin in the quote. Defaults to true.
+   * @returns {OrderQuote} An object containing the order size, index price, order fees, settlement reward cost, fill price and required margin (if provided).
    */
   public async getQuote({
     size,
@@ -1200,16 +1219,17 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   }
 
   // @todo Function `payDebt` not found for ABI
+
   /**
-   * Pay the debt of a perps account. If no amount is provided, the full debt
-   * of the account is repaid. Make sure to approve the proxy to transfer sUSD before
-   * calling this function.
-   * @param amount The amount of debt to repay. If not provided, the full debt is repaid.
-   * @param accountId The id of the account to repay the debt for. If not provided, the default account is used.
-   * @param submit If ``true``, submit the transaction to the blockchain. If not provided, transaction object is returned
+   * @name payDebt
+   * @description This function is used to repay a debt on Perps market using the SDK. It takes an amount and accountId as parameters, and optionally accepts an override for write operations. If no amount is provided, it will first fetch the current debt of the given accountId.
+   * @param {number} data.amount - The amount to be repaid in Ether. Defaults to 0 if not provided.
+   * @param {string} data.accountId - The ID of the account whose debt is being repaid. If not provided, it defaults to the defaultAccountId of the SDK instance.
+   * @param {OverrideParamsWrite} override - An optional object for overriding parameters for write operations.
+   * @returns {Promise<ReturnWriteCall>} A promise that resolves to a transaction hash when the debt is successfully repaid.
    */
   public async payDebt(
-    { amount, accountId = this.defaultAccountId }: PayDebt = { amount: 0 },
+    { amount = 0, accountId = this.defaultAccountId }: PayDebt = { amount: 0 },
     override: OverrideParamsWrite = {},
   ): Promise<ReturnWriteCall> {
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
@@ -1242,9 +1262,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * partially liquidated. Due to the throughput limit on liquidated value, the static call
    * returning a nonzero value means more value can be liquidated (and rewards collected).
    * This function can not be called if ``submit`` and ``staticCall`` are true.
-   * @param accountId The id of the account to liquidate. If not provided, the default account is used.
-   * @param submit If ``true``, submit the transaction to the blockchain.
-   * @param staticCall If ``true``, static call the liquidation function to fetch the liquidation reward.
+   * @param {bigint} accountId The id of the account to liquidate. If not provided, the default account is used.
+   * @param {OverrideParamsWrite} override - An optional object for overriding parameters for write operations.
    */
   public async liquidate(accountId = this.defaultAccountId, override: OverrideParamsWrite = {}) {
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
@@ -1278,14 +1297,11 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   }
 
   /**
-   * Settles an order using ERC7412 by handling ``OracleDataRequired`` errors and forming a multicall.
-   * If the order is not yet ready to be settled, this function will wait until the settlement time.
-   * If the transaction fails, this function will retry until the max number of tries is reached with a
-   * configurable delay.
-   * @param accountId The id of the account to settle. If not provided, the default account is used.
-   * @param submit If ``true``, submit the transaction to the blockchain.
-   * @param maxTxTries The max number of tries to submit the transaction
-   * @param txDelay The delay in seconds between transaction submissions.
+   * @name settleOrder
+   * @description Settles an open order by executing the 'settleOrder' function on Perps Market Proxy contract.
+   * @param {bigint} accountId - The ID of the account associated with the order. Defaults to `this.defaultAccountId`.
+   * @param {OverrideParamsWrite} override - Optional override parameters for writing transactions (defaults to default values).
+   * @returns The transaction receipt if the order is successfully settled, otherwise throws an error.
    */
   public async settleOrder(
     accountId = this.defaultAccountId,
@@ -1354,23 +1370,11 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   }
 
   /**
-   * The function is used to create an isolated order (position) for a user. The isolated order creation
-   * process involves 3 steps: new account creation, collateral deposit and order creation (commitOrder)
-   * The function returns the tx hash and new account id when `submit` is true, else returns the final
-   * encoded transaction object
-   * @param collateralAmount The amount of collateral to be deposited to new account
-   * @param collateralMarketId Market ID of the collateral token
-   * @param size Formatted Order size
-   * @param marketId Id of the market for which order is to be created
-   * @param marketName Name of the market for which order is to be created
-   * @param settlementStrategyId Strategy ID for settlement
-   * @param accountId Preferred account ID. If not provided, a random account id is generated an used
-   * @param desiredFillPrice The max price for longs and minimum price for shorts. If not provided,
-   * one will be calculated based on `maxPriceImpact`
-   * @param maxPriceImpact The maximum price impact to allow when filling the order as a percentage (1.0 = 1%).
-   * @param submit Execute the order if true, else return the transaction object
-   * @returns The tx hash and isolated order account id when `submit` is true, else returns the final
-   * encoded transaction object
+   * @name createIsolatedAccountOrder
+   * @description Creates an isolated account order for a given market, adding the specified collateral and creating the order.
+   * @param {CreateIsolateOrder} params - The parameters to create an isolated account order.
+   * @param {OverrideParamsWrite} override - Optional override parameters for writing transactions (defaults to default values).
+   * @returns An array of CallParameters if multi-call is not used, or the transaction hash if it is submitted.
    */
   public async createIsolatedAccountOrder(
     {
