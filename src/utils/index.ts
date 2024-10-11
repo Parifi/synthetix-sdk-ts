@@ -381,7 +381,8 @@ export class Utils {
    * @param functionName Function to be called on the contract
    * @param args Arguments list for the function call
    * @param calls Array of Call3Value calls for Multicall contract
-   * @returns Final transaction with ERC7412 tx data (if necessary)
+   * @param override Override parameters for the transaction
+   * @returns Final transaction call with ERC7412 price update data if required
    */
   public async writeErc7412(
     data: WriteErc7412,
