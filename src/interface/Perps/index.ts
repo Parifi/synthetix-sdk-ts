@@ -13,7 +13,6 @@ export type ModifyCollateral = {
   amount: number;
   marketIdOrName: MarketIdOrName;
   accountId?: bigint;
-  collateralId: number;
 };
 
 export type CreateIsolateOrder = {
