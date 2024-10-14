@@ -25,7 +25,7 @@ import {
   Wrap,
 } from '../interface/Spot';
 import { Market } from '../utils/market';
-import { MarketIdOrName, OverrideParamsWrite } from '../interface/commonTypes';
+import { MarketIdOrName, OverrideParamsWrite, WriteReturnType } from '../interface/commonTypes';
 
 /**
  * Class for interacting with Synthetix V3 spot market contracts.
@@ -186,12 +186,10 @@ export class Spot extends Market<SpotMarketData> {
   }
 
   /**
-   * Fetch the underlying synth contract for a market. Synths are represented as an ERC20 token,
-   * so this is useful to do things like check allowances or transfer tokens.
-   * This method requires a ``marketId`` or ``marketName`` to be provided.
-   * @param marketId The id of the market.
-   * @param marketName The name of the market
-   * @returns
+   * @name getSynthContract
+   * @description This function retrieves the Synth contract for a given market based on its ID or name. It returns the Synth contract instance.
+   * @param {MarketIdOrName} marketIdOrName - The unique identifier or name of the market.
+   * @returns {Contract<Synth>} - An instance of the Synth contract associated with the provided market.
    */
   public getSynthContract(marketIdOrName: MarketIdOrName) {
     const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
@@ -212,11 +210,10 @@ export class Spot extends Market<SpotMarketData> {
   /**
    * Get the balance of a spot synth. Provide either a ``marketId`` or ``marketName``
    * to choose the synth.
-   * @param address The address to check the balance of. If not provided, the
+   * @param {string} address The address to check the balance of. If not provided, the
    * current account will be used.
-   * @param marketId The id of the market.
-   * @param marketName The name of the market.
-   * @returns The balance of the synth in ether.
+   * @param {MarketIdOrName} marketIdOrName - The unique identifier or name of the market.
+   * @returns {number} The balance of the synth in ether.
    */
   public async getBalance(address: string = this.sdk.accountAddress, marketIdOrName: MarketIdOrName): Promise<number> {
     const synthContract = this.getSynthContract(marketIdOrName);
@@ -227,10 +224,9 @@ export class Spot extends Market<SpotMarketData> {
   /**
    * Get the allowance for a ``target_address`` to transfer from ``address``. Provide either
    * a ``marketId`` or ``marketName`` to choose the synth.
-   * @param targetAddress The address for which to check allowance.
-   * @param address The owner address to check allowance for.
-   * @param marketId The id of the market.
-   * @param marketName The name of the market.
+   * @param {string} targetAddress The address for which to check allowance.
+   * @param {string} address The owner address to check allowance for.
+   * @param {MarketIdOrName} marketIdOrName - The unique identifier or name of the market.
    * @returns The allowance in ether.
    */
   public async getAllowance(
@@ -248,13 +244,16 @@ export class Spot extends Market<SpotMarketData> {
    * Approves the ``targetAddress`` to transfer up to the ``amount`` from your account.
    * If ``amount`` is ``undefined``, approves the maximum possible amount.
    * Requires either a ``marketId`` or ``marketName`` to be provided to resolve the market.
-   * @param targetAddress The address to approve.
-   * @param amount The amount in ether to approve. Default is max uint256.
-   * @param marketId The ID of the market.
-   * @param marketName The name of the market.
-   * @param submit Whether to broadcast the transaction.
+   * @param {string} data.targetAddress The address to approve.
+   * @param {number} data.amount The amount in ether to approve. Default is max uint256.
+   * @param {MarketIdOrName} dart.marketIdOrName - The unique identifier or name of the market.
+   * @param {OverrideParamsWrite} override - Override the default parameters for the transaction.
+   * @returns {WriteReturnType} The transaction hash if ``submit`` is ``true``.
    */
-  public async approve({ targetAddress, amount = 0, marketIdOrName }: Approve, override: OverrideParamsWrite = {}) {
+  public async approve(
+    { targetAddress, amount = 0, marketIdOrName }: Approve,
+    override: OverrideParamsWrite = {},
+  ): Promise<WriteReturnType> {
     let amountInWei: bigint = maxUint256;
     if (amount) {
       amountInWei = convertEtherToWei(amount);
@@ -286,13 +285,16 @@ export class Spot extends Market<SpotMarketData> {
    * Can also fetch the full settlement strategy parameters if ``fetchSettlementStrategy``
    * is ``true``.
    * Requires either a ``market_id`` or ``market_name`` to be provided to resolve the market.
-   * @param asyncOrderId The ID of the async order to retrieve.
-   * @param marketId The ID of the market.
-   * @param marketName The name of the market.
-   * @param fetchSettlementStrategy Whether to fetch the full settlement strategy parameters. Default is true.
-   * @returns The order details.
+   * @param {string} data.asyncOrderId The ID of the async order to retrieve.
+   * @param {MarketIdOrName} data.marketIdOrName - The unique identifier or name of the market.
+   * @param {boolean} data.fetchSettlementStrategy Whether to fetch the full settlement strategy parameters. Default is true.
+   * @returns {SpotOrder} The order details.
    */
-  public async getOrder({ asyncOrderId, marketIdOrName, fetchSettlementStrategy = true }: GetOrder) {
+  public async getOrder({
+    asyncOrderId,
+    marketIdOrName,
+    fetchSettlementStrategy = true,
+  }: GetOrder): Promise<SpotOrder> {
     const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
 
     const spotProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
@@ -313,9 +315,10 @@ export class Spot extends Market<SpotMarketData> {
 
   /**
    * Fetch the settlement strategy for a spot market.
-   * @param settlementStrategyId The id of the settlement strategy to retrieve.
-   * @param marketId The id of the market.
-   * @param marketName The name of the market.
+   * @param {GetSettlementStrategy} data The data for fetching the settlement strategy.
+   * @param {number} data.settlementStrategyId The id of the settlement strategy to retrieve.
+   * @param {MarketIdOrName} data.marketIdOrName - The unique identifier or name of the market.
+   * @returns {SpotSettlementStrategy} The settlement strategy for the market.
    */
   public async getSettlementStrategy({
     settlementStrategyId,
@@ -350,9 +353,10 @@ export class Spot extends Market<SpotMarketData> {
 
   /**
    * Fetch the settlement strategies for all spot markets.
-   * @param stragegyId The id of the settlement strategy to retrieve.
-   * @param marketIds Array of marketIds to fetch settlement strategy
-   * @returns Settlement strategy array for markets
+   * @param {GetSettlementStrategies} data The data for fetching the settlement strategies.
+   * @param {number} data.stragegyId The id of the settlement strategy to retrieve.
+   * @param {number[]} data.marketIds Array of marketIds to fetch settlement strategy
+   * @returns {SpotSettlementStrategy[]} The settlement strategies for the markets.
    */
   public async getSettlementStrategies({
     settlementStrategyId: stragegyId,
@@ -422,18 +426,19 @@ export class Spot extends Market<SpotMarketData> {
    * For example:
    *    const tx = await atomicOrder(Side.BUY, 100, 0, undefined, undefined, "sUSDC");
    * Requires either a ``market_id`` or ``market_name`` to be provided to resolve the market.
-   * @param side The side of the order (buy/sell).
-   * @param size The order size in ether.
-   * @param slippageTolerance The slippage tolerance for the order as a percentage (0.01 = 1%). Default is 0.
-   * @param minAmountReceived The minimum amount to receive in ether units. This will override the slippage_tolerance.
-   * @param marketId The ID of the market.
-   * @param marketName The name of the market.
-   * @param submit Whether to broadcast the transaction.
+   * @param {AtomicOrder} data The data for the atomic order.
+   * @param {Side} data.side The side of the order (buy/sell).
+   * @param {number} data.size The order size in ether.
+   * @param {number} data.slippageTolerance The slippage tolerance for the order as a percentage (0.01 = 1%). Default is 0.
+   * @param {number} data.minAmountReceived The minimum amount to receive in ether units. This will override the slippage_tolerance.
+   * @param {MarketIdOrName} data.marketIdOrName - The unique identifier or name of the market.
+   * @param {OverrideParamsWrite} override - Override the default parameters for the transaction.
+   * @returns {WriteReturnType} The transaction hash if ``submit`` is ``true``.
    */
   public async atomicOrder(
     { side, size, slippageTolerance = 0, minAmountReceived, marketIdOrName }: AtomicOrder,
     override: OverrideParamsWrite = {},
-  ) {
+  ): Promise<WriteReturnType> {
     const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketIdOrName);
     const spotMarketProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
 
@@ -495,11 +500,11 @@ export class Spot extends Market<SpotMarketData> {
    *    const tx = wrap(100, undefined, "sUSDC")  # wrap 100 USDC into sUSDC
    *    const tx = wrap(-100, undefined, "sUSDC") # unwrap 100 sUSDC into USDC
    * Requires either a ``market_id`` or ``market_name`` to be provided to resolve the market.
-   * @param size The amount of the asset to wrap/unwrap.
-   * @param marketId The ID of the market.
-   * @param marketName The name of the market.
-   * @param submit Whether to broadcast the transaction.
-   * @returns
+   * @param {Wrap} data The data for the wrap/unwrap transaction.
+   * @param data.size The amount of the asset to wrap/unwrap.
+   * @param {MarketIdOrName} data.marketIdOrName - The unique identifier or name of the market.
+   * @param {OverrideParamsWrite} override - Override the default parameters for the transaction.
+   * @returns {WriteReturnType} The transaction hash if ``submit`` is ``true``.
    */
   public async wrap({ size, marketIdOrName }: Wrap, override: OverrideParamsWrite = {}) {
     const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketIdOrName);
@@ -528,15 +533,15 @@ export class Spot extends Market<SpotMarketData> {
    * Commits a buy or sell order of the given size. The order will be settled
    * according to the settlement strategy.
    * Requires either a ``marketId`` or ``marketName`` to be provided to resolve the market.
-   * @param side The side of the order (buy/sell).
-   * @param size The order size in ether. If ``side`` is "buy", this is the amount
+   * @param {CommitOrderSpot} data The data for the async order.
+   * @param {Side} data.side The side of the order (buy/sell).
+   * @param {number} data.size The order size in ether. If ``side`` is "buy", this is the amount
    * of the synth to buy. If ``side`` is "sell", this is the amount of the synth to sell.
-   * @param slippageTolerance The slippage tolerance for the order as a percentage (0.01 = 1%). Default is 0.
-   * @param minAmountReceived The minimum amount to receive in ether units. This will override the slippage_tolerance.
-   * @param settlementStrategyId The settlement strategy ID. Default 2.
-   * @param marketId The ID of the market.
-   * @param marketName The name of the market.
-   * @param submit Whether to broadcast the transaction.
+   * @param {number} data.slippageTolerance The slippage tolerance for the order as a percentage (0.01 = 1%). Default is 0.
+   * @param {number} data.minAmountReceived The minimum amount to receive in ether units. This will override the slippage_tolerance.
+   * @param {number} data.settlementStrategyId The settlement strategy ID. Default 2.
+   * @param {MarketIdOrName} data.marketIdOrName - The unique identifier or name of the market.
+   * @param {OverrideParamsWrite} override - Override the default parameters for the transaction.
    */
   public async commitOrder(
     { side, size, slippageTolerance, minAmountReceived, settlementStrategyId = 0, marketIdOrName }: CommitOrderSpot,
@@ -597,12 +602,11 @@ export class Spot extends Market<SpotMarketData> {
    * Fetches the price for the order from Pyth and settles the order.
    * Retries up to ``maxTxTries`` times on failure with a delay of ``txDelay`` seconds.
    * Requires either a ``marketId`` or ``marketName`` to be provided to resolve the market.
-   * @param asyncOrderId The ID of the async order to settle.
-   * @param marketId The ID of the market
-   * @param marketName The name of the market.
-   * @param maxTxTries Max retry attempts if price fetch fails.
-   * @param txDelay Seconds to wait between retries.
-   * @param submit Whether to broadcast the transaction.
+   * @param {SettleOrder} data The data for the async order.
+   * @param {string} asyncOrderId The ID of the async order to settle.
+   * @param {MarketIdOrName} marketIdOrName The unique identifier or name of the market.
+   * @param {OverrideParamsWrite} override - Override the default parameters for the transaction.
+   * @returns {WriteReturnType} The transaction hash if ``submit`` is ``true``.
    */
   public async settleOrder({ asyncOrderId, marketIdOrName }: SettleOrder, override: OverrideParamsWrite = {}) {
     const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
