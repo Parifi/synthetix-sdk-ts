@@ -19,6 +19,9 @@ export class Core implements CoreRepository {
     this.accountIds = [];
   }
 
+  async initCore() {
+    await this.getAccountIds();
+  }
   /**
    * Returns the Owner wallet address for an account ID
    * @param accountId - Account ID
@@ -72,7 +75,6 @@ export class Core implements CoreRepository {
     address?: string;
     accountId?: bigint;
   } = {}): Promise<bigint[]> {
-    // const accountAddress: string = address !== undefined ? address : this.sdk.accountAddress || ZERO_ADDRESS;
     if (accountAddress == ZERO_ADDRESS) {
       throw new Error('Invalid address');
     }

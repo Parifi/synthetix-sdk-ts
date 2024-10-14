@@ -76,10 +76,14 @@ describe('Perps', () => {
     }
 
     const marketProxy = await sdk.contracts.getPerpsMarketProxyInstance();
-    const allowance = await sdk.spot.getAllowance(marketProxy.address, sdk.accountAddress, undefined, 'sUSD');
+    const allowance = await sdk.spot.getAllowance(marketProxy.address, sdk.accountAddress, 'sUSD');
 
     if (allowance < amount) {
-      const approveTxHash = await sdk.spot.approve(marketProxy.address, amount, undefined, 'sUSD', true);
+      const approveTxHash = await sdk.spot.approve({
+        targetAddress: marketProxy.address,
+        amount: amount,
+        marketIdOrName: 'sUSD',
+      });
       console.log('Approval txHash:', approveTxHash);
     }
 
@@ -165,10 +169,17 @@ describe('Perps', () => {
     }
 
     const marketProxy = await sdk.contracts.getPerpsMarketProxyInstance();
-    const allowance = await sdk.spot.getAllowance(marketProxy.address, sdk.accountAddress, undefined, 'sUSD');
+    const allowance = await sdk.spot.getAllowance(marketProxy.address, sdk.accountAddress, 'sUSD');
 
     if (allowance < collateralAmount) {
-      const approveTxHash = await sdk.spot.approve(marketProxy.address, collateralAmount, undefined, 'sUSD', true);
+      const approveTxHash = await sdk.spot.approve(
+        {
+          targetAddress: marketProxy.address,
+          amount: collateralAmount,
+          marketIdOrName: 'sUSD',
+        },
+        { submit: true },
+      );
       console.log('Approval txHash:', approveTxHash);
     }
 
