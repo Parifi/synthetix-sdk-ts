@@ -200,6 +200,10 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * @returns {Call3Value[]} - An array of Call3Value objects representing the target contract, call data, value, requireSuccess flag and other necessary details for executing the function in the blockchain.
    */
   protected async _buildCreateAccount(accountId?: bigint): Promise<Call3Value[]> {
+    const txArgs = [];
+    if (accountId != undefined) {
+      txArgs.push(accountId);
+    }
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
     return [
       {
@@ -207,7 +211,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
         callData: encodeFunctionData({
           abi: perpsMarketProxy.abi,
           functionName: 'createAccount',
-          args: [accountId],
+          args: txArgs,
         }),
         value: 0n,
         requireSuccess: true,
@@ -223,10 +227,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * @returns {string | CallParameters} - If `submit` is provided in `override`, a string representing the transaction hash. Otherwise, an object containing the transaction parameters as defined by the CallParameters type.
    */
   public async createAccount(accountId?: bigint, override: OverrideParamsWrite = {}): Promise<string | CallParameters> {
-    const txArgs = [];
-    if (accountId != undefined) {
-      txArgs.push(accountId);
-    }
     const processedTx = await this._buildCreateAccount(accountId);
 
     const tx: CallParameters = await this.sdk.utils.writeErc7412({
