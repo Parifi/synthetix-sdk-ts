@@ -248,8 +248,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * information about the market's price, open interest, funding rate, and skew
    * @returns {Promise<{ marketsById: Map<number, MarketData>; marketsByName: Map<string, MarketData> }>} - A map of market data objects indexed by market id and market name
    */
-
-  // @todo Add logic for disabled markets
   public async getMarkets(): Promise<{ marketsById: Map<number, MarketData>; marketsByName: Map<string, MarketData> }> {
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
     const marketIdsResponse: bigint[] = (await perpsMarketProxy.read.getMarkets([])) as bigint[];
@@ -298,6 +296,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const maxMarketValues = await this.getMaxMarketValues(marketIds);
 
     marketIds.forEach((marketId) => {
+      // Skip disabled markets
       if (!this.disabledMarkets.includes(marketId)) {
         const marketSummary = marketSummaries.find((summary) => summary.marketId == marketId);
         const fundingParam = fundingParameters.find((fundingParam) => fundingParam.marketId == marketId);
@@ -1193,13 +1192,16 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     return orderQuote;
   }
 
-  // @todo Function `debt` not found for ABI
   /**
    * Returns the debt of the account id
    * @param accountId The id of the account to get the debt for. If not provided, the default account is used.
    * @returns debt Account debt in ether
    */
   public async getDebt(accountId: bigint | undefined = undefined): Promise<number> {
+    if (!this.isMulticollateralEnabled) {
+      throw new Error(`Multicollateral is not enabled for chainId ${this.sdk.rpcConfig.chainId}`);
+    }
+
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
     if (accountId == undefined) {
       accountId = this.defaultAccountId;
@@ -1215,8 +1217,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     return convertWeiToEther(debt);
   }
 
-  // @todo Function `payDebt` not found for ABI
-
   /**
    * @name payDebt
    * @description This function is used to repay a debt on Perps market using the SDK. It takes an amount and accountId as parameters, and optionally accepts an override for write operations. If no amount is provided, it will first fetch the current debt of the given accountId.
@@ -1229,13 +1229,17 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     { amount = 0, accountId = this.defaultAccountId }: PayDebt = { amount: 0 },
     override: OverrideParamsWrite = {},
   ): Promise<ReturnWriteCall> {
+    if (!this.isMulticollateralEnabled) {
+      throw new Error(`Multicollateral is not enabled for chainId ${this.sdk.rpcConfig.chainId}`);
+    }
+
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
-    // TODO: check if we need it and make sense pay 0
-    // if (amount == undefined) {
-    // amount = await this.getDebt(accountId);
-    // amount = 0;
-    // }
+    // `debt` and `payDebt` functions are only available for multicollateral perps
+    if (amount == undefined) {
+      amount = await this.getDebt(accountId);
+    }
+
     const tx = await this.sdk.utils.writeErc7412(
       {
         contractAddress: marketProxy.address,

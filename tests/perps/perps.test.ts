@@ -125,8 +125,7 @@ describe('Perps', () => {
     console.log('orderQuote :', orderQuote);
   });
 
-  // @todo Function `payDebt` not found for ABI
-  it.skip('should pay account debt', async () => {
+  it('should pay account debt', async () => {
     const debtTx = await sdk.perps.payDebt();
     console.log('debtTx :', debtTx);
   });
