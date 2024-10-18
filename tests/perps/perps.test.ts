@@ -157,7 +157,7 @@ describe('Perps', () => {
     expect(pythData).not.toBe(undefined);
   });
 
-  it.only('should create an isolated account order', async () => {
+  it('should create an isolated account order', async () => {
     const initialSusdBalance = await sdk.getSusdBalance();
     const collateralAmount = 70; // 70 usdc.Min 62.5 USD collateral is required
     const submit = false;
@@ -201,5 +201,18 @@ describe('Perps', () => {
     if (submit) {
       console.log(`Transaction hash and account details: ${response}`);
     }
+  });
+
+  it('should return liquidation price for an account', async () => {
+    const accountId = sdk.perps.defaultAccountId;
+    const openPosition = await sdk.perps.getOpenPosition('Ethereum', accountId);
+    if (openPosition.positionSize == 0) {
+      console.log('No open position found for default account id');
+      return;
+    }
+    const marketId = sdk.perps.marketsBySymbol.get('Ethereum')?.marketId ?? 100;
+    const liquidationPrice = await sdk.perps.getApproxLiquidationPrice(marketId, accountId);
+    console.log('liquidationPrice', liquidationPrice);
+    expect(liquidationPrice).not.toBe(0);
   });
 });
