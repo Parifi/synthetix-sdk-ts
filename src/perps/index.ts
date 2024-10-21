@@ -200,6 +200,10 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * @returns {Call3Value[]} - An array of Call3Value objects representing the target contract, call data, value, requireSuccess flag and other necessary details for executing the function in the blockchain.
    */
   protected async _buildCreateAccount(accountId?: bigint): Promise<Call3Value[]> {
+    const txArgs = [];
+    if (accountId != undefined) {
+      txArgs.push(accountId);
+    }
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
     return [
       {
@@ -207,7 +211,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
         callData: encodeFunctionData({
           abi: perpsMarketProxy.abi,
           functionName: 'createAccount',
-          args: [accountId],
+          args: txArgs,
         }),
         value: 0n,
         requireSuccess: true,
@@ -223,10 +227,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * @returns {string | CallParameters} - If `submit` is provided in `override`, a string representing the transaction hash. Otherwise, an object containing the transaction parameters as defined by the CallParameters type.
    */
   public async createAccount(accountId?: bigint, override: OverrideParamsWrite = {}): Promise<string | CallParameters> {
-    const txArgs = [];
-    if (accountId != undefined) {
-      txArgs.push(accountId);
-    }
     const processedTx = await this._buildCreateAccount(accountId);
 
     const tx: CallParameters = await this.sdk.utils.writeErc7412({
@@ -248,8 +248,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * information about the market's price, open interest, funding rate, and skew
    * @returns {Promise<{ marketsById: Map<number, MarketData>; marketsByName: Map<string, MarketData> }>} - A map of market data objects indexed by market id and market name
    */
-
-  // @todo Add logic for disabled markets
   public async getMarkets(): Promise<{ marketsById: Map<number, MarketData>; marketsByName: Map<string, MarketData> }> {
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
     const marketIdsResponse: bigint[] = (await perpsMarketProxy.read.getMarkets([])) as bigint[];
@@ -298,6 +296,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const maxMarketValues = await this.getMaxMarketValues(marketIds);
 
     marketIds.forEach((marketId) => {
+      // Skip disabled markets
       if (!this.disabledMarkets.includes(marketId)) {
         const marketSummary = marketSummaries.find((summary) => summary.marketId == marketId);
         const fundingParam = fundingParameters.find((fundingParam) => fundingParam.marketId == marketId);
@@ -1193,13 +1192,16 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     return orderQuote;
   }
 
-  // @todo Function `debt` not found for ABI
   /**
    * Returns the debt of the account id
    * @param accountId The id of the account to get the debt for. If not provided, the default account is used.
    * @returns debt Account debt in ether
    */
   public async getDebt(accountId: bigint | undefined = undefined): Promise<number> {
+    if (!this.isMulticollateralEnabled) {
+      throw new Error(`Multicollateral is not enabled for chainId ${this.sdk.rpcConfig.chainId}`);
+    }
+
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
     if (accountId == undefined) {
       accountId = this.defaultAccountId;
@@ -1215,8 +1217,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     return convertWeiToEther(debt);
   }
 
-  // @todo Function `payDebt` not found for ABI
-
   /**
    * @name payDebt
    * @description This function is used to repay a debt on Perps market using the SDK. It takes an amount and accountId as parameters, and optionally accepts an override for write operations. If no amount is provided, it will first fetch the current debt of the given accountId.
@@ -1229,13 +1229,17 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     { amount = 0, accountId = this.defaultAccountId }: PayDebt = { amount: 0 },
     override: OverrideParamsWrite = {},
   ): Promise<ReturnWriteCall> {
+    if (!this.isMulticollateralEnabled) {
+      throw new Error(`Multicollateral is not enabled for chainId ${this.sdk.rpcConfig.chainId}`);
+    }
+
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
-    // TODO: check if we need it and make sense pay 0
-    // if (amount == undefined) {
-    // amount = await this.getDebt(accountId);
-    // amount = 0;
-    // }
+    // `debt` and `payDebt` functions are only available for multicollateral perps
+    if (amount == undefined) {
+      amount = await this.getDebt(accountId);
+    }
+
     const tx = await this.sdk.utils.writeErc7412(
       {
         contractAddress: marketProxy.address,
@@ -1437,5 +1441,71 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const txHash = await this.sdk.executeTransaction(finalTx);
     console.log('Transaction hash: ', txHash);
     return txHash;
+  }
+
+  /**
+   * Calculate the approximate liquidation price for an account with single position
+   * Provide either a ``marketId`` or a ``marketName``
+   * @param {string | number} marketIdOrName - The identifier or name of the market for which the collateral is being modified
+   * @param {bigint} accountId The id of the account to fetch the position for. If not provided, the default account is used.
+   * @returns
+   * liquidation price = ((maintenance margin -  available margin) / position size) + index price
+   */
+  public async getApproxLiquidationPrice(
+    marketIdOrName: MarketIdOrName,
+    accountId = this.defaultAccountId,
+  ): Promise<bigint> {
+    if (!accountId) throw new Error('Account ID is required');
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
+
+    const functionNames: string[] = [];
+    const argsList: unknown[] = [];
+
+    // 0. Get available margin
+    functionNames.push('getAvailableMargin');
+    argsList.push([accountId]);
+
+    // 1. Get required margins
+    functionNames.push('getRequiredMargins');
+    argsList.push([accountId]);
+
+    // 2. Get position size
+    functionNames.push('getOpenPositionSize');
+    argsList.push([accountId, resolvedMarketId]);
+
+    // 3. Get market index price
+    functionNames.push('indexPrice');
+    argsList.push([resolvedMarketId]);
+
+    const oracleCalls = await this.prepareOracleCall();
+
+    const multicallResponse: unknown[] = await this.sdk.utils.multicallMultifunctionErc7412({
+      contractAddress: marketProxy.address,
+      abi: marketProxy.abi,
+      functionNames,
+      args: argsList,
+      calls: oracleCalls,
+    });
+
+    // 0. Available Margin
+    const availableMargin = multicallResponse.at(0) as bigint;
+
+    // 1. Required margin
+    // returns (uint256 requiredInitialMargin,uint256 requiredMaintenanceMargin,uint256 maxLiquidationReward)
+    const requiredMarginsResponse = multicallResponse.at(1) as bigint[];
+    const requiredMaintenanceMargin = requiredMarginsResponse.at(1) as bigint;
+
+    // 2. Position size
+    const positionSize = multicallResponse.at(2) as bigint;
+    if (positionSize == 0n) {
+      return 0n;
+    }
+
+    // 3. Market index price
+    const indexPrice = multicallResponse.at(3) as bigint;
+
+    const liquidationPrice = (requiredMaintenanceMargin - availableMargin) / positionSize + indexPrice;
+    return liquidationPrice;
   }
 }
