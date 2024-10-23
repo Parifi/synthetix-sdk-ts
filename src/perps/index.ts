@@ -6,6 +6,7 @@ import {
   getAbiItem,
   Hex,
   parseEther,
+  parseUnits,
 } from 'viem';
 import { SynthetixSdk } from '..';
 import {
@@ -88,6 +89,19 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       this.isMulticollateralEnabled = true;
       console.log('Multicollateral perps is enabled');
     }
+  }
+
+  formatSize(size: number, collateralId: number) {
+    const { resolvedMarketName } = this.sdk.spot.resolveMarket(collateralId);
+
+    const chainIds = [8453, 84532, 42161, 421614];
+    const marketNames = ['sUSDC', 'sStataUSDC'];
+
+    // Hard-coding a catch for USDC with 6 decimals
+    if (chainIds.includes(this.sdk.rpcConfig.chainId) && marketNames.includes(resolvedMarketName))
+      return parseUnits(size.toString(), 6);
+
+    return parseUnits(size.toString(), 18);
   }
 
   /**
