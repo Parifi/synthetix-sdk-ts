@@ -903,7 +903,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   }: ModifyCollateral): Promise<Call3Value[]> {
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
-    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketIdOrName);
+    const { resolvedMarketId, resolvedMarketName } = this.sdk.spot.resolveMarket(marketIdOrName);
 
     console.log(`Building ${amount} ${resolvedMarketName} for account ${accountId}`);
     return [
