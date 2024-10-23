@@ -11,7 +11,7 @@ export type CommitOrder = {
 
 export type ModifyCollateral = {
   amount: number;
-  marketIdOrName: MarketIdOrName;
+  collateralMarketIdOrName: MarketIdOrName;
   accountId?: bigint;
 };
 

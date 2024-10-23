@@ -698,9 +698,12 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   public async commitOrder(data: CommitOrder, override: OverrideParamsWrite = {}): Promise<string | CallParameters> {
     const txs = await this._buildCommitOrder(data);
 
-    const tx = await this.sdk.utils.writeErc7412({
-      calls: txs,
-    });
+    const tx = await this.sdk.utils.writeErc7412(
+      {
+        calls: txs,
+      },
+      override,
+    );
 
     if (override.submit) {
       const txHash = await this.sdk.executeTransaction(tx);
@@ -898,21 +901,22 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    */
   protected async _buildModifyCollateral({
     amount,
-    marketIdOrName,
+    collateralMarketIdOrName,
     accountId,
   }: ModifyCollateral): Promise<Call3Value[]> {
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
-    const { resolvedMarketId, resolvedMarketName } = this.sdk.spot.resolveMarket(marketIdOrName);
+    const { resolvedMarketId: collateralMarketId, resolvedMarketName: collateralMarketName } =
+      this.sdk.spot.resolveMarket(collateralMarketIdOrName);
 
-    console.log(`Building ${amount} ${resolvedMarketName} for account ${accountId}`);
+    console.log(`Building ${amount} ${collateralMarketName} for account ${accountId}`);
     return [
       {
         target: marketProxy.address,
         callData: encodeFunctionData({
           abi: marketProxy.abi,
           functionName: 'modifyCollateral',
-          args: [accountId, resolvedMarketId, this.formatSize(amount, resolvedMarketId)],
+          args: [accountId, collateralMarketId, this.formatSize(amount, collateralMarketId)],
         }),
         value: 0n,
         requireSuccess: true,
@@ -930,13 +934,20 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * @returns {string | CallParameters} The built transaction object if override.submit is falsy, otherwise the transaction hash.
    */
   public async modifyCollateral(
-    { amount, marketIdOrName, accountId = this.defaultAccountId }: ModifyCollateral,
+    { amount, collateralMarketIdOrName, accountId = this.defaultAccountId }: ModifyCollateral,
     override: OverrideParamsWrite = {},
   ): Promise<string | CallParameters> {
-    const processedTx = await this._buildModifyCollateral({ amount, marketIdOrName, accountId });
-    const tx = await this.sdk.utils.writeErc7412({
-      calls: processedTx,
+    const processedTx = await this._buildModifyCollateral({
+      amount,
+      collateralMarketIdOrName,
+      accountId,
     });
+    const tx = await this.sdk.utils.writeErc7412(
+      {
+        calls: processedTx,
+      },
+      override,
+    );
 
     if (!override.submit) return tx;
     const txHash = await this.sdk.executeTransaction(tx);
@@ -1337,12 +1348,15 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     let tx;
     while (totalTries < maxTxTries) {
       try {
-        tx = await this.sdk.utils.writeErc7412({
-          contractAddress: marketProxy.address,
-          abi: marketProxy.abi,
-          functionName: 'settleOrder',
-          args: [accountId],
-        });
+        tx = await this.sdk.utils.writeErc7412(
+          {
+            contractAddress: marketProxy.address,
+            abi: marketProxy.abi,
+            functionName: 'settleOrder',
+            args: [accountId],
+          },
+          override,
+        );
       } catch (error) {
         console.log('Settle order error: ', error);
         totalTries += 1;
@@ -1402,7 +1416,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
     const modifyCollateralCall = (await this._buildModifyCollateral({
       amount: collateralAmount,
-      marketIdOrName: collateralMarketId,
+      collateralMarketIdOrName: collateralMarketId,
       accountId,
     })) as Call3Value[];
 

@@ -451,7 +451,7 @@ export class Utils {
 
         const parsedError = parseError(error as CallExecutionError);
 
-        console.log('Error details: ', error);
+        console.log('Error details: withdrawableMargin', error);
         console.log('Parsed Error details: ', parsedError);
 
         const isErc7412Error =
