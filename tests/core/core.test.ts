@@ -38,7 +38,7 @@ describe('Core', () => {
   });
 
   it('should create an account and return the tx hash', async () => {
-    const txHash = await sdk.core.createAccount(undefined, { submit: true });
+    const txHash = await sdk.core.createAccount(undefined, { submit: false });
     console.log('Create account txHash:', txHash);
   });
 

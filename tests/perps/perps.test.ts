@@ -87,7 +87,7 @@ describe('Perps', () => {
       console.log('Approval txHash:', approveTxHash);
     }
 
-    const tx = await sdk.perps.modifyCollateral({ amount, marketIdOrName: 'sUSD' }, { submit });
+    const tx = await sdk.perps.modifyCollateral({ amount, collateralMarketIdOrName: 'sUSD' }, { submit });
     console.log('Add collateral tx: ', tx);
 
     const marginInfo = (await sdk.perps.getMarginInfo()).totalCollateralValue;
