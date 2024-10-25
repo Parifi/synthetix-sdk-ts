@@ -121,21 +121,19 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     } else {
       marketIds.forEach((marketId) => {
         const marketSymbol = this.marketsById.get(marketId)?.symbol;
-        if (marketSymbol != undefined) {
-          marketSymbols.push(marketSymbol);
-        }
+        if (!marketSymbol) return;
+        marketSymbols.push(marketSymbol);
       });
     }
 
     const priceFeedIds: string[] = [];
     marketSymbols.forEach((marketSymbol) => {
       const feedId = this.sdk.pyth.priceFeedIds.get(marketSymbol);
-      if (feedId != undefined) {
-        priceFeedIds.push(feedId);
-      }
+      if (!feedId) return;
+      priceFeedIds.push(feedId);
     });
 
-    if (priceFeedIds.length == 0) {
+    if (!priceFeedIds.length) {
       return [];
     }
 
@@ -712,6 +710,15 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   public async commitOrder(data: CommitOrder, override: OverrideParamsWrite = {}): Promise<string | CallParameters> {
     const txs = await this._buildCommitOrder(data);
 
+    if (!override.useMultiCall)
+      return txs.map((tx) => {
+        return {
+          to: tx.target,
+          data: tx.callData,
+          value: tx.value,
+        };
+      })[0];
+
     const tx = await this.sdk.utils.writeErc7412(
       {
         calls: txs,
@@ -956,6 +963,16 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       collateralMarketIdOrName,
       accountId,
     });
+
+    if (!override.useMultiCall)
+      return processedTx.map((tx) => {
+        return {
+          to: tx.target,
+          data: tx.callData,
+          value: tx.value,
+        };
+      })[0];
+
     const tx = await this.sdk.utils.writeErc7412(
       {
         calls: processedTx,
