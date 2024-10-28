@@ -576,4 +576,45 @@ export class Utils {
       }
     }
   }
+
+  public async getMissingOracleCalls(
+    calls: Call3Value[],
+    { attempts = MAX_ERC7412_RETRIES }: { attempts?: number } = {},
+  ): Promise<CallParameters[]> {
+    const resultCalls: CallParameters[] = [];
+    try {
+      const publicClient = this.sdk.getPublicClient();
+      const totalValue = calls.reduce((acc, tx) => {
+        return acc + (tx.value || 0n);
+      }, 0n);
+
+      const multicallInstance = await this.sdk.contracts.getMulticallInstance();
+      const multicallData = encodeFunctionData({
+        abi: multicallInstance.abi,
+        functionName: 'aggregate3Value',
+        args: [calls],
+      });
+
+      const parsedTx = {
+        account: this.sdk.accountAddress,
+        to: multicallInstance.address,
+        data: multicallData,
+        value: totalValue,
+      };
+      await publicClient.call(parsedTx);
+    } catch (error) {
+      const parsedError = parseError(error as CallExecutionError);
+      const isErc7412Error =
+        parsedError.startsWith(SIG_ORACLE_DATA_REQUIRED) || parsedError.startsWith(SIG_FEE_REQUIRED);
+
+      if (!isErc7412Error) return resultCalls;
+      if (isErc7412Error && !attempts) return resultCalls;
+
+      calls = await this.handleErc7412Error(error, calls);
+      resultCalls.push(calls[0]);
+      return await this.getMissingOracleCalls(calls, { attempts: attempts - 1 });
+    }
+
+    return resultCalls;
+  }
 }

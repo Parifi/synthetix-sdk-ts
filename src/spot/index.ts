@@ -512,6 +512,17 @@ export class Spot extends Market<SpotMarketData> {
 
     const sizeInWei = this.formatSize(Math.abs(size), resolvedMarketId);
     const functionName = size > 0 ? 'wrap' : 'unwrap';
+    const offset = (sizeInWei * 100n) / 1000n;
+
+    if (!override.useMultiCall)
+      return {
+        target: spotMarketProxy.address,
+        data: encodeFunctionData({
+          abi: spotMarketProxy.abi,
+          functionName,
+          args: [resolvedMarketId, sizeInWei, sizeInWei - offset],
+        }),
+      };
 
     const tx: CallParameters = await this.sdk.utils.writeErc7412({
       contractAddress: spotMarketProxy.address,

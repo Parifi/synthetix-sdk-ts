@@ -211,28 +211,26 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * @param {bigint} accountId - The optional accountId to be created. If not provided, a new account will be generated.
    * @returns {Call3Value[]} - An array of Call3Value objects representing the target contract, call data, value, requireSuccess flag and other necessary details for executing the function in the blockchain.
    */
-  protected async _buildCreateAccount(accountId?: bigint): Promise<Call3Value[]> {
+  protected async _buildCreateAccount(accountId?: bigint): Promise<Call3Value> {
     const txArgs = [];
     if (accountId != undefined) {
       txArgs.push(accountId);
     }
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-    return [
-      {
-        target: perpsMarketProxy.address,
-        callData: encodeFunctionData({
-          abi: perpsMarketProxy.abi,
-          functionName: 'createAccount',
-          args: txArgs,
-        }),
-        value: 0n,
-        requireSuccess: true,
-      },
-    ];
+    return {
+      target: perpsMarketProxy.address,
+      callData: encodeFunctionData({
+        abi: perpsMarketProxy.abi,
+        functionName: 'createAccount',
+        args: txArgs,
+      }),
+      value: 0n,
+      requireSuccess: true,
+    };
   }
 
   /**
-   * @name createAccount
+   * @ame createAccount
    * @description Creates a new account and returns either the transaction hash or the transaction parameters. If `submit` is provided in `override`, the transaction will be submitted and the transaction hash will be returned. Otherwise, the transaction parameters will be returned.
    * @param {bigint | undefined} accountId - The ID of the account to create (optional)
    * @param {OverrideParamsWrite} override - Options for submitting or returning the transaction parameters
@@ -240,9 +238,15 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    */
   public async createAccount(accountId?: bigint, override: OverrideParamsWrite = {}): Promise<string | CallParameters> {
     const processedTx = await this._buildCreateAccount(accountId);
+    if (!override.useMultiCall)
+      return {
+        to: processedTx.target,
+        data: processedTx.callData,
+        value: processedTx.value,
+      };
 
     const tx: CallParameters = await this.sdk.utils.writeErc7412({
-      calls: processedTx,
+      calls: [processedTx],
     });
 
     if (override.submit) {
@@ -655,7 +659,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     accountId = this.defaultAccountId,
     desiredFillPrice,
     maxPriceImpact,
-  }: CommitOrder): Promise<Call3Value[]> {
+  }: CommitOrder): Promise<Call3Value> {
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     const { resolvedMarketId, resolvedMarketName: marketName } = this.resolveMarket(marketIdOrName);
@@ -690,14 +694,12 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       `Building order size ${sizeInWei} (${size}) to ${marketName} (id: ${resolvedMarketId}) for account ${accountId}`,
     );
 
-    return [
-      {
-        target: perpsMarketProxy.address,
-        callData: encodeFunctionData({ abi: perpsMarketProxy.abi, functionName: 'commitOrder', args: [txArgs] }),
-        value: 0n,
-        requireSuccess: true,
-      },
-    ];
+    return {
+      target: perpsMarketProxy.address,
+      callData: encodeFunctionData({ abi: perpsMarketProxy.abi, functionName: 'commitOrder', args: [txArgs] }),
+      value: 0n,
+      requireSuccess: true,
+    };
   }
 
   /**
@@ -711,17 +713,15 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const txs = await this._buildCommitOrder(data);
 
     if (!override.useMultiCall)
-      return txs.map((tx) => {
-        return {
-          to: tx.target,
-          data: tx.callData,
-          value: tx.value,
-        };
-      })[0];
+      return {
+        to: txs.target,
+        data: txs.callData,
+        value: txs.value,
+      };
 
     const tx = await this.sdk.utils.writeErc7412(
       {
-        calls: txs,
+        calls: [txs],
       },
       override,
     );
@@ -924,25 +924,23 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     amount,
     collateralMarketIdOrName,
     accountId,
-  }: ModifyCollateral): Promise<Call3Value[]> {
+  }: ModifyCollateral): Promise<Call3Value> {
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     const { resolvedMarketId: collateralMarketId, resolvedMarketName: collateralMarketName } =
       this.sdk.spot.resolveMarket(collateralMarketIdOrName);
 
     console.log(`Building ${amount} ${collateralMarketName} for account ${accountId}`);
-    return [
-      {
-        target: marketProxy.address,
-        callData: encodeFunctionData({
-          abi: marketProxy.abi,
-          functionName: 'modifyCollateral',
-          args: [accountId, collateralMarketId, this.formatSize(amount, collateralMarketId)],
-        }),
-        value: 0n,
-        requireSuccess: true,
-      },
-    ];
+    return {
+      target: marketProxy.address,
+      callData: encodeFunctionData({
+        abi: marketProxy.abi,
+        functionName: 'modifyCollateral',
+        args: [accountId, collateralMarketId, this.formatSize(amount, collateralMarketId)],
+      }),
+      value: 0n,
+      requireSuccess: true,
+    };
   }
 
   /**
@@ -965,17 +963,15 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     });
 
     if (!override.useMultiCall)
-      return processedTx.map((tx) => {
-        return {
-          to: tx.target,
-          data: tx.callData,
-          value: tx.value,
-        };
-      })[0];
+      return {
+        to: processedTx.target,
+        data: processedTx.callData,
+        value: processedTx.value,
+      };
 
     const tx = await this.sdk.utils.writeErc7412(
       {
-        calls: processedTx,
+        calls: [processedTx],
       },
       override,
     );
@@ -1441,33 +1437,28 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
 
     // 1. Create Account
-    const createAccountCall = (await this._buildCreateAccount(accountId)) as Call3Value[];
+    const createAccountCall = await this._buildCreateAccount(accountId);
 
     // 2. Add Collateral
 
-    const modifyCollateralCall = (await this._buildModifyCollateral({
+    const modifyCollateralCall = await this._buildModifyCollateral({
       amount: collateralAmount,
       collateralMarketIdOrName: collateralMarketId,
       accountId,
-    })) as Call3Value[];
+    });
 
-    const commitOrderCall = (await this._buildCommitOrder({
+    const commitOrderCall = await this._buildCommitOrder({
       size: size,
       settlementStrategyId,
       marketIdOrName: resolvedMarketId,
       accountId,
       desiredFillPrice,
       maxPriceImpact,
-    })) as Call3Value[];
+    });
 
     const oracleCalls = await this.prepareOracleCall();
     // TODO: convert to call parameters
-    const callsArray: Call3Value[] = [
-      ...oracleCalls,
-      ...createAccountCall,
-      ...modifyCollateralCall,
-      ...commitOrderCall,
-    ];
+    const callsArray: Call3Value[] = [...oracleCalls, createAccountCall, modifyCollateralCall, commitOrderCall];
 
     if (!override.useMultiCall)
       return callsArray.map(
