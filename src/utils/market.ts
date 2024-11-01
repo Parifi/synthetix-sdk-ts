@@ -1,8 +1,9 @@
-import { parseUnits } from 'viem';
+import { encodeAbiParameters, Hex, parseUnits } from 'viem';
 import { SynthetixSdk } from '..';
 import { DISABLED_MARKETS } from '../constants';
 import { MarketIdOrName } from '../interface/commonTypes';
 import { MarketData, SpotMarketData } from '../perps/interface';
+import { Call3Value } from '../interface/contractTypes';
 
 export abstract class Market<T extends MarketData | SpotMarketData> {
   sdk: SynthetixSdk;
@@ -69,5 +70,70 @@ export abstract class Market<T extends MarketData | SpotMarketData> {
     }
     console.log(`Size ${size} in wei for market ${resolvedMarketName}: ${sizeInWei}`);
     return sizeInWei;
+  }
+
+  /**
+   *   Prepare a call to the external node with oracle updates for the specified market names.
+   * The result can be passed as the first argument to a multicall function to improve performance
+   * of ERC-7412 calls. If no market names are provided, all markets are fetched. This is useful for
+   * read functions since the user does not pay gas for those oracle calls, and reduces RPC calls and
+   * runtime.
+   * @param {number[]} marketIds An array of market ids to fetch prices for. If not provided, all markets are fetched
+   * @returns {Promise<Call3Value[]>} objects representing the target contract, call data, value, requireSuccess flag and other necessary details for executing the function in the blockchain.
+   */
+  public async prepareOracleCall(marketIds: number[] = []): Promise<Call3Value[]> {
+    let marketSymbols: string[] = [];
+
+    if (marketIds.length == 0) {
+      marketSymbols = Array.from(this.marketsBySymbol.keys());
+    } else {
+      marketIds.forEach((marketId) => {
+        const marketSymbol = this.marketsById.get(marketId)?.symbol;
+        if (!marketSymbol) return;
+        marketSymbols.push(marketSymbol);
+      });
+    }
+
+    const priceFeedIds: string[] = [];
+    marketSymbols.forEach((marketSymbol) => {
+      const feedId = this.sdk.pyth.priceFeedIds.get(marketSymbol);
+      if (!feedId) return;
+      priceFeedIds.push(feedId);
+    });
+
+    if (!priceFeedIds.length) {
+      return [];
+    }
+
+    const stalenessTolerance = 30n; // 30 seconds
+    const updateData = await this.sdk.pyth.getPriceFeedsUpdateData(priceFeedIds as Hex[]);
+
+    const signedRequiredData = encodeAbiParameters(
+      [
+        { type: 'uint8', name: 'updateType' },
+        { type: 'uint64', name: 'stalenessTolerance' },
+        { type: 'bytes32[]', name: 'priceIds' },
+        { type: 'bytes[]', name: 'updateData' },
+      ],
+      [1, stalenessTolerance, priceFeedIds as Hex[], updateData],
+    );
+
+    const pythWrapper = await this.sdk.contracts.getPythErc7412WrapperInstance();
+    const dataVerificationTx = this.sdk.utils.generateDataVerificationTx(pythWrapper.address, signedRequiredData);
+
+    // set `requireSuccess` to false in this case, since sometimes
+    // the wrapper will return an error if the price has already been updated
+    dataVerificationTx.requireSuccess = false;
+
+    // @note A better approach would be to fetch the priceUpdateFee for tx dynamically
+    // from the Pyth contract instead of using arbitrary values for pyth price update fees
+    dataVerificationTx.value = 500n;
+    return [dataVerificationTx];
+  }
+
+  protected async _getOracleCalls(txs: Call3Value[]) {
+    const oracleCalls = await this.sdk.utils.getMissingOracleCalls(txs);
+
+    return [...oracleCalls, ...txs];
   }
 }

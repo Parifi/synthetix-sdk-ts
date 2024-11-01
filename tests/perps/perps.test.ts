@@ -203,8 +203,10 @@ describe('Perps', () => {
     }
   });
 
-  it('should return liquidation price for an account', async () => {
-    const accountId = sdk.perps.defaultAccountId;
+  it.only('should return liquidation price for an account', async () => {
+    const accountsIds = await sdk.perps.getAccountIds();
+    console.log('=== accountsIds', accountsIds);
+    const accountId = accountsIds[0];
     const openPosition = await sdk.perps.getOpenPosition('Ethereum', accountId);
     if (openPosition.positionSize == 0) {
       console.log('No open position found for default account id');

@@ -12,7 +12,7 @@ import {
   OrderQuote,
   SettlementStrategy,
 } from '../../perps/interface';
-import { MarketIdOrName, OverrideParamsWrite, ReturnWriteCall } from '../commonTypes';
+import { MarketIdOrName, OverrideParamsWrite, WriteReturnType } from '../commonTypes';
 import { Call3Value } from '../contractTypes';
 
 type MarketsBy<T> = Map<T, MarketData>;
@@ -59,11 +59,11 @@ export interface PerpsRepository {
 
   // === Write methods
   prepareOracleCall(marketIds: number[]): Promise<Call3Value[]>;
-  createAccount(accountId?: bigint, override?: OverrideParamsWrite): Promise<ReturnWriteCall>;
-  commitOrder(data: CommitOrder, override?: OverrideParamsWrite): Promise<ReturnWriteCall>;
-  modifyCollateral(data: ModifyCollateral, override?: OverrideParamsWrite): Promise<ReturnWriteCall>;
-  payDebt(data: PayDebt, override?: OverrideParamsWrite): Promise<ReturnWriteCall>;
-  liquidate(accountId?: bigint, override?: OverrideParamsWrite): Promise<ReturnWriteCall | number>;
-  settleOrder(accountId?: bigint, override?: OverrideParamsWrite): Promise<ReturnWriteCall>;
-  createIsolatedAccountOrder(data: CreateIsolateOrder, override?: OverrideParamsWrite): Promise<ReturnWriteCall>;
+  createAccount(accountId?: bigint, override?: OverrideParamsWrite): Promise<WriteReturnType>;
+  commitOrder(data: CommitOrder, override?: OverrideParamsWrite): Promise<WriteReturnType>;
+  modifyCollateral(data: ModifyCollateral, override?: OverrideParamsWrite): Promise<WriteReturnType>;
+  payDebt(data: PayDebt, override?: OverrideParamsWrite): Promise<WriteReturnType>;
+  liquidate(accountId?: bigint, override?: OverrideParamsWrite): Promise<WriteReturnType | number>;
+  settleOrder(accountId?: bigint, override?: OverrideParamsWrite): Promise<WriteReturnType>;
+  createIsolatedAccountOrder(data: CreateIsolateOrder, override?: OverrideParamsWrite): Promise<WriteReturnType>;
 }

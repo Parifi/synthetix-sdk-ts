@@ -1,13 +1,4 @@
-import {
-  CallParameters,
-  encodeAbiParameters,
-  encodeFunctionData,
-  formatEther,
-  getAbiItem,
-  Hex,
-  parseEther,
-  parseUnits,
-} from 'viem';
+import { encodeFunctionData, formatEther, getAbiItem, Hex, parseEther, parseUnits } from 'viem';
 import { SynthetixSdk } from '..';
 import {
   CollateralData,
@@ -24,7 +15,7 @@ import {
 } from './interface';
 import { convertEtherToWei, convertWeiToEther, generateRandomAccountId, sleep } from '../utils';
 import { Call3Value } from '../interface/contractTypes';
-import { MarketIdOrName, OverrideParamsWrite, ReturnWriteCall } from '../interface/commonTypes';
+import { MarketIdOrName, OverrideParamsWrite, WriteReturnType } from '../interface/commonTypes';
 import { CommitOrder, CreateIsolateOrder, GetPerpsQuote, ModifyCollateral, PayDebt } from '../interface/Perps';
 import { PerpsRepository } from '../interface/Perps/repositories';
 import { Market } from '../utils/market';
@@ -70,6 +61,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     this.marketMetadata = new Map<number, MarketMetadata>();
   }
 
+  // === READ CALLS ===
+
   async initPerps() {
     await this.getMarkets();
     await this.getAccountIds();
@@ -102,65 +95,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       return parseUnits(size.toString(), 6);
 
     return parseUnits(size.toString(), 18);
-  }
-
-  /**
-   *   Prepare a call to the external node with oracle updates for the specified market names.
-   * The result can be passed as the first argument to a multicall function to improve performance
-   * of ERC-7412 calls. If no market names are provided, all markets are fetched. This is useful for
-   * read functions since the user does not pay gas for those oracle calls, and reduces RPC calls and
-   * runtime.
-   * @param {number[]} marketIds An array of market ids to fetch prices for. If not provided, all markets are fetched
-   * @returns {Promise<Call3Value[]>} objects representing the target contract, call data, value, requireSuccess flag and other necessary details for executing the function in the blockchain.
-   */
-  public async prepareOracleCall(marketIds: number[] = []): Promise<Call3Value[]> {
-    let marketSymbols: string[] = [];
-
-    if (marketIds.length == 0) {
-      marketSymbols = Array.from(this.marketsBySymbol.keys());
-    } else {
-      marketIds.forEach((marketId) => {
-        const marketSymbol = this.marketsById.get(marketId)?.symbol;
-        if (!marketSymbol) return;
-        marketSymbols.push(marketSymbol);
-      });
-    }
-
-    const priceFeedIds: string[] = [];
-    marketSymbols.forEach((marketSymbol) => {
-      const feedId = this.sdk.pyth.priceFeedIds.get(marketSymbol);
-      if (!feedId) return;
-      priceFeedIds.push(feedId);
-    });
-
-    if (!priceFeedIds.length) {
-      return [];
-    }
-
-    const stalenessTolerance = 30n; // 30 seconds
-    const updateData = await this.sdk.pyth.getPriceFeedsUpdateData(priceFeedIds as Hex[]);
-
-    const signedRequiredData = encodeAbiParameters(
-      [
-        { type: 'uint8', name: 'updateType' },
-        { type: 'uint64', name: 'stalenessTolerance' },
-        { type: 'bytes32[]', name: 'priceIds' },
-        { type: 'bytes[]', name: 'updateData' },
-      ],
-      [1, stalenessTolerance, priceFeedIds as Hex[], updateData],
-    );
-
-    const pythWrapper = await this.sdk.contracts.getPythErc7412WrapperInstance();
-    const dataVerificationTx = this.sdk.utils.generateDataVerificationTx(pythWrapper.address, signedRequiredData);
-
-    // set `requireSuccess` to false in this case, since sometimes
-    // the wrapper will return an error if the price has already been updated
-    dataVerificationTx.requireSuccess = false;
-
-    // @note A better approach would be to fetch the priceUpdateFee for tx dynamically
-    // from the Pyth contract instead of using arbitrary values for pyth price update fees
-    dataVerificationTx.value = 500n;
-    return [dataVerificationTx];
   }
 
   /**
@@ -203,60 +137,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       console.log('Using default account id as ', this.defaultAccountId);
     }
     return accountIds as bigint[];
-  }
-
-  /**
-   * @name _buildCreateAccount
-   * @description This function builds the data for creating an account in the PerpsMarketProxy contract using the given accountId.
-   * @param {bigint} accountId - The optional accountId to be created. If not provided, a new account will be generated.
-   * @returns {Call3Value[]} - An array of Call3Value objects representing the target contract, call data, value, requireSuccess flag and other necessary details for executing the function in the blockchain.
-   */
-  protected async _buildCreateAccount(accountId?: bigint): Promise<Call3Value> {
-    const txArgs = [];
-    if (accountId != undefined) {
-      txArgs.push(accountId);
-    }
-    const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-    return {
-      target: perpsMarketProxy.address,
-      callData: encodeFunctionData({
-        abi: perpsMarketProxy.abi,
-        functionName: 'createAccount',
-        args: txArgs,
-      }),
-      value: 0n,
-      requireSuccess: true,
-    };
-  }
-
-  /**
-   * @ame createAccount
-   * @description Creates a new account and returns either the transaction hash or the transaction parameters. If `submit` is provided in `override`, the transaction will be submitted and the transaction hash will be returned. Otherwise, the transaction parameters will be returned.
-   * @param {bigint | undefined} accountId - The ID of the account to create (optional)
-   * @param {OverrideParamsWrite} override - Options for submitting or returning the transaction parameters
-   * @returns {string | CallParameters} - If `submit` is provided in `override`, a string representing the transaction hash. Otherwise, an object containing the transaction parameters as defined by the CallParameters type.
-   */
-  public async createAccount(accountId?: bigint, override: OverrideParamsWrite = {}): Promise<string | CallParameters> {
-    const processedTx = await this._buildCreateAccount(accountId);
-    if (!override.useMultiCall)
-      return {
-        to: processedTx.target,
-        data: processedTx.callData,
-        value: processedTx.value,
-      };
-
-    const tx: CallParameters = await this.sdk.utils.writeErc7412({
-      calls: [processedTx],
-    });
-
-    if (override.submit) {
-      const txHash = await this.sdk.executeTransaction(tx);
-      console.log('Transaction hash: ', txHash);
-      await this.getAccountIds();
-      return txHash;
-    } else {
-      return tx;
-    }
   }
 
   /**
@@ -642,100 +522,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   }
 
   /**
-   * @name _buildCommitOrder
-   * @description Builds a commit order for a given size, settlement strategy ID, market ID or name, account ID (default to the defaultAccountId), desired fill price, and max price impact.
-   * @param {number} size - The size of the order in the base asset unit.
-   * @param {string|number} data.settlementStrategyId - The ID of the settlement strategy for the market.
-   * @param {string|number} data.marketIdOrName - The ID or name of the market to trade on.
-   * @param {string|undefined} data.accountId - The ID of the account for which the order is being built (default to defaultAccountId).
-   * @param {number|undefined} data.desiredFillPrice - The desired fill price for the order in the base asset unit.
-   * @param {number|undefined} data.maxPriceImpact - The maximum price impact for the order as a percentage of the market index price.
-   * @returns {Call3Value[]} An array containing the details of the transaction to be executed on the contract, including the target contract address, call data, value, and requireSuccess flag.
-   */
-  protected async _buildCommitOrder({
-    size,
-    settlementStrategyId,
-    marketIdOrName,
-    accountId = this.defaultAccountId,
-    desiredFillPrice,
-    maxPriceImpact,
-  }: CommitOrder): Promise<Call3Value> {
-    const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-
-    const { resolvedMarketId, resolvedMarketName: marketName } = this.resolveMarket(marketIdOrName);
-    if (desiredFillPrice != undefined && maxPriceImpact != undefined) {
-      throw new Error('Cannot set both desiredFillPrice and maxPriceImpact');
-    }
-    const isShort = size < 0 ? -1 : 1;
-    const sizeInWei = parseEther(Math.abs(size).toString()) * BigInt(isShort);
-    let acceptablePrice: number;
-
-    // If desired price is provided, use the provided price, else fetch price
-    if (desiredFillPrice) {
-      acceptablePrice = desiredFillPrice;
-    } else {
-      const updatedMaxPriceImpact = maxPriceImpact ?? 1; // @todo Replace with config value
-      const marketSummary = await this.getMarketSummary(resolvedMarketId);
-      const priceImpact = 1 + (isShort * updatedMaxPriceImpact) / 100;
-      acceptablePrice = (marketSummary.indexPrice ?? 0) * priceImpact;
-    }
-
-    const txArgs = [
-      resolvedMarketId,
-      accountId,
-      sizeInWei,
-      settlementStrategyId,
-      convertEtherToWei(acceptablePrice),
-      this.sdk.trackingCode,
-      this.sdk.referrer,
-    ];
-
-    console.log(
-      `Building order size ${sizeInWei} (${size}) to ${marketName} (id: ${resolvedMarketId}) for account ${accountId}`,
-    );
-
-    return {
-      target: perpsMarketProxy.address,
-      callData: encodeFunctionData({ abi: perpsMarketProxy.abi, functionName: 'commitOrder', args: [txArgs] }),
-      value: 0n,
-      requireSuccess: true,
-    };
-  }
-
-  /**
-   * @name commitOrder
-   * @description This function commits an order by building the necessary transactions and either executing them or returning them for later submission.
-   * @param {CommitOrder} data - The details of the order to be committed.
-   * @param {OverrideParamsWrite} [override] - Optional parameters to override default write settings, specifically whether to submit the transaction immediately (when `submit` is true). If not provided, the function will return the transaction object.
-   * @returns {string | CallParameters} - Returns either a transaction hash if `submit` is true, or the transaction object for later submission when `submit` is false.
-   */
-  public async commitOrder(data: CommitOrder, override: OverrideParamsWrite = {}): Promise<string | CallParameters> {
-    const txs = await this._buildCommitOrder(data);
-
-    if (!override.useMultiCall)
-      return {
-        to: txs.target,
-        data: txs.callData,
-        value: txs.value,
-      };
-
-    const tx = await this.sdk.utils.writeErc7412(
-      {
-        calls: [txs],
-      },
-      override,
-    );
-
-    if (override.submit) {
-      const txHash = await this.sdk.executeTransaction(tx);
-      console.log('Transaction hash for commit order tx: ', txHash);
-      return txHash;
-    } else {
-      return tx;
-    }
-  }
-
-  /**
    *   Fetches the open order for an account. Optionally fetches the settlement strategy,
    * which can be useful for order settlement and debugging.
    * @param {bigint} accountId The id of the account. If not provided, the default account is used
@@ -944,45 +730,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   }
 
   /**
-   * @name modifyCollateral
-   * @description This function modifies the collateral for a given market and account. It builds the necessary transaction, then writes it to the ERC7412 contract. If submit is not provided in the override object, it returns the built transaction object. Otherwise, it executes the transaction and logs the transaction hash.
-   * @param {string} data.amount - The amount of collateral to modify
-   * @param {string | number} data.marketIdOrName - The identifier or name of the market for which the collateral is being modified
-   * @param {string} data.accountId - The ID of the account (default is the defaultAccountId)
-   * @param {OverrideParamsWrite} [override] - An optional object that overrides the function behavior. If provided, submit must be truthy to execute the transaction and log the transaction hash.
-   * @returns {string | CallParameters} The built transaction object if override.submit is falsy, otherwise the transaction hash.
-   */
-  public async modifyCollateral(
-    { amount, collateralMarketIdOrName, accountId = this.defaultAccountId }: ModifyCollateral,
-    override: OverrideParamsWrite = {},
-  ): Promise<string | CallParameters> {
-    const processedTx = await this._buildModifyCollateral({
-      amount,
-      collateralMarketIdOrName,
-      accountId,
-    });
-
-    if (!override.useMultiCall)
-      return {
-        to: processedTx.target,
-        data: processedTx.callData,
-        value: processedTx.value,
-      };
-
-    const tx = await this.sdk.utils.writeErc7412(
-      {
-        calls: [processedTx],
-      },
-      override,
-    );
-
-    if (!override.submit) return tx;
-    const txHash = await this.sdk.executeTransaction(tx);
-    console.log('Modify collateral tx: ', txHash);
-    return txHash;
-  }
-
-  /**
    * Fetch the balance of each collateral type for an account.
    * @param {bigint} accountId The id of the account to fetch the collateral balances for. If not provided, the default account is used.
    * @returns {Promise<number>} The balance of the account's collateral.
@@ -1108,6 +855,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * @param {bigint} accountId The id of the account to fetch the position for. If not provided, the default account is used.
    * @returns {OpenPositionData[]} An array of objects containing the open position data for the specified markets.
    */
+  // NOTE: maybe is better use subgraph?
   public async getOpenPositions(
     marketIdsOrNames?: MarketIdOrName[],
     accountId = this.defaultAccountId,
@@ -1172,21 +920,17 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     settlementStrategyId = 0,
     includeRequiredMargin = true,
   }: GetPerpsQuote): Promise<OrderQuote> {
-    if (accountId == undefined) {
-      accountId = this.defaultAccountId;
-    }
+    if (!accountId) throw new Error('No account Id!');
 
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
     const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
 
     const feedId = this.marketsById.get(resolvedMarketId)?.feedId;
-    if (feedId == undefined) {
-      throw new Error('Invalid feed id received from market data');
-    }
+    if (!feedId) throw new Error('Invalid feed id received from market data');
 
     const oracleCalls = await this.prepareOracleCall([resolvedMarketId]);
 
-    if (price == undefined) {
+    if (!price) {
       price = await this.sdk.pyth.getFormattedPrice(feedId as Hex);
       console.log('Formatted price:', price);
     }
@@ -1235,15 +979,12 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * @param accountId The id of the account to get the debt for. If not provided, the default account is used.
    * @returns debt Account debt in ether
    */
-  public async getDebt(accountId: bigint | undefined = undefined): Promise<number> {
-    if (!this.isMulticollateralEnabled) {
+  public async getDebt(accountId: bigint | undefined = this.defaultAccountId): Promise<number> {
+    if (!accountId) throw new Error('No account id selected');
+    if (!this.isMulticollateralEnabled)
       throw new Error(`Multicollateral is not enabled for chainId ${this.sdk.rpcConfig.chainId}`);
-    }
 
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-    if (accountId == undefined) {
-      accountId = this.defaultAccountId;
-    }
 
     const debt = (await this.sdk.utils.callErc7412({
       contractAddress: marketProxy.address,
@@ -1251,232 +992,10 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       functionName: 'debt',
       args: [accountId],
     })) as bigint;
+
     console.log('Account Debt: ', debt);
+
     return convertWeiToEther(debt);
-  }
-
-  /**
-   * @name payDebt
-   * @description This function is used to repay a debt on Perps market using the SDK. It takes an amount and accountId as parameters, and optionally accepts an override for write operations. If no amount is provided, it will first fetch the current debt of the given accountId.
-   * @param {number} data.amount - The amount to be repaid in Ether. Defaults to 0 if not provided.
-   * @param {string} data.accountId - The ID of the account whose debt is being repaid. If not provided, it defaults to the defaultAccountId of the SDK instance.
-   * @param {OverrideParamsWrite} override - An optional object for overriding parameters for write operations.
-   * @returns {Promise<ReturnWriteCall>} A promise that resolves to a transaction hash when the debt is successfully repaid.
-   */
-  public async payDebt(
-    { amount = 0, accountId = this.defaultAccountId }: PayDebt = { amount: 0 },
-    override: OverrideParamsWrite = {},
-  ): Promise<ReturnWriteCall> {
-    if (!this.isMulticollateralEnabled) {
-      throw new Error(`Multicollateral is not enabled for chainId ${this.sdk.rpcConfig.chainId}`);
-    }
-
-    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-
-    // `debt` and `payDebt` functions are only available for multicollateral perps
-    if (amount == undefined) {
-      amount = await this.getDebt(accountId);
-    }
-
-    const tx = await this.sdk.utils.writeErc7412(
-      {
-        contractAddress: marketProxy.address,
-        abi: marketProxy.abi,
-        functionName: 'payDebt',
-        args: [accountId, convertEtherToWei(amount)],
-      },
-      override,
-    );
-
-    if (!override.submit) return tx;
-    console.log(`Repaying debt of ${amount} for account ${accountId}`);
-    const txHash = await this.sdk.executeTransaction(tx);
-    console.log('Repay debt transaction: ', txHash);
-    return txHash;
-  }
-
-  /**
-   * Submit a liquidation for an account, or static call the liquidation function to fetch
-   * the liquidation reward. The static call is important for accounts which have been
-   * partially liquidated. Due to the throughput limit on liquidated value, the static call
-   * returning a nonzero value means more value can be liquidated (and rewards collected).
-   * This function can not be called if ``submit`` and ``staticCall`` are true.
-   * @param {bigint} accountId The id of the account to liquidate. If not provided, the default account is used.
-   * @param {OverrideParamsWrite} override - An optional object for overriding parameters for write operations.
-   */
-  public async liquidate(accountId = this.defaultAccountId, override: OverrideParamsWrite = {}) {
-    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-
-    if (override.submit && override.staticCall) {
-      throw new Error('Cannot submit and use static call in the same transaction');
-    }
-
-    if (override.staticCall) {
-      const liquidationReward = (await this.sdk.utils.callErc7412({
-        contractAddress: marketProxy.address,
-        abi: marketProxy.abi,
-        functionName: 'liquidate',
-        args: [accountId],
-      })) as bigint;
-      return convertWeiToEther(liquidationReward);
-    }
-    const tx = await this.sdk.utils.writeErc7412({
-      contractAddress: marketProxy.address,
-      abi: marketProxy.abi,
-      functionName: 'liquidate',
-      args: [accountId],
-    });
-
-    if (!override.submit) return tx;
-
-    console.log('Liquidating account :', accountId);
-    const txHash = await this.sdk.executeTransaction(tx);
-    console.log('Liquidate transaction: ', txHash);
-    return txHash;
-  }
-
-  /**
-   * @name settleOrder
-   * @description Settles an open order by executing the 'settleOrder' function on Perps Market Proxy contract.
-   * @param {bigint} accountId - The ID of the account associated with the order. Defaults to `this.defaultAccountId`.
-   * @param {OverrideParamsWrite} override - Optional override parameters for writing transactions (defaults to default values).
-   * @returns The transaction receipt if the order is successfully settled, otherwise throws an error.
-   */
-  public async settleOrder(
-    accountId = this.defaultAccountId,
-    override: OverrideParamsWrite = {
-      maxTries: 3,
-      txDelay: 2,
-    },
-  ) {
-    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-
-    const order = await this.getOrder(accountId);
-    const settlementStrategy = order.settlementStrategy;
-    const settlementTime = order.commitmentTime + (settlementStrategy?.settlementDelay ?? 0);
-    const expirationTime = order.commitmentTime + (settlementStrategy?.settlementWindowDuration ?? 0);
-    const currentTimestamp = Math.floor(Date.now() / 1000);
-
-    if (order.sizeDelta == 0) {
-      throw new Error(`Order is already settled for account ${accountId}`);
-    } else if (settlementTime > currentTimestamp) {
-      const duration = settlementTime - currentTimestamp;
-      console.log(`Waiting ${duration} seconds to settle order`);
-      await sleep(duration);
-    } else if (expirationTime < currentTimestamp) {
-      throw new Error(`Order has expired for account ${accountId}`);
-    } else {
-      console.log('Order is ready to be settled');
-    }
-
-    const maxTxTries = override.maxTries ?? 3;
-    const txDelay = override.txDelay ?? 2;
-    let totalTries = 0;
-    let tx;
-    while (totalTries < maxTxTries) {
-      try {
-        tx = await this.sdk.utils.writeErc7412(
-          {
-            contractAddress: marketProxy.address,
-            abi: marketProxy.abi,
-            functionName: 'settleOrder',
-            args: [accountId],
-          },
-          override,
-        );
-      } catch (error) {
-        console.log('Settle order error: ', error);
-        totalTries += 1;
-        sleep(txDelay);
-
-        continue;
-      }
-
-      if (!override.submit) return tx;
-      console.log(`Settling order for account ${accountId}`);
-      const txHash = await this.sdk.executeTransaction(tx);
-      console.log('Settle txHash: ', txHash);
-
-      const updatedOrder = await this.getOrder(accountId);
-      if (updatedOrder.sizeDelta == 0) {
-        console.log('Order settlement successful for account ', accountId);
-        return txHash;
-      }
-
-      // If order settlement failed, retry after a delay
-      totalTries += 1;
-      console.log(`Failed to settle order, waiting ${txDelay} seconds and retrying`);
-      sleep(txDelay);
-    }
-    throw new Error('Failed to settle order');
-  }
-
-  /**
-   * @name createIsolatedAccountOrder
-   * @description Creates an isolated account order for a given market, adding the specified collateral and creating the order.
-   * @param {CreateIsolateOrder} params - The parameters to create an isolated account order.
-   * @param {OverrideParamsWrite} override - Optional override parameters for writing transactions (defaults to default values).
-   * @returns An array of CallParameters if multi-call is not used, or the transaction hash if it is submitted.
-   */
-  public async createIsolatedAccountOrder(
-    {
-      collateralAmount,
-      size,
-      marketIdOrName,
-      settlementStrategyId = 0,
-      accountId = generateRandomAccountId(),
-      desiredFillPrice,
-      maxPriceImpact,
-      collateralMarketId,
-    }: CreateIsolateOrder,
-    override: OverrideParamsWrite = {
-      shouldRevertOnTxFailure: true,
-      submit: false,
-    },
-  ) {
-    const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
-
-    // 1. Create Account
-    const createAccountCall = await this._buildCreateAccount(accountId);
-
-    // 2. Add Collateral
-
-    const modifyCollateralCall = await this._buildModifyCollateral({
-      amount: collateralAmount,
-      collateralMarketIdOrName: collateralMarketId,
-      accountId,
-    });
-
-    const commitOrderCall = await this._buildCommitOrder({
-      size: size,
-      settlementStrategyId,
-      marketIdOrName: resolvedMarketId,
-      accountId,
-      desiredFillPrice,
-      maxPriceImpact,
-    });
-
-    const oracleCalls = await this.prepareOracleCall();
-    // TODO: convert to call parameters
-    const callsArray: Call3Value[] = [...oracleCalls, createAccountCall, modifyCollateralCall, commitOrderCall];
-
-    if (!override.useMultiCall)
-      return callsArray.map(
-        (call) =>
-          ({
-            to: call.target,
-
-            data: call.callData,
-            value: call.value ?? 0n,
-          }) as CallParameters,
-      );
-    const finalTx = await this.sdk.utils.writeErc7412({ calls: callsArray }, override);
-
-    if (!override.submit) return finalTx;
-
-    const txHash = await this.sdk.executeTransaction(finalTx);
-    console.log('Transaction hash: ', txHash);
-    return txHash;
   }
 
   /**
@@ -1543,5 +1062,368 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
     const liquidationPrice = (requiredMaintenanceMargin - availableMargin) / positionSize + indexPrice;
     return liquidationPrice;
+  }
+
+  // === WRITE CALLS ===
+
+  /**
+   * @name _buildCommitOrder
+   * @description Builds a commit order for a given size, settlement strategy ID, market ID or name, account ID (default to the defaultAccountId), desired fill price, and max price impact.
+   * @param {number} size - The size of the order in the base asset unit.
+   * @param {string|number} data.settlementStrategyId - The ID of the settlement strategy for the market.
+   * @param {string|number} data.marketIdOrName - The ID or name of the market to trade on.
+   * @param {string|undefined} data.accountId - The ID of the account for which the order is being built (default to defaultAccountId).
+   * @param {number|undefined} data.desiredFillPrice - The desired fill price for the order in the base asset unit.
+   * @param {number|undefined} data.maxPriceImpact - The maximum price impact for the order as a percentage of the market index price.
+   * @returns {Call3Value[]} An array containing the details of the transaction to be executed on the contract, including the target contract address, call data, value, and requireSuccess flag.
+   */
+  protected async _buildCommitOrder({
+    size,
+    settlementStrategyId,
+    marketIdOrName,
+    accountId = this.defaultAccountId,
+    desiredFillPrice,
+    maxPriceImpact,
+  }: CommitOrder): Promise<Call3Value> {
+    const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+
+    const { resolvedMarketId, resolvedMarketName: marketName } = this.resolveMarket(marketIdOrName);
+    if (desiredFillPrice != undefined && maxPriceImpact != undefined) {
+      throw new Error('Cannot set both desiredFillPrice and maxPriceImpact');
+    }
+    const isShort = size < 0 ? -1 : 1;
+    const sizeInWei = parseEther(Math.abs(size).toString()) * BigInt(isShort);
+    let acceptablePrice: number;
+
+    // If desired price is provided, use the provided price, else fetch price
+    if (desiredFillPrice) {
+      acceptablePrice = desiredFillPrice;
+    } else {
+      const updatedMaxPriceImpact = maxPriceImpact ?? 1; // @todo Replace with config value
+      const marketSummary = await this.getMarketSummary(resolvedMarketId);
+      const priceImpact = 1 + (isShort * updatedMaxPriceImpact) / 100;
+      acceptablePrice = (marketSummary.indexPrice ?? 0) * priceImpact;
+    }
+
+    const txArgs = [
+      resolvedMarketId,
+      accountId,
+      sizeInWei,
+      settlementStrategyId,
+      convertEtherToWei(acceptablePrice),
+      this.sdk.trackingCode,
+      this.sdk.referrer,
+    ];
+
+    console.log(
+      `Building order size ${sizeInWei} (${size}) to ${marketName} (id: ${resolvedMarketId}) for account ${accountId}`,
+    );
+
+    return {
+      target: perpsMarketProxy.address,
+      callData: encodeFunctionData({ abi: perpsMarketProxy.abi, functionName: 'commitOrder', args: [txArgs] }),
+      value: 0n,
+      requireSuccess: true,
+    };
+  }
+
+  /**
+   * @name commitOrder
+   * @description This function commits an order by building the necessary transactions and either executing them or returning them for later submission.
+   * @param {CommitOrder} data - The details of the order to be committed.
+   * @param {OverrideParamsWrite} [override] - Optional parameters to override default write settings, specifically whether to submit the transaction immediately (when `submit` is true). If not provided, the function will return the transaction object.
+   * @returns {WriteReturnType} - Returns either a transaction hash if `submit` is true, or the transaction object for later submission when `submit` is false.
+   */
+  public async commitOrder(data: CommitOrder, override: OverrideParamsWrite = {}): Promise<WriteReturnType> {
+    const tx = await this._buildCommitOrder(data);
+    let txs = [tx];
+
+    if (override.useOracleCalls) {
+      const oracleCalls = await this.prepareOracleCall([]);
+      txs = [...oracleCalls, ...txs];
+    }
+
+    if (!override.useMultiCall) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
+
+    return await this.sdk.utils.writeErc7412(
+      {
+        calls: txs,
+      },
+      override,
+    );
+  }
+  /**
+   * @name modifyCollateral
+   * @description This function modifies the collateral for a given market and account. It builds the necessary transaction, then writes it to the ERC7412 contract. If submit is not provided in the override object, it returns the built transaction object. Otherwise, it executes the transaction and logs the transaction hash.
+   * @param {string} data.amount - The amount of collateral to modify
+   * @param {string | number} data.marketIdOrName - The identifier or name of the market for which the collateral is being modified
+   * @param {string} data.accountId - The ID of the account (default is the defaultAccountId)
+   * @param {OverrideParamsWrite} [override] - An optional object that overrides the function behavior. If provided, submit must be truthy to execute the transaction and log the transaction hash.
+   * @returns {WriteReturnType} The built transaction object if override.submit is falsy, otherwise the transaction hash.
+   */
+  public async modifyCollateral(
+    { amount, collateralMarketIdOrName, accountId = this.defaultAccountId }: ModifyCollateral,
+    override: OverrideParamsWrite = {},
+  ): Promise<WriteReturnType> {
+    const processedTx = await this._buildModifyCollateral({
+      amount,
+      collateralMarketIdOrName,
+      accountId,
+    });
+
+    const txs = override.useOracleCalls ? await this.prepareOracleCall([]) : [processedTx];
+
+    if (!override.useMultiCall) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
+    return await this.sdk.utils.writeErc7412(
+      {
+        calls: [processedTx],
+      },
+      override,
+    );
+
+    // if (!override.submit) return tx;
+    // const txHash = await this.sdk.executeTransaction(tx);
+    // console.log('Modify collateral tx: ', txHash);
+    // return txHash;
+  }
+  /**
+   * @name payDebt
+   * @description This function is used to repay a debt on Perps market using the SDK. It takes an amount and accountId as parameters, and optionally accepts an override for write operations. If no amount is provided, it will first fetch the current debt of the given accountId.
+   * @param {number} data.amount - The amount to be repaid in Ether. Defaults to 0 if not provided.
+   * @param {string} data.accountId - The ID of the account whose debt is being repaid. If not provided, it defaults to the defaultAccountId of the SDK instance.
+   * @param {OverrideParamsWrite} override - An optional object for overriding parameters for write operations.
+   * @returns {Promise<ReturnWriteCall>} A promise that resolves to a transaction hash when the debt is successfully repaid.
+   */
+  public async payDebt(
+    { amount = 0, accountId = this.defaultAccountId }: PayDebt = { amount: 0 },
+    override: OverrideParamsWrite = {},
+  ): Promise<WriteReturnType> {
+    if (!this.isMulticollateralEnabled) {
+      throw new Error(`Multicollateral is not enabled for chainId ${this.sdk.rpcConfig.chainId}`);
+    }
+
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+
+    // `debt` and `payDebt` functions are only available for multicollateral perps
+    if (!amount) {
+      amount = await this.getDebt(accountId);
+    }
+
+    const rawTx: Call3Value = {
+      target: marketProxy.address,
+      callData: encodeFunctionData({
+        abi: marketProxy.abi,
+        functionName: 'payDebt',
+        args: [accountId, convertEtherToWei(amount)],
+      }),
+      value: 0n,
+      requireSuccess: true,
+    };
+
+    const txs = override.useOracleCalls ? await this._getOracleCalls([rawTx]) : [rawTx];
+    if (!override.useMultiCall) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
+
+    const tx = await this.sdk.utils.writeErc7412(
+      {
+        calls: txs,
+      },
+      override,
+    );
+
+    return tx;
+  }
+  /**
+   * Submit a liquidation for an account, or static call the liquidation function to fetch
+   * the liquidation reward. The static call is important for accounts which have been
+   * partially liquidated. Due to the throughput limit on liquidated value, the static call
+   * returning a nonzero value means more value can be liquidated (and rewards collected).
+   * This function can not be called if ``submit`` and ``staticCall`` are true.
+   * @param {bigint} accountId The id of the account to liquidate. If not provided, the default account is used.
+   * @param {OverrideParamsWrite} override - An optional object for overriding parameters for write operations.
+   */
+  public async liquidate(
+    accountId = this.defaultAccountId,
+    override: OverrideParamsWrite = {},
+  ): Promise<WriteReturnType> {
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+
+    // if (override.staticCall) {
+    //   const liquidationReward = (await this.sdk.utils.callErc7412({
+    //     contractAddress: marketProxy.address,
+    //     abi: marketProxy.abi,
+    //     functionName: 'liquidate',
+    //     args: [accountId],
+    //   })) as bigint;
+    //   return convertWeiToEther(liquidationReward);
+    // }
+    const rawTx: Call3Value = {
+      target: marketProxy.address,
+      callData: encodeFunctionData({
+        abi: marketProxy.abi,
+        functionName: 'liquidate',
+        args: [accountId],
+      }),
+      value: 0n,
+      requireSuccess: true,
+    };
+
+    const txs = override.useOracleCalls ? await this._getOracleCalls([rawTx]) : [rawTx];
+
+    if (!override.useMultiCall) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
+
+    const tx = await this.sdk.utils.writeErc7412(
+      {
+        calls: txs,
+      },
+      override,
+    );
+
+    return tx;
+  }
+  /**
+   * @name settleOrder
+   * @description Settles an open order by executing the 'settleOrder' function on Perps Market Proxy contract.
+   * @param {bigint} accountId - The ID of the account associated with the order. Defaults to `this.defaultAccountId`.
+   * @param {OverrideParamsWrite} override - Optional override parameters for writing transactions (defaults to default values).
+   * @returns The transaction receipt if the order is successfully settled, otherwise throws an error.
+   */
+  public async settleOrder(
+    accountId = this.defaultAccountId,
+    override: OverrideParamsWrite = {},
+  ): Promise<WriteReturnType> {
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+
+    const order = await this.getOrder(accountId);
+    const settlementStrategy = order.settlementStrategy;
+    const settlementTime = order.commitmentTime + (settlementStrategy?.settlementDelay ?? 0);
+    const expirationTime = order.commitmentTime + (settlementStrategy?.settlementWindowDuration ?? 0);
+    const currentTimestamp = Math.floor(Date.now() / 1000);
+
+    if (order.sizeDelta == 0) {
+      throw new Error(`Order is already settled for account ${accountId}`);
+    } else if (settlementTime > currentTimestamp) {
+      const duration = settlementTime - currentTimestamp;
+      console.log(`Waiting ${duration} seconds to settle order`);
+      await sleep(duration);
+    } else if (expirationTime < currentTimestamp) {
+      throw new Error(`Order has expired for account ${accountId}`);
+    } else {
+      console.log('Order is ready to be settled');
+    }
+
+    const settleTx: Call3Value = {
+      requireSuccess: true,
+      target: marketProxy.address,
+      callData: encodeFunctionData({
+        abi: marketProxy.abi,
+        functionName: 'settleOrder',
+        args: [accountId],
+      }),
+      value: 0n,
+    };
+
+    const txs = override.useOracleCalls ? await this._getOracleCalls([settleTx]) : [settleTx];
+
+    if (!override.useMultiCall) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
+    return this.sdk.utils.writeErc7412({ calls: txs }, override);
+  }
+
+  /**
+   * @name _buildCreateAccount
+   * @description This function builds the data for creating an account in the PerpsMarketProxy contract using the given accountId.
+   * @param {bigint} accountId - The optional accountId to be created. If not provided, a new account will be generated.
+   * @returns {Call3Value[]} - An array of Call3Value objects representing the target contract, call data, value, requireSuccess flag and other necessary details for executing the function in the blockchain.
+   */
+  protected async _buildCreateAccount(accountId?: bigint): Promise<Call3Value> {
+    const txArgs = [];
+    if (accountId != undefined) {
+      txArgs.push(accountId);
+    }
+    const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    return {
+      target: perpsMarketProxy.address,
+      callData: encodeFunctionData({
+        abi: perpsMarketProxy.abi,
+        functionName: 'createAccount',
+        args: txArgs,
+      }),
+      value: 0n,
+      requireSuccess: true,
+    };
+  }
+
+  /**
+   * @ame createAccount
+   * @description Creates a new account and returns either the transaction hash or the transaction parameters. If `submit` is provided in `override`, the transaction will be submitted and the transaction hash will be returned. Otherwise, the transaction parameters will be returned.
+   * @param {bigint | undefined} accountId - The ID of the account to create (optional)
+   * @param {OverrideParamsWrite} override - Options for submitting or returning the transaction parameters
+   * @returns {WriteReturnType} - If `submit` is provided in `override`, a string representing the transaction hash. Otherwise, an object containing the transaction parameters as defined by the CallParameters type.
+   */
+  public async createAccount(
+    accountId?: bigint,
+    override: Omit<OverrideParamsWrite, 'useOracleCalls'> = {},
+  ): Promise<WriteReturnType> {
+    const processedTx = await this._buildCreateAccount(accountId);
+
+    if (!override.useMultiCall) return [processedTx].map(this.sdk.utils._fromCall3ToTransactionData);
+
+    return await this.sdk.utils.writeErc7412(
+      {
+        calls: [processedTx],
+      },
+      override,
+    );
+  }
+
+  /**
+   * @name createIsolatedAccountOrder
+   * @description Creates an isolated account order for a given market, adding the specified collateral and creating the order.
+   * @param {CreateIsolateOrder} params - The parameters to create an isolated account order.
+   * @param {OverrideParamsWrite} override - Optional override parameters for writing transactions (defaults to default values).
+   * @returns An array of CallParameters if multi-call is not used, or the transaction hash if it is submitted.
+   */
+  public async createIsolatedAccountOrder(
+    {
+      collateralAmount,
+      size,
+      marketIdOrName,
+      settlementStrategyId = 0,
+      accountId = generateRandomAccountId(),
+      desiredFillPrice,
+      maxPriceImpact,
+      collateralMarketId,
+    }: CreateIsolateOrder,
+    override: OverrideParamsWrite = {
+      shouldRevertOnTxFailure: true,
+    },
+  ): Promise<WriteReturnType> {
+    const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
+
+    // 1. Create Account
+    const createAccountCall = await this._buildCreateAccount(accountId);
+
+    // 2. Add Collateral
+
+    const modifyCollateralCall = await this._buildModifyCollateral({
+      amount: collateralAmount,
+      collateralMarketIdOrName: collateralMarketId,
+      accountId,
+    });
+
+    const commitOrderCall = await this._buildCommitOrder({
+      size: size,
+      settlementStrategyId,
+      marketIdOrName: resolvedMarketId,
+      accountId,
+      desiredFillPrice,
+      maxPriceImpact,
+    });
+
+    const rawTxs = [createAccountCall, modifyCollateralCall, commitOrderCall];
+    const txs = override.useOracleCalls ? await this._getOracleCalls(rawTxs) : rawTxs;
+
+    if (!override.useMultiCall) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
+
+    return await this.sdk.utils.writeErc7412({ calls: txs }, override);
   }
 }

@@ -1,8 +1,9 @@
-import { Address, CallParameters, formatEther, Hex, parseUnits } from 'viem';
+import { Address, encodeFunctionData, formatEther, Hex, parseUnits } from 'viem';
 import { SynthetixSdk } from '..';
 import { ZERO_ADDRESS } from '../constants/common';
 import { CoreRepository } from '../interface/Core';
-import { OverrideParamsWrite } from '../interface/commonTypes';
+import { OverrideParamsWrite, WriteReturnType } from '../interface/commonTypes';
+import { Call3Value } from '../interface/contractTypes';
 
 /**
  * Class for interacting with Synthetix V3 core contracts
@@ -17,6 +18,12 @@ export class Core implements CoreRepository {
   constructor(synthetixSdk: SynthetixSdk) {
     this.sdk = synthetixSdk;
     this.accountIds = [];
+  }
+
+  protected async _getOracleCalls(txs: Call3Value[]) {
+    const oracleCalls = await this.sdk.utils.getMissingOracleCalls(txs);
+
+    return [...oracleCalls, ...txs];
   }
 
   async initCore() {
@@ -156,30 +163,32 @@ export class Core implements CoreRepository {
 
   public async createAccount(
     accountId?: bigint,
-    override: OverrideParamsWrite = { submit: false, shouldRevertOnTxFailure: false },
-  ) {
+    override: OverrideParamsWrite = { shouldRevertOnTxFailure: false },
+  ): Promise<WriteReturnType> {
     const txArgs = [];
     if (accountId != undefined) {
       txArgs.push(accountId);
     }
 
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
-    const tx: CallParameters = await this.sdk.utils.writeErc7412(
-      {
-        contractAddress: coreProxy.address,
+    const createAccountTx: Call3Value = {
+      target: coreProxy.address,
+      callData: encodeFunctionData({
         abi: coreProxy.abi,
         functionName: 'createAccount',
         args: txArgs,
+      }),
+      value: 0n,
+      requireSuccess: true,
+    };
+    if (!override.useMultiCall) return [createAccountTx].map(this.sdk.utils._fromCall3ToTransactionData);
+
+    return await this.sdk.utils.writeErc7412(
+      {
+        calls: [createAccountTx],
       },
       override,
     );
-
-    if (!override.submit) return tx;
-
-    const txHash = await this.sdk.executeTransaction(tx);
-    console.log('Transaction hash: ', txHash);
-    await this.getAccountIds();
-    return txHash;
   }
 
   public async deposit(
@@ -194,28 +203,32 @@ export class Core implements CoreRepository {
       decimals: number;
       accountId?: bigint;
     },
-    override: OverrideParamsWrite = { submit: false, shouldRevertOnTxFailure: false },
-  ) {
+    override: OverrideParamsWrite = { shouldRevertOnTxFailure: false },
+  ): Promise<WriteReturnType> {
     const amountInWei = parseUnits(amount.toString(), decimals);
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
 
-    const tx: CallParameters = await this.sdk.utils.writeErc7412(
-      {
-        contractAddress: coreProxy.address,
+    const depositTx: Call3Value = {
+      target: coreProxy.address,
+      callData: encodeFunctionData({
         abi: coreProxy.abi,
         functionName: 'deposit',
         args: [accountId, tokenAddress, amountInWei],
+      }),
+      value: 0n,
+      requireSuccess: true,
+    };
+
+    const txs = override.useOracleCalls ? await this._getOracleCalls([depositTx]) : [depositTx];
+
+    if (!override.useMultiCall) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
+
+    return await this.sdk.utils.writeErc7412(
+      {
+        calls: [depositTx],
       },
       override,
     );
-
-    if (override.submit) {
-      const txHash = await this.sdk.executeTransaction(tx);
-      console.log('Deposit tx hash', txHash);
-      return txHash;
-    } else {
-      return tx;
-    }
   }
 
   public async withdraw(
@@ -230,33 +243,34 @@ export class Core implements CoreRepository {
       decimals: number;
       accountId?: bigint;
     },
-    override: OverrideParamsWrite = { submit: false, shouldRevertOnTxFailure: false },
-  ) {
-    if (accountId == undefined) {
-      accountId = this.defaultAccountId;
-    }
+    override: OverrideParamsWrite = { shouldRevertOnTxFailure: false },
+  ): Promise<WriteReturnType> {
+    if (!accountId) throw new Error('Account ID is required for withdrawal');
 
     const amountInWei = parseUnits(amount.toString(), decimals);
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
 
-    const tx: CallParameters = await this.sdk.utils.writeErc7412(
-      {
-        contractAddress: coreProxy.address,
+    const withdrawTx: Call3Value = {
+      target: coreProxy.address,
+      callData: encodeFunctionData({
         abi: coreProxy.abi,
         functionName: 'withdraw',
         args: [accountId, tokenAddress, amountInWei],
+      }),
+      value: 0n,
+      requireSuccess: true,
+    };
+
+    const txs = override.useOracleCalls ? await this._getOracleCalls([withdrawTx]) : [withdrawTx];
+
+    if (!override.useMultiCall) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
+
+    return await this.sdk.utils.writeErc7412(
+      {
+        calls: txs,
       },
       override,
     );
-
-    if (override.submit) {
-      console.log(`Withdrawing ${amount} ${tokenAddress} from account ${accountId}`);
-      const txHash = await this.sdk.executeTransaction(tx);
-      console.log('Withdraw tx hash', txHash);
-      return txHash;
-    } else {
-      return tx;
-    }
   }
 
   public async delegateCollateral(
@@ -273,29 +287,32 @@ export class Core implements CoreRepository {
       leverage: number;
       accountId?: bigint;
     },
-    override: OverrideParamsWrite = { submit: false, shouldRevertOnTxFailure: false },
-  ) {
+    override: OverrideParamsWrite = { shouldRevertOnTxFailure: false },
+  ): Promise<WriteReturnType> {
     const amountInWei = parseUnits(amount.toString(), 18);
     const leverageInWei = parseUnits(leverage.toString(), 18);
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
 
-    const tx: CallParameters = await this.sdk.utils.writeErc7412(
-      {
-        contractAddress: coreProxy.address,
+    const delegateCollateralTx: Call3Value = {
+      target: coreProxy.address,
+      callData: encodeFunctionData({
         abi: coreProxy.abi,
         functionName: 'delegateCollateral',
         args: [accountId, poolId, tokenAddress, amountInWei, leverageInWei],
+      }),
+      value: 0n,
+      requireSuccess: true,
+    };
+
+    const txs = override.useOracleCalls ? await this._getOracleCalls([delegateCollateralTx]) : [delegateCollateralTx];
+    if (!override.useMultiCall) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
+
+    return await this.sdk.utils.writeErc7412(
+      {
+        calls: [delegateCollateralTx],
       },
       override,
     );
-
-    if (!override.submit) return tx;
-
-    console.log(`Delegating ${amount} ${tokenAddress} to pool id ${poolId} for account ${accountId}`);
-    const txHash = await this.sdk.executeTransaction(tx);
-    console.log('Delegate tx hash', txHash);
-
-    return txHash;
   }
 
   public async mintUsd(
@@ -310,27 +327,36 @@ export class Core implements CoreRepository {
       poolId: bigint;
       accountId?: bigint;
     },
-    override: OverrideParamsWrite = { submit: false, shouldRevertOnTxFailure: false },
-  ) {
+    override: OverrideParamsWrite = { shouldRevertOnTxFailure: false },
+  ): Promise<WriteReturnType> {
     const amountInWei = parseUnits(amount.toString(), 18);
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
 
-    const tx: CallParameters = await this.sdk.utils.writeErc7412(
-      {
-        contractAddress: coreProxy.address,
+    const mintUsdTx: Call3Value = {
+      target: coreProxy.address,
+      callData: encodeFunctionData({
         abi: coreProxy.abi,
         functionName: 'mintUsd',
         args: [accountId, poolId, tokenAddress, amountInWei],
+      }),
+      value: 0n,
+      requireSuccess: true,
+    };
+
+    if (!override.useMultiCall) return [mintUsdTx].map(this.sdk.utils._fromCall3ToTransactionData);
+    return await this.sdk.utils.writeErc7412(
+      {
+        calls: [mintUsdTx],
       },
       override,
     );
 
-    if (!override.submit) return tx;
-    console.log(
-      `Minting ${amount} sUSD with ${tokenAddress} collateral against pool id ${poolId} for account ${accountId}`,
-    );
-    const txHash = await this.sdk.executeTransaction(tx);
-    console.log('Mint tx hash', txHash);
-    return txHash;
+    //
+    // console.log(
+    //   `Minting ${amount} sUSD with ${tokenAddress} collateral against pool id ${poolId} for account ${accountId}`,
+    // );
+    // const txHash = await this.sdk.executeTransaction(tx);
+    // console.log('Mint tx hash', txHash);
+    // return txHash;
   }
 }
