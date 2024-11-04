@@ -9,6 +9,7 @@ import {
   encodeFunctionData,
   erc20Abi,
   getContract,
+  Hash,
   Hex,
   http,
   maxUint256,
@@ -59,6 +60,7 @@ export class SynthetixSdk {
   pyth: Pyth;
   perps: Perps;
   spot: Spot;
+  protected initialized: boolean = false;
 
   constructor({ accountConfig, partnerConfig, pythConfig, rpcConfig }: SdkConfigParams) {
     this.accountConfig = accountConfig;
@@ -114,6 +116,7 @@ export class SynthetixSdk {
   }
 
   async init() {
+    if (this.initialized) return;
     /**
      * Initialize user wallet
      */
@@ -121,7 +124,7 @@ export class SynthetixSdk {
       if (this.accountConfig.privateKeyAccount != undefined) {
         // Set the wallet in SDK if passed
         this.privateKeyAccount = this.accountConfig.privateKeyAccount;
-        const address0 = await this.privateKeyAccount.address;
+        const address0 = this.privateKeyAccount.address;
         if (this.accountConfig.address == undefined) {
           this.accountConfig.address = address0;
           console.info('Using address from private key account', address0);
@@ -152,6 +155,8 @@ export class SynthetixSdk {
     await this.perps.initPerps();
     await this.spot.initSpot();
     await this.core.initCore();
+
+    this.initialized = true;
   }
 
   public getPublicClient(): PublicClient {
@@ -170,7 +175,7 @@ export class SynthetixSdk {
    * @param tx Call parameters for the tx
    * @returns txHash Transaction hash after tx execution
    */
-  public async executeTransaction(tx: CallParameters): Promise<string> {
+  public async executeTransaction(tx: CallParameters): Promise<Hash> {
     let account;
     if (this.privateKeyAccount != undefined) {
       account = this.privateKeyAccount;

@@ -1,13 +1,4 @@
-import {
-  Address,
-  CallParameters,
-  ContractFunctionParameters,
-  encodeFunctionData,
-  erc20Abi,
-  getContract,
-  Hex,
-  maxUint256,
-} from 'viem';
+import { Address, ContractFunctionParameters, encodeFunctionData, erc20Abi, getContract, Hex, maxUint256 } from 'viem';
 import { SynthetixSdk } from '..';
 import { SpotMarketData } from '../perps/interface';
 import { ZERO_ADDRESS } from '../constants';
@@ -26,6 +17,7 @@ import {
 } from '../interface/Spot';
 import { Market } from '../utils/market';
 import { MarketIdOrName, OverrideParamsWrite, WriteReturnType } from '../interface/commonTypes';
+import { Call3Value } from '../interface/contractTypes';
 
 /**
  * Class for interacting with Synthetix V3 spot market contracts.
@@ -240,46 +232,6 @@ export class Spot extends Market<SpotMarketData> {
   }
 
   /**
-   * Approve an address to transfer a specified synth from the connected address.
-   * Approves the ``targetAddress`` to transfer up to the ``amount`` from your account.
-   * If ``amount`` is ``undefined``, approves the maximum possible amount.
-   * Requires either a ``marketId`` or ``marketName`` to be provided to resolve the market.
-   * @param {string} data.targetAddress The address to approve.
-   * @param {number} data.amount The amount in ether to approve. Default is max uint256.
-   * @param {MarketIdOrName} dart.marketIdOrName - The unique identifier or name of the market.
-   * @param {OverrideParamsWrite} override - Override the default parameters for the transaction.
-   * @returns {WriteReturnType} The transaction hash if ``submit`` is ``true``.
-   */
-  public async approve(
-    { targetAddress, amount = 0, marketIdOrName }: Approve,
-    override: OverrideParamsWrite = {},
-  ): Promise<WriteReturnType> {
-    let amountInWei: bigint = maxUint256;
-    if (amount) {
-      amountInWei = convertEtherToWei(amount);
-    }
-
-    const synthContract = this.getSynthContract(marketIdOrName);
-
-    const approveTx: CallParameters = {
-      account: this.sdk.accountAddress,
-      to: synthContract.address as Hex,
-      data: encodeFunctionData({
-        abi: synthContract.abi,
-        functionName: 'approve',
-        args: [targetAddress as Hex, amountInWei],
-      }),
-    };
-
-    if (!override.submit) return approveTx;
-
-    console.log(`Approving ${targetAddress} to spend ${amount}`);
-    const txHash = await this.sdk.executeTransaction(approveTx);
-    console.log('Approve txHash: ', txHash);
-    return txHash;
-  }
-
-  /**
    * Get details about an async order by its ID.
    * Retrieves order details like owner, amount escrowed, settlement strategy, etc.
    * Can also fetch the full settlement strategy parameters if ``fetchSettlementStrategy``
@@ -417,28 +369,14 @@ export class Spot extends Market<SpotMarketData> {
     return settlementStrategies;
   }
 
-  /**
-   * Execute an atomic order on the spot market.
-   * Atomically executes a buy or sell order for the given size.
-   * Amounts are transferred directly, no need to settle later. This function
-   * is useful for swapping sUSDC with sUSD on Base Andromeda contracts. The default
-   * slippage is set to zero, since sUSDC and sUSD can be swapped 1:1
-   * For example:
-   *    const tx = await atomicOrder(Side.BUY, 100, 0, undefined, undefined, "sUSDC");
-   * Requires either a ``market_id`` or ``market_name`` to be provided to resolve the market.
-   * @param {AtomicOrder} data The data for the atomic order.
-   * @param {Side} data.side The side of the order (buy/sell).
-   * @param {number} data.size The order size in ether.
-   * @param {number} data.slippageTolerance The slippage tolerance for the order as a percentage (0.01 = 1%). Default is 0.
-   * @param {number} data.minAmountReceived The minimum amount to receive in ether units. This will override the slippage_tolerance.
-   * @param {MarketIdOrName} data.marketIdOrName - The unique identifier or name of the market.
-   * @param {OverrideParamsWrite} override - Override the default parameters for the transaction.
-   * @returns {WriteReturnType} The transaction hash if ``submit`` is ``true``.
-   */
-  public async atomicOrder(
-    { side, size, slippageTolerance = 0, minAmountReceived, marketIdOrName }: AtomicOrder,
-    override: OverrideParamsWrite = {},
-  ): Promise<WriteReturnType> {
+  // === WRITE CALLS ===
+  async _buildAtomicOrder({
+    side,
+    size,
+    slippageTolerance = 0,
+    minAmountReceived,
+    marketIdOrName,
+  }: AtomicOrder): Promise<Call3Value> {
     const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketIdOrName);
     const spotMarketProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
 
@@ -477,20 +415,56 @@ export class Spot extends Market<SpotMarketData> {
 
     const functionName = side == Side.BUY ? 'buy' : 'sell';
     const args = [resolvedMarketId, sizeInWei, minAmountReceivedInWei, this.sdk.referrer];
-    const tx = await this.sdk.utils.writeErc7412({
-      contractAddress: spotMarketProxy.address,
-      abi: spotMarketProxy.abi,
-      functionName,
-      args,
-    });
-    if (!override.submit) return tx;
 
-    console.log(
-      `Committing ${functionName} atomic order of size ${sizeInWei} (${size}) to ${resolvedMarketName} (id: ${resolvedMarketId})`,
-    );
-    const txHash = await this.sdk.executeTransaction(tx);
-    console.log('Order transaction: ', txHash);
-    return txHash;
+    return {
+      target: spotMarketProxy.address,
+      callData: encodeFunctionData({
+        abi: spotMarketProxy.abi,
+        functionName,
+        args,
+      }),
+      value: 0n,
+      requireSuccess: true,
+    };
+  }
+
+  /**
+   * Execute an atomic order on the spot market.
+   * Atomically executes a buy or sell order for the given size.
+   * Amounts are transferred directly, no need to settle later. This function
+   * is useful for swapping sUSDC with sUSD on Base Andromeda contracts. The default
+   * slippage is set to zero, since sUSDC and sUSD can be swapped 1:1
+   * For example:
+   *    const tx = await atomicOrder(Side.BUY, 100, 0, undefined, undefined, "sUSDC");
+   * Requires either a ``market_id`` or ``market_name`` to be provided to resolve the market.
+   * @param {AtomicOrder} data The data for the atomic order.
+   * @param {Side} data.side The side of the order (buy/sell).
+   * @param {number} data.size The order size in ether.
+   * @param {number} data.slippageTolerance The slippage tolerance for the order as a percentage (0.01 = 1%). Default is 0.
+   * @param {number} data.minAmountReceived The minimum amount to receive in ether units. This will override the slippage_tolerance.
+   * @param {MarketIdOrName} data.marketIdOrName - The unique identifier or name of the market.
+   * @param {OverrideParamsWrite} override - Override the default parameters for the transaction.
+   * @returns {WriteReturnType} The transaction hash if ``submit`` is ``true``.
+   */
+  public async atomicOrder(
+    { side, size, slippageTolerance = 0, minAmountReceived, marketIdOrName }: AtomicOrder,
+    override: OverrideParamsWrite = {},
+  ): Promise<WriteReturnType> {
+    const atomicOrderTx = await this._buildAtomicOrder({
+      side,
+      size,
+      slippageTolerance,
+      minAmountReceived,
+      marketIdOrName,
+    });
+
+    const txs = override.useOracleCalls ? await this._getOracleCalls([atomicOrderTx]) : [atomicOrderTx];
+
+    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
+
+    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
+    if (!override.submit) return [tx];
+    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
   }
   /**
    * Wrap an underlying asset into a synth or unwrap back to the asset.
@@ -506,51 +480,46 @@ export class Spot extends Market<SpotMarketData> {
    * @param {OverrideParamsWrite} override - Override the default parameters for the transaction.
    * @returns {WriteReturnType} The transaction hash if ``submit`` is ``true``.
    */
-  public async wrap({ size, marketIdOrName }: Wrap, override: OverrideParamsWrite = {}) {
-    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketIdOrName);
+  public async wrap({ size, marketIdOrName }: Wrap, override: OverrideParamsWrite = {}): Promise<WriteReturnType> {
+    const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
     const spotMarketProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
 
     const sizeInWei = this.formatSize(Math.abs(size), resolvedMarketId);
     const functionName = size > 0 ? 'wrap' : 'unwrap';
+    const offset = (sizeInWei * 100n) / 1000n;
 
-    const tx: CallParameters = await this.sdk.utils.writeErc7412({
-      contractAddress: spotMarketProxy.address,
-      abi: spotMarketProxy.abi,
-      functionName,
-      args: [resolvedMarketId, sizeInWei, sizeInWei],
-    });
+    const wrapTx: Call3Value = {
+      target: spotMarketProxy.address,
+      callData: encodeFunctionData({
+        abi: spotMarketProxy.abi,
+        functionName,
+        args: [resolvedMarketId, sizeInWei, sizeInWei - offset],
+      }),
+      value: 0n,
+      requireSuccess: true,
+    };
 
-    if (!override.submit) return tx;
+    const txs = override.useOracleCalls ? await this._getOracleCalls([wrapTx]) : [wrapTx];
+    if (!override.useMultiCall && override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
 
-    console.log(`${functionName} of size ${sizeInWei} (${size}) to ${resolvedMarketName} (id: ${resolvedMarketId})`);
-    const txHash = await this.sdk.executeTransaction(tx);
-    console.log('Wrap tx hash', txHash);
-    return txHash;
+    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
+    if (!override.submit) return [tx];
+
+    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
   }
 
-  /**
-   * Commit an async order to the spot market.
-   * Commits a buy or sell order of the given size. The order will be settled
-   * according to the settlement strategy.
-   * Requires either a ``marketId`` or ``marketName`` to be provided to resolve the market.
-   * @param {CommitOrderSpot} data The data for the async order.
-   * @param {Side} data.side The side of the order (buy/sell).
-   * @param {number} data.size The order size in ether. If ``side`` is "buy", this is the amount
-   * of the synth to buy. If ``side`` is "sell", this is the amount of the synth to sell.
-   * @param {number} data.slippageTolerance The slippage tolerance for the order as a percentage (0.01 = 1%). Default is 0.
-   * @param {number} data.minAmountReceived The minimum amount to receive in ether units. This will override the slippage_tolerance.
-   * @param {number} data.settlementStrategyId The settlement strategy ID. Default 2.
-   * @param {MarketIdOrName} data.marketIdOrName - The unique identifier or name of the market.
-   * @param {OverrideParamsWrite} override - Override the default parameters for the transaction.
-   */
-  public async commitOrder(
-    { side, size, slippageTolerance, minAmountReceived, settlementStrategyId = 0, marketIdOrName }: CommitOrderSpot,
-    override: OverrideParamsWrite = {},
-  ) {
-    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketIdOrName);
+  async _buildCommitOrder({
+    side,
+    size,
+    slippageTolerance,
+    minAmountReceived,
+    settlementStrategyId = 0,
+    marketIdOrName,
+  }: CommitOrderSpot): Promise<Call3Value> {
+    const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
     const spotMarketProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
 
-    if (minAmountReceived == undefined) {
+    if (!minAmountReceived) {
       const settlementReward = this.marketsById.get(resolvedMarketId)?.settlementStrategy?.settlementReward ?? 0;
 
       // Get asset price
@@ -581,20 +550,53 @@ export class Spot extends Market<SpotMarketData> {
       minAmountReceivedInWei,
       this.sdk.referrer,
     ];
-    const tx = await this.sdk.utils.writeErc7412({
-      contractAddress: spotMarketProxy.address,
-      abi: spotMarketProxy.abi,
-      functionName: 'commitOrder',
-      args,
-    });
 
-    if (!override.submit) return tx;
-    console.log(
-      `Committing ${size == Side.BUY ? 'buy' : 'sell'} atomic order of size ${sizeInWei} (${size}) to ${resolvedMarketName} (id: ${resolvedMarketId})`,
-    );
-    const txHash = await this.sdk.executeTransaction(tx);
-    console.log('Commit order transaction: ', txHash);
-    return txHash;
+    return {
+      target: spotMarketProxy.address,
+      callData: encodeFunctionData({
+        abi: spotMarketProxy.abi,
+        functionName: 'commitOrder',
+        args,
+      }),
+      value: 0n,
+      requireSuccess: true,
+    };
+  }
+
+  /**
+   * Commit an async order to the spot market.
+   * Commits a buy or sell order of the given size. The order will be settled
+   * according to the settlement strategy.
+   * Requires either a ``marketId`` or ``marketName`` to be provided to resolve the market.
+   * @param {CommitOrderSpot} data The data for the async order.
+   * @param {Side} data.side The side of the order (buy/sell).
+   * @param {number} data.size The order size in ether. If ``side`` is "buy", this is the amount
+   * of the synth to buy. If ``side`` is "sell", this is the amount of the synth to sell.
+   * @param {number} data.slippageTolerance The slippage tolerance for the order as a percentage (0.01 = 1%). Default is 0.
+   * @param {number} data.minAmountReceived The minimum amount to receive in ether units. This will override the slippage_tolerance.
+   * @param {number} data.settlementStrategyId The settlement strategy ID. Default 2.
+   * @param {MarketIdOrName} data.marketIdOrName - The unique identifier or name of the market.
+   * @param {OverrideParamsWrite} override - Override the default parameters for the transaction.
+   */
+  public async commitOrder(
+    { side, size, slippageTolerance, minAmountReceived, settlementStrategyId = 0, marketIdOrName }: CommitOrderSpot,
+    override: OverrideParamsWrite = {},
+  ): Promise<WriteReturnType> {
+    const commitTx = await this._buildCommitOrder({
+      side,
+      size,
+      slippageTolerance,
+      minAmountReceived,
+      settlementStrategyId,
+      marketIdOrName,
+    });
+    const txs = override.useOracleCalls ? await this._getOracleCalls([commitTx]) : [commitTx];
+    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
+
+    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
+    if (!override.submit) return [tx];
+
+    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
   }
 
   /**
@@ -608,7 +610,10 @@ export class Spot extends Market<SpotMarketData> {
    * @param {OverrideParamsWrite} override - Override the default parameters for the transaction.
    * @returns {WriteReturnType} The transaction hash if ``submit`` is ``true``.
    */
-  public async settleOrder({ asyncOrderId, marketIdOrName }: SettleOrder, override: OverrideParamsWrite = {}) {
+  public async settleOrder(
+    { asyncOrderId, marketIdOrName }: SettleOrder,
+    override: OverrideParamsWrite = {},
+  ): Promise<WriteReturnType> {
     const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
     const spotMarketProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
 
@@ -635,44 +640,66 @@ export class Spot extends Market<SpotMarketData> {
     }
 
     console.log(`Order ${asyncOrderId} on market ${resolvedMarketId} is ready to be settled`);
+    const settleTx: Call3Value = {
+      target: spotMarketProxy.address,
+      callData: encodeFunctionData({
+        abi: spotMarketProxy.abi,
+        functionName: 'settleOrder',
+        args: [resolvedMarketId, asyncOrderId],
+      }),
+      value: 0n,
+      requireSuccess: true,
+    };
 
-    let totalTries = 0;
-    const maxTries = override.maxTries ?? 5;
-    const txDelay = override.txDelay ?? 2;
-    let tx;
-    while (totalTries < maxTries) {
-      try {
-        tx = await this.sdk.utils.writeErc7412({
-          contractAddress: spotMarketProxy.address,
-          abi: spotMarketProxy.abi,
-          functionName: 'settleOrder',
-          args: [resolvedMarketId, asyncOrderId],
-        });
-      } catch (error) {
-        console.log('Settle order error: ', error);
-        totalTries += 1;
-        sleep(txDelay);
-        continue;
-      }
+    const txs = override.useOracleCalls ? await this._getOracleCalls([settleTx]) : [settleTx];
 
-      if (!override.submit) return tx;
+    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
 
-      console.log(`Settling order ${asyncOrderId} for market ${resolvedMarketId}`);
-      const txHash = await this.sdk.executeTransaction(tx);
-      console.log('Settle txHash: ', txHash);
+    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
+    if (!override.submit) return [tx];
 
-      const updatedOrder = await this.getOrder({ asyncOrderId, marketIdOrName: resolvedMarketId });
-      if (updatedOrder.settledAt != undefined && updatedOrder.settledAt > 0) {
-        console.log('Order settlement successful for order id ', asyncOrderId);
-        return txHash;
-      }
+    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
+  }
 
-      // If order settlement failed, retry after a delay
-      totalTries += 1;
-      if (totalTries > maxTries) throw new Error('Failed to settle order');
-
-      console.log(`Failed to settle order, waiting ${txDelay} seconds and retrying`);
-      sleep(txDelay);
+  /**
+   * Approve an address to transfer a specified synth from the connected address.
+   * Approves the ``targetAddress`` to transfer up to the ``amount`` from your account.
+   * If ``amount`` is ``undefined``, approves the maximum possible amount.
+   * Requires either a ``marketId`` or ``marketName`` to be provided to resolve the market.
+   * @param {string} data.targetAddress The address to approve.
+   * @param {number} data.amount The amount in ether to approve. Default is max uint256.
+   * @param {MarketIdOrName} dart.marketIdOrName - The unique identifier or name of the market.
+   * @param {OverrideParamsWrite} override - Override the default parameters for the transaction.
+   * @returns {WriteReturnType} The transaction hash if ``submit`` is ``true``.
+   */
+  public async approve(
+    { targetAddress, amount = 0, marketIdOrName }: Approve,
+    override: OverrideParamsWrite = {},
+  ): Promise<WriteReturnType> {
+    let amountInWei: bigint = maxUint256;
+    if (amount) {
+      amountInWei = convertEtherToWei(amount);
     }
+
+    const synthContract = this.getSynthContract(marketIdOrName);
+
+    const txs = [
+      {
+        target: synthContract.address,
+        callData: encodeFunctionData({
+          abi: synthContract.abi,
+          functionName: 'approve',
+          args: [targetAddress as Hex, amountInWei],
+        }),
+        value: 0n,
+        requireSuccess: true,
+      },
+    ];
+
+    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
+
+    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
+    if (!override.submit) return [tx];
+    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
   }
 }

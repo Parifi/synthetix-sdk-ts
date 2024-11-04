@@ -10,6 +10,7 @@ import {
   decodeFunctionResult,
   encodeAbiParameters,
   encodeFunctionData,
+  Hash,
   Hex,
   parseAbiParameters,
 } from 'viem';
@@ -18,7 +19,7 @@ import { IERC7412Abi } from '../contracts/abis/IERC7412';
 import { Call3Value, Result } from '../interface/contractTypes';
 import { parseError } from './parseError';
 import { MAX_ERC7412_RETRIES, SIG_FEE_REQUIRED, SIG_ORACLE_DATA_REQUIRED } from '../constants';
-import { OverrideParamsWrite, WriteContractParams, WriteErc7412 } from '../interface/commonTypes';
+import { OverrideParamsWrite, TransactionData, WriteContractParams, WriteErc7412 } from '../interface/commonTypes';
 /**
  * Utility class
  *
@@ -388,11 +389,9 @@ export class Utils {
     data: WriteErc7412,
     override: OverrideParamsWrite = {
       shouldRevertOnTxFailure: true,
-      submit: false,
-      useMultiCall: true,
     },
-  ): Promise<CallParameters> {
-    let calls: Call3Value[] = data.calls ?? [];
+  ): Promise<TransactionData> {
+    const calls: Call3Value[] = data.calls ?? [];
     const multicallInstance = await this.sdk.contracts.getMulticallInstance();
 
     if (this.isWriteContractParams(data)) {
@@ -410,72 +409,29 @@ export class Utils {
       calls.push(currentCall);
     }
 
+    const multicallData = encodeFunctionData({
+      abi: multicallInstance.abi,
+      functionName: 'aggregate3Value',
+      args: [calls],
+    });
+
+    let totalValue = 0n;
+    for (const tx of calls) {
+      totalValue += tx.value || 0n;
+    }
+
+    const finalTx = {
+      account: this.sdk.accountAddress,
+      to: multicallInstance.address,
+      data: multicallData,
+      value: totalValue,
+    };
+
     const publicClient = this.sdk.getPublicClient();
 
-    let totalRetries = 0;
-    let finalTx: CallParameters | undefined;
-    while (true) {
-      console.log('=== calls', calls);
-      try {
-        const multicallData = encodeFunctionData({
-          abi: multicallInstance.abi,
-          functionName: 'aggregate3Value',
-          args: [calls],
-        });
+    if (override.shouldRevertOnTxFailure) await publicClient.call(finalTx);
 
-        let totalValue = 0n;
-        for (const tx of calls) {
-          totalValue += tx.value || 0n;
-        }
-
-        finalTx = {
-          account: this.sdk.accountAddress,
-          to: multicallInstance.address,
-          data: multicallData,
-          value: totalValue,
-        };
-
-        // console.log('Final tx: ', finalTx);
-
-        // If the call is successful, return the final tx
-        await publicClient.call(finalTx);
-        return finalTx;
-      } catch (error) {
-        totalRetries += 1;
-        if (totalRetries > MAX_ERC7412_RETRIES) {
-          if (finalTx && !override.shouldRevertOnTxFailure) return finalTx;
-          console.log('Error is not related to Oracle data');
-
-          throw new Error('MAX_ERC7412_RETRIES retries reached, tx failed after multiple attempts');
-        }
-
-        const parsedError = parseError(error as CallExecutionError);
-
-        console.log('Error details: withdrawableMargin', error);
-        console.log('Parsed Error details: ', parsedError);
-
-        const isErc7412Error =
-          parsedError.startsWith(SIG_ORACLE_DATA_REQUIRED) || parsedError.startsWith(SIG_FEE_REQUIRED);
-
-        if (!isErc7412Error) {
-          try {
-            // let err = decodeErrorResult({
-            // abi: abi as Abi,
-            // data: parsedError,
-            // });
-            // console.log('Decoded error:', err);
-            throw new Error('Error is not related to Oracle data');
-          } catch (e) {
-            if (finalTx && !override.shouldRevertOnTxFailure) return finalTx;
-            console.log('Error is not related to Oracle data');
-            throw e;
-          }
-        }
-
-        calls = await this.handleErc7412Error(error, calls);
-        // console.log('Calls array after handleErc7412Error', calls);
-      }
-    }
+    return this._fromCallDataToTransactionData(finalTx);
   }
 
   /**
@@ -575,5 +531,71 @@ export class Utils {
         // console.log('Calls array after handleErc7412Error', calls);
       }
     }
+  }
+
+  public async getMissingOracleCalls(
+    calls: Call3Value[],
+    { attempts = MAX_ERC7412_RETRIES }: { attempts?: number } = {},
+  ): Promise<Call3Value[]> {
+    const resultCalls: Call3Value[] = [];
+    try {
+      const publicClient = this.sdk.getPublicClient();
+      const totalValue = calls.reduce((acc, tx) => {
+        return acc + (tx.value || 0n);
+      }, 0n);
+
+      const multicallInstance = await this.sdk.contracts.getMulticallInstance();
+      const multicallData = encodeFunctionData({
+        abi: multicallInstance.abi,
+        functionName: 'aggregate3Value',
+        args: [calls],
+      });
+
+      const parsedTx = {
+        account: this.sdk.accountAddress,
+        to: multicallInstance.address,
+        data: multicallData,
+        value: totalValue,
+      };
+      await publicClient.call(parsedTx);
+    } catch (error) {
+      const parsedError = parseError(error as CallExecutionError);
+      const isErc7412Error =
+        parsedError.startsWith(SIG_ORACLE_DATA_REQUIRED) || parsedError.startsWith(SIG_FEE_REQUIRED);
+
+      if (!isErc7412Error) return resultCalls;
+      if (isErc7412Error && !attempts) return resultCalls;
+
+      calls = await this.handleErc7412Error(error, calls);
+      resultCalls.push(calls[0]);
+      return await this.getMissingOracleCalls(calls, { attempts: attempts - 1 });
+    }
+
+    return resultCalls;
+  }
+
+  _fromCall3ToTransactionData(call: Call3Value): TransactionData {
+    return {
+      to: call.target,
+      data: call.callData,
+      value: call?.value?.toString() ?? '0',
+    } as TransactionData;
+  }
+
+  _fromCallDataToTransactionData(calls: CallParameters): TransactionData {
+    return {
+      to: calls.to as Address,
+
+      data: calls.data as Hash,
+      value: calls?.value?.toString() ?? '0',
+    } as TransactionData;
+  }
+  _fromTransactionDataToCallData(data: TransactionData): CallParameters {
+    return {
+      account: this.sdk.accountAddress,
+      to: data.to,
+      data: data.data,
+      value: BigInt(data.value || 0),
+    } as CallParameters;
   }
 }

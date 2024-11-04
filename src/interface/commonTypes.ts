@@ -1,13 +1,20 @@
-import { Address, CallParameters } from 'viem';
+import { Address, Hash } from 'viem';
 import { Call3Value } from './contractTypes';
+
+export type TransactionData = {
+  to: Address;
+  data: string;
+  value: string;
+};
 
 export type OverrideParamsWrite = {
   shouldRevertOnTxFailure?: boolean;
-  submit?: boolean;
   useMultiCall?: boolean;
-  staticCall?: boolean;
-  txDelay?: number;
-  maxTries?: number;
+  useOracleCalls?: boolean;
+  submit?: boolean;
+  // staticCall?: boolean;
+  // txDelay?: number;
+  // maxTries?: number;
 };
 
 export type OverrideParamsRead = unknown;
@@ -30,8 +37,6 @@ export type WriteContractParams = {
 
 export type WriteErc7412 = WriteCallParams | WriteContractParams;
 
-export type WriteReturnType = string | CallParameters;
+export type WriteReturnType = TransactionData[] | Hash;
 
 export type MarketIdOrName = number | string;
-
-export type ReturnWriteCall = string | CallParameters | CallParameters[];
