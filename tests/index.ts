@@ -1,9 +1,9 @@
 import 'dotenv/config';
 import { SynthetixSdk } from '../src/index';
 import { AccountConfig, PartnerConfig, PythConfig, RpcConfig } from '../src/interface/classConfigs';
-import { createWalletClient, Hex, http } from 'viem';
+import { Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { getPublicRpcEndpoint, getChain } from '../src/utils';
+import { getPublicRpcEndpoint } from '../src/utils';
 
 import { DEFAULT_REFERRER, DEFAULT_TRACKING_CODE } from '../src/constants';
 

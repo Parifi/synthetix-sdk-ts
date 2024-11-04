@@ -595,7 +595,7 @@ export class Utils {
       account: this.sdk.accountAddress,
       to: data.to,
       data: data.data,
-      value: BigInt(data.value),
+      value: BigInt(data.value || 0),
     } as CallParameters;
   }
 }

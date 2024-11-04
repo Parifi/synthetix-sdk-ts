@@ -672,7 +672,10 @@ export class Spot extends Market<SpotMarketData> {
    * @param {OverrideParamsWrite} override - Override the default parameters for the transaction.
    * @returns {WriteReturnType} The transaction hash if ``submit`` is ``true``.
    */
-  public async approve({ targetAddress, amount = 0, marketIdOrName }: Approve): Promise<WriteReturnType> {
+  public async approve(
+    { targetAddress, amount = 0, marketIdOrName }: Approve,
+    override: OverrideParamsWrite = {},
+  ): Promise<WriteReturnType> {
     let amountInWei: bigint = maxUint256;
     if (amount) {
       amountInWei = convertEtherToWei(amount);
@@ -680,16 +683,23 @@ export class Spot extends Market<SpotMarketData> {
 
     const synthContract = this.getSynthContract(marketIdOrName);
 
-    return [
+    const txs = [
       {
-        to: synthContract.address,
-        data: encodeFunctionData({
+        target: synthContract.address,
+        callData: encodeFunctionData({
           abi: synthContract.abi,
           functionName: 'approve',
           args: [targetAddress as Hex, amountInWei],
         }),
-        value: '0',
+        value: 0n,
+        requireSuccess: true,
       },
     ];
+
+    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
+
+    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
+    if (!override.submit) return [tx];
+    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
   }
 }

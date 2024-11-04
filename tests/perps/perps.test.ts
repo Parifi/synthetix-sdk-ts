@@ -132,7 +132,7 @@ describe('Perps', () => {
 
   // Account ID should be marked as liquidatable
   it.skip('should liquidate an account', async () => {
-    const liquidateTx = await sdk.perps.liquidate(undefined, { staticCall: true });
+    const liquidateTx = await sdk.perps.liquidate(undefined);
     console.log('liquidateTx :', liquidateTx);
   });
 
