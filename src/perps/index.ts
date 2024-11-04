@@ -1135,13 +1135,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * @returns {WriteReturnType} - Returns either a transaction hash if `submit` is true, or the transaction object for later submission when `submit` is false.
    */
   public async commitOrder(data: CommitOrder, override: OverrideParamsWrite = {}): Promise<WriteReturnType> {
-    const buildedTx = await this._buildCommitOrder(data);
-    let txs = [buildedTx];
-
-    if (override.useOracleCalls) {
-      const oracleCalls = await this.prepareOracleCall([]);
-      txs = [...oracleCalls, ...txs];
-    }
+    const builtTx = await this._buildCommitOrder(data);
+    const txs = override.useOracleCalls ? await this._getOracleCalls([builtTx]) : [builtTx];
 
     if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
 
@@ -1404,6 +1399,10 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const createAccountCall = await this._buildCreateAccount(accountId);
 
     // 2. Add Collateral
+    const wrapTxs = await this.sdk.spot._buildWrap({
+      size: collateralAmount,
+      marketIdOrName: collateralMarketId,
+    });
 
     const modifyCollateralCall = await this._buildModifyCollateral({
       amount: collateralAmount,
@@ -1420,7 +1419,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       maxPriceImpact,
     });
 
-    const rawTxs = [createAccountCall, modifyCollateralCall, commitOrderCall];
+    const rawTxs = [createAccountCall, wrapTxs, modifyCollateralCall, commitOrderCall].flat();
     const txs = override.useOracleCalls ? await this._getOracleCalls(rawTxs) : rawTxs;
 
     if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);

@@ -466,21 +466,7 @@ export class Spot extends Market<SpotMarketData> {
     if (!override.submit) return [tx];
     return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
   }
-  /**
-   * Wrap an underlying asset into a synth or unwrap back to the asset.
-   * Wraps an asset into a synth if size > 0, unwraps if size < 0.
-   * The default slippage is set to zero, since the synth and asset can be swapped 1:1.
-   * For example:
-   *    const tx = wrap(100, undefined, "sUSDC")  # wrap 100 USDC into sUSDC
-   *    const tx = wrap(-100, undefined, "sUSDC") # unwrap 100 sUSDC into USDC
-   * Requires either a ``market_id`` or ``market_name`` to be provided to resolve the market.
-   * @param {Wrap} data The data for the wrap/unwrap transaction.
-   * @param data.size The amount of the asset to wrap/unwrap.
-   * @param {MarketIdOrName} data.marketIdOrName - The unique identifier or name of the market.
-   * @param {OverrideParamsWrite} override - Override the default parameters for the transaction.
-   * @returns {WriteReturnType} The transaction hash if ``submit`` is ``true``.
-   */
-  public async wrap({ size, marketIdOrName }: Wrap, override: OverrideParamsWrite = {}): Promise<WriteReturnType> {
+  public async _buildWrap({ size, marketIdOrName }: Wrap): Promise<Call3Value> {
     const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
     const spotMarketProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
 
@@ -499,6 +485,24 @@ export class Spot extends Market<SpotMarketData> {
       requireSuccess: true,
     };
 
+    return wrapTx;
+  }
+  /**
+   * Wrap an underlying asset into a synth or unwrap back to the asset.
+   * Wraps an asset into a synth if size > 0, unwraps if size < 0.
+   * The default slippage is set to zero, since the synth and asset can be swapped 1:1.
+   * For example:
+   *    const tx = wrap(100, undefined, "sUSDC")  # wrap 100 USDC into sUSDC
+   *    const tx = wrap(-100, undefined, "sUSDC") # unwrap 100 sUSDC into USDC
+   * Requires either a ``market_id`` or ``market_name`` to be provided to resolve the market.
+   * @param {Wrap} data The data for the wrap/unwrap transaction.
+   * @param data.size The amount of the asset to wrap/unwrap.
+   * @param {MarketIdOrName} data.marketIdOrName - The unique identifier or name of the market.
+   * @param {OverrideParamsWrite} override - Override the default parameters for the transaction.
+   * @returns {WriteReturnType} The transaction hash if ``submit`` is ``true``.
+   */
+  public async wrap({ size, marketIdOrName }: Wrap, override: OverrideParamsWrite = {}): Promise<WriteReturnType> {
+    const wrapTx = await this._buildWrap({ size, marketIdOrName });
     const txs = override.useOracleCalls ? await this._getOracleCalls([wrapTx]) : [wrapTx];
     if (!override.useMultiCall && override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
 
