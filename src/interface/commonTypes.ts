@@ -1,4 +1,4 @@
-import { Address } from 'viem';
+import { Address, Hash } from 'viem';
 import { Call3Value } from './contractTypes';
 
 export type TransactionData = {
@@ -11,6 +11,7 @@ export type OverrideParamsWrite = {
   shouldRevertOnTxFailure?: boolean;
   useMultiCall?: boolean;
   useOracleCalls?: boolean;
+  submit?: boolean;
   // staticCall?: boolean;
   // txDelay?: number;
   // maxTries?: number;
@@ -36,6 +37,6 @@ export type WriteContractParams = {
 
 export type WriteErc7412 = WriteCallParams | WriteContractParams;
 
-export type WriteReturnType = TransactionData | TransactionData[];
+export type WriteReturnType = TransactionData[] | Hash;
 
 export type MarketIdOrName = number | string;

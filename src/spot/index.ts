@@ -460,16 +460,11 @@ export class Spot extends Market<SpotMarketData> {
 
     const txs = override.useOracleCalls ? await this._getOracleCalls([atomicOrderTx]) : [atomicOrderTx];
 
-    if (!override.useMultiCall) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
+    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
 
-    return this.sdk.utils.writeErc7412({ calls: txs });
-    //
-    // console.log(
-    //   `Committing ${functionName} atomic order of size ${sizeInWei} (${size}) to ${resolvedMarketName} (id: ${resolvedMarketId})`,
-    // );
-    // const txHash = await this.sdk.executeTransaction(tx);
-    // console.log('Order transaction: ', txHash);
-    // return txHash;
+    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
+    if (!override.submit) return [tx];
+    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
   }
   /**
    * Wrap an underlying asset into a synth or unwrap back to the asset.
@@ -505,23 +500,12 @@ export class Spot extends Market<SpotMarketData> {
     };
 
     const txs = override.useOracleCalls ? await this._getOracleCalls([wrapTx]) : [wrapTx];
-    if (!override.useMultiCall) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
+    if (!override.useMultiCall && override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
 
-    return this.sdk.utils.writeErc7412({ calls: txs });
+    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
+    if (!override.submit) return [tx];
 
-    // const tx: CallParameters = await this.sdk.utils.writeErc7412({
-    //   contractAddress: spotMarketProxy.address,
-    //   abi: spotMarketProxy.abi,
-    //   functionName,
-    //   args: [resolvedMarketId, sizeInWei, sizeInWei],
-    // });
-
-    // if (!override.submit) return tx;
-
-    // console.log(`${functionName} of size ${sizeInWei} (${size}) to ${resolvedMarketName} (id: ${resolvedMarketId})`);
-    // const txHash = await this.sdk.executeTransaction(tx);
-    // console.log('Wrap tx hash', txHash);
-    // return txHash;
+    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
   }
 
   async _builCommitOrder({
@@ -607,9 +591,12 @@ export class Spot extends Market<SpotMarketData> {
       marketIdOrName,
     });
     const txs = override.useOracleCalls ? await this._getOracleCalls([commitTx]) : [commitTx];
-    if (!override.useMultiCall) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
+    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
 
-    return this.sdk.utils.writeErc7412({ calls: txs });
+    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
+    if (!override.submit) return [tx];
+
+    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
   }
 
   /**
@@ -653,7 +640,7 @@ export class Spot extends Market<SpotMarketData> {
     }
 
     console.log(`Order ${asyncOrderId} on market ${resolvedMarketId} is ready to be settled`);
-    const tx: Call3Value = {
+    const settleTx: Call3Value = {
       target: spotMarketProxy.address,
       callData: encodeFunctionData({
         abi: spotMarketProxy.abi,
@@ -664,10 +651,14 @@ export class Spot extends Market<SpotMarketData> {
       requireSuccess: true,
     };
 
-    const txs = override.useOracleCalls ? await this._getOracleCalls([tx]) : [tx];
-    if (!override.useMultiCall) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
+    const txs = override.useOracleCalls ? await this._getOracleCalls([settleTx]) : [settleTx];
 
-    return this.sdk.utils.writeErc7412({ calls: txs });
+    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
+
+    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
+    if (!override.submit) return [tx];
+
+    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
   }
 
   /**
@@ -689,14 +680,16 @@ export class Spot extends Market<SpotMarketData> {
 
     const synthContract = this.getSynthContract(marketIdOrName);
 
-    return {
-      to: synthContract.address,
-      data: encodeFunctionData({
-        abi: synthContract.abi,
-        functionName: 'approve',
-        args: [targetAddress as Hex, amountInWei],
-      }),
-      value: '0',
-    };
+    return [
+      {
+        to: synthContract.address,
+        data: encodeFunctionData({
+          abi: synthContract.abi,
+          functionName: 'approve',
+          args: [targetAddress as Hex, amountInWei],
+        }),
+        value: '0',
+      },
+    ];
   }
 }

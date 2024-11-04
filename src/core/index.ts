@@ -181,14 +181,13 @@ export class Core implements CoreRepository {
       value: 0n,
       requireSuccess: true,
     };
-    if (!override.useMultiCall) return [createAccountTx].map(this.sdk.utils._fromCall3ToTransactionData);
+    if (!override.useMultiCall && !override.submit)
+      return [createAccountTx].map(this.sdk.utils._fromCall3ToTransactionData);
 
-    return await this.sdk.utils.writeErc7412(
-      {
-        calls: [createAccountTx],
-      },
-      override,
-    );
+    const tx = await this.sdk.utils.writeErc7412({ calls: [createAccountTx] }, override);
+    if (!override.submit) return [tx];
+
+    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
   }
 
   public async deposit(
@@ -221,14 +220,11 @@ export class Core implements CoreRepository {
 
     const txs = override.useOracleCalls ? await this._getOracleCalls([depositTx]) : [depositTx];
 
-    if (!override.useMultiCall) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
+    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
+    const tx = await this.sdk.utils.writeErc7412({ calls: [depositTx] }, override);
+    if (!override.submit) return [tx];
 
-    return await this.sdk.utils.writeErc7412(
-      {
-        calls: [depositTx],
-      },
-      override,
-    );
+    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
   }
 
   public async withdraw(
@@ -263,14 +259,11 @@ export class Core implements CoreRepository {
 
     const txs = override.useOracleCalls ? await this._getOracleCalls([withdrawTx]) : [withdrawTx];
 
-    if (!override.useMultiCall) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
+    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
+    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
+    if (!override.submit) return [tx];
 
-    return await this.sdk.utils.writeErc7412(
-      {
-        calls: txs,
-      },
-      override,
-    );
+    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
   }
 
   public async delegateCollateral(
@@ -305,14 +298,12 @@ export class Core implements CoreRepository {
     };
 
     const txs = override.useOracleCalls ? await this._getOracleCalls([delegateCollateralTx]) : [delegateCollateralTx];
-    if (!override.useMultiCall) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
+    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
 
-    return await this.sdk.utils.writeErc7412(
-      {
-        calls: [delegateCollateralTx],
-      },
-      override,
-    );
+    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
+    if (!override.submit) return [tx];
+
+    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
   }
 
   public async mintUsd(
@@ -343,13 +334,11 @@ export class Core implements CoreRepository {
       requireSuccess: true,
     };
 
-    if (!override.useMultiCall) return [mintUsdTx].map(this.sdk.utils._fromCall3ToTransactionData);
-    return await this.sdk.utils.writeErc7412(
-      {
-        calls: [mintUsdTx],
-      },
-      override,
-    );
+    if (!override.useMultiCall && !override.submit) return [mintUsdTx].map(this.sdk.utils._fromCall3ToTransactionData);
+    const tx = await this.sdk.utils.writeErc7412({ calls: [mintUsdTx] }, override);
+    if (!override.submit) return [tx];
+
+    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
 
     //
     // console.log(

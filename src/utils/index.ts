@@ -590,4 +590,12 @@ export class Utils {
       value: calls?.value?.toString() ?? '0',
     } as TransactionData;
   }
+  _fromTransactionDataToCallData(data: TransactionData): CallParameters {
+    return {
+      account: this.sdk.accountAddress,
+      to: data.to,
+      data: data.data,
+      value: BigInt(data.value),
+    } as CallParameters;
+  }
 }
