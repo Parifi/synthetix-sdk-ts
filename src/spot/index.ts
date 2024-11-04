@@ -508,7 +508,7 @@ export class Spot extends Market<SpotMarketData> {
     return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
   }
 
-  async _builCommitOrder({
+  async _buildCommitOrder({
     side,
     size,
     slippageTolerance,
@@ -582,7 +582,7 @@ export class Spot extends Market<SpotMarketData> {
     { side, size, slippageTolerance, minAmountReceived, settlementStrategyId = 0, marketIdOrName }: CommitOrderSpot,
     override: OverrideParamsWrite = {},
   ): Promise<WriteReturnType> {
-    const commitTx = await this._builCommitOrder({
+    const commitTx = await this._buildCommitOrder({
       side,
       size,
       slippageTolerance,
