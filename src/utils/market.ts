@@ -132,8 +132,10 @@ export abstract class Market<T extends MarketData | SpotMarketData> {
   }
 
   protected async _getOracleCalls(txs: Call3Value[]) {
-    const oracleCalls = await this.sdk.utils.getMissingOracleCalls(txs);
+    const oracleCalls = await this.prepareOracleCall([]);
+    const calls = [...oracleCalls, ...txs];
+    const missingCalls = await this.sdk.utils.getMissingOracleCalls(calls);
 
-    return [...oracleCalls, ...txs];
+    return [...missingCalls, ...calls];
   }
 }
