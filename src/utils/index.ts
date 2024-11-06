@@ -535,9 +535,9 @@ export class Utils {
 
   public async getMissingOracleCalls(
     calls: Call3Value[],
+    resultCalls: Call3Value[] = [],
     { attempts = MAX_ERC7412_RETRIES }: { attempts?: number } = {},
   ): Promise<Call3Value[]> {
-    const resultCalls: Call3Value[] = [];
     try {
       const publicClient = this.sdk.getPublicClient();
       const totalValue = calls.reduce((acc, tx) => {
@@ -558,6 +558,7 @@ export class Utils {
         value: totalValue,
       };
       await publicClient.call(parsedTx);
+      return resultCalls;
     } catch (error) {
       const parsedError = parseError(error as CallExecutionError);
       const isErc7412Error =
@@ -566,12 +567,10 @@ export class Utils {
       if (!isErc7412Error) return resultCalls;
       if (isErc7412Error && !attempts) return resultCalls;
 
-      calls = await this.handleErc7412Error(error, calls);
-      resultCalls.push(calls[0]);
-      return await this.getMissingOracleCalls(calls, { attempts: attempts - 1 });
-    }
+      const data = await this.handleErc7412Error(error, calls);
 
-    return resultCalls;
+      return await this.getMissingOracleCalls(calls, [...resultCalls, data[0]], { attempts: attempts - 1 });
+    }
   }
 
   _fromCall3ToTransactionData(call: Call3Value): TransactionData {
