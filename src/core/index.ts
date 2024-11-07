@@ -339,13 +339,5 @@ export class Core implements CoreRepository {
     if (!override.submit) return [tx];
 
     return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
-
-    //
-    // console.log(
-    //   `Minting ${amount} sUSD with ${tokenAddress} collateral against pool id ${poolId} for account ${accountId}`,
-    // );
-    // const txHash = await this.sdk.executeTransaction(tx);
-    // console.log('Mint tx hash', txHash);
-    // return txHash;
   }
 }

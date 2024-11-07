@@ -1,4 +1,4 @@
-import { Address, CallParameters, Hex } from 'viem';
+import { Address, Hex } from 'viem';
 import { OverrideParamsRead, OverrideParamsWrite, WriteReturnType } from '../commonTypes';
 
 export interface CoreRepository {

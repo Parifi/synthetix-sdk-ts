@@ -16,7 +16,16 @@ import {
 import { convertEtherToWei, convertWeiToEther, generateRandomAccountId, sleep } from '../utils';
 import { Call3Value } from '../interface/contractTypes';
 import { MarketIdOrName, OverrideParamsWrite, WriteReturnType } from '../interface/commonTypes';
-import { CommitOrder, CreateIsolateOrder, GetPerpsQuote, ModifyCollateral, PayDebt } from '../interface/Perps';
+import {
+  AccountPermissions,
+  CommitOrder,
+  CreateIsolateOrder,
+  GetPermissions,
+  GetPerpsQuote,
+  GrantPermission,
+  ModifyCollateral,
+  PayDebt,
+} from '../interface/Perps';
 import { PerpsRepository } from '../interface/Perps/repositories';
 import { Market } from '../utils/market';
 
@@ -1428,5 +1437,88 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     if (!override.submit) return [tx];
 
     return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
+  }
+
+  /*
+   * @notice Grant a permission to a user for a specific account
+   * @param accountId Account ID
+   * @param permission Permission to grant
+   * @param user Address of the user to grant permission to
+   * @param override Override parameters
+   * */
+
+  public async grantPermission(
+    { accountId = this.defaultAccountId, permission, user }: GrantPermission,
+    override: OverrideParamsWrite = {},
+  ) {
+    const coreProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+
+    const grantPermissionTx: Call3Value = {
+      target: coreProxy.address,
+      callData: encodeFunctionData({
+        abi: coreProxy.abi,
+        functionName: 'grantPermission',
+        args: [accountId, permission, user],
+      }),
+      value: 0n,
+      requireSuccess: true,
+    };
+
+    const txs = override.useOracleCalls ? await this._getOracleCalls([grantPermissionTx]) : [grantPermissionTx];
+
+    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
+
+    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
+    if (!override.submit) return [tx];
+
+    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
+  }
+
+  /*
+   * @notice Revoke a permission from a user for a specific account
+   * @param accountId Account ID
+   * @param permission Permission to revoke
+   * @param user Address of the user to revoke permission from
+   * @param override Override parameters
+   * */
+
+  public async revokePermission(
+    { accountId = this.defaultAccountId, permission, user }: GrantPermission,
+    override: OverrideParamsWrite = {},
+  ) {
+    const coreProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+
+    const grantPermissionTx: Call3Value = {
+      target: coreProxy.address,
+      callData: encodeFunctionData({
+        abi: coreProxy.abi,
+        functionName: 'revokePermission',
+        args: [accountId, permission, user],
+      }),
+      value: 0n,
+      requireSuccess: true,
+    };
+
+    const txs = override.useOracleCalls ? await this._getOracleCalls([grantPermissionTx]) : [grantPermissionTx];
+
+    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
+
+    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
+    if (!override.submit) return [tx];
+
+    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
+  }
+
+  /*
+   * @notice Get account permissions
+   * @param accountId Account ID
+   * @param override Override parameters
+   * */
+
+  public async getAccountPermissions({ accountId = this.defaultAccountId }: GetPermissions) {
+    if (!accountId) throw new Error('Account ID is required to get permission');
+
+    const coreProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    return (await coreProxy.read.getAccountPermissions([accountId])) as AccountPermissions[];
   }
 }
