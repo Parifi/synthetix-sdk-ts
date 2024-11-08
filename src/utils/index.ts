@@ -538,33 +538,39 @@ export class Utils {
     resultCalls: Call3Value[] = [],
     { attempts = MAX_ERC7412_RETRIES, account }: { attempts?: number; account?: Address } = {},
   ): Promise<Call3Value[]> {
+    const publicClient = this.sdk.getPublicClient();
+    const totalValue = calls.reduce((acc, tx) => {
+      return acc + (tx.value || 0n);
+    }, 0n);
+
+    const multicallInstance = await this.sdk.contracts.getMulticallInstance();
+    const multicallData = encodeFunctionData({
+      abi: multicallInstance.abi,
+      functionName: 'aggregate3Value',
+      args: [calls],
+    });
+
+    const parsedTx = {
+      account: account || this.sdk.accountAddress,
+      to: multicallInstance.address,
+      data: multicallData,
+      value: totalValue,
+    };
+    const blockNumber = await publicClient.getBlockNumber();
+
     try {
-      const publicClient = this.sdk.getPublicClient();
-      const totalValue = calls.reduce((acc, tx) => {
-        return acc + (tx.value || 0n);
-      }, 0n);
-
-      const multicallInstance = await this.sdk.contracts.getMulticallInstance();
-      const multicallData = encodeFunctionData({
-        abi: multicallInstance.abi,
-        functionName: 'aggregate3Value',
-        args: [calls],
-      });
-
-      const parsedTx = {
-        account: account || this.sdk.accountAddress,
-        to: multicallInstance.address,
-        data: multicallData,
-        value: totalValue,
-      };
       await publicClient.call(parsedTx);
       return resultCalls;
     } catch (error) {
-      console.log('=== attempts', attempts);
+      console.log('=== attempts', { attempts, parsedTx, calls, blockNumber });
       console.log('=== error oracleCall', error);
+
       const parsedError = parseError(error as CallExecutionError);
+
       const isErc7412Error =
         parsedError.startsWith(SIG_ORACLE_DATA_REQUIRED) || parsedError.startsWith(SIG_FEE_REQUIRED);
+
+      console.log('=== parsedError multicall', parsedError);
       console.log('=== error isErc7412Error', isErc7412Error);
 
       if (!isErc7412Error) return resultCalls;

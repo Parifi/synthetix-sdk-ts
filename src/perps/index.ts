@@ -1,4 +1,4 @@
-import { encodeFunctionData, formatEther, getAbiItem, Hex, parseEther, parseUnits } from 'viem';
+import { encodeFunctionData, encodePacked, formatEther, getAbiItem, Hex, parseEther, parseUnits } from 'viem';
 import { SynthetixSdk } from '..';
 import {
   CollateralData,
@@ -11,6 +11,7 @@ import {
   OrderData,
   OrderFees,
   OrderQuote,
+  PayDebtAndWithdraw,
   SettlementStrategy,
 } from './interface';
 import { convertEtherToWei, convertWeiToEther, generateRandomAccountId, sleep } from '../utils';
@@ -1439,18 +1440,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
   }
 
-  /*
-   * @notice Grant a permission to a user for a specific account
-   * @param accountId Account ID
-   * @param permission Permission to grant
-   * @param user Address of the user to grant permission to
-   * @param override Override parameters
-   * */
-
-  public async grantPermission(
-    { accountId = this.defaultAccountId, permission, user }: GrantPermission,
-    override: OverrideParamsWrite = {},
-  ) {
+  async _buildGrantPermission({ accountId, permission, user }: GrantPermission): Promise<Call3Value> {
     const coreProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     const grantPermissionTx: Call3Value = {
@@ -1463,6 +1453,23 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       value: 0n,
       requireSuccess: true,
     };
+
+    return grantPermissionTx;
+  }
+
+  /*
+   * @notice Grant a permission to a user for a specific account
+   * @param accountId Account ID
+   * @param permission Permission to grant
+   * @param user Address of the user to grant permission to
+   * @param override Override parameters
+   * */
+
+  public async grantPermission(
+    { accountId = this.defaultAccountId, permission, user }: GrantPermission,
+    override: OverrideParamsWrite = {},
+  ) {
+    const grantPermissionTx = await this._buildGrantPermission({ accountId, permission, user });
 
     const txs = override.useOracleCalls ? await this._getOracleCalls([grantPermissionTx]) : [grantPermissionTx];
 
@@ -1520,5 +1527,67 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
     const coreProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
     return (await coreProxy.read.getAccountPermissions([accountId])) as AccountPermissions[];
+  }
+
+  public async payDebtAndWithdraw(params: PayDebtAndWithdraw, override: OverrideParamsWrite) {
+    const zapInstance = await this.sdk.contracts.getZapInstance();
+    const modifyPerpsPermission = '0x50455250535f4d4f444946595f434f4c4c41544552414c000000000000000000';
+    const { resolvedMarketId } = this.sdk.spot.resolveMarket(params.collateralIdOrName);
+
+    const fee = (await zapInstance.read.FEE_TIER()) as bigint;
+
+    const grantPermissionTx = await this._buildGrantPermission({
+      accountId: params.accountId,
+      permission: modifyPerpsPermission,
+      user: zapInstance.address,
+    });
+
+    const amount = this.formatSize(params.collateralAmount, resolvedMarketId);
+    const usdcInstance = await this.sdk.contracts.getCollateralInstance('USDC');
+    // 10%
+    const offset = 100n;
+    const amountToPay = (amount * offset) / 1000n;
+
+    const zapMinAmountOut = amount - amountToPay;
+    const unwrapMinAmountOut = amount - amountToPay;
+    const swapMaxAmountIn = amount;
+
+    const collateral = this.sdk.spot.getSynthContract(resolvedMarketId);
+
+    const unwindTx = {
+      target: zapInstance.address,
+      callData: encodeFunctionData({
+        abi: zapInstance.abi,
+        functionName: 'unwind',
+        args: [
+          params.accountId,
+          resolvedMarketId,
+          amount,
+          collateral.address,
+          encodePacked(
+            ['address', 'uint256', 'address'],
+            // usdc - fee - collateral
+            [usdcInstance.address, fee, collateral.address],
+          ),
+          zapMinAmountOut,
+          unwrapMinAmountOut,
+          swapMaxAmountIn,
+          params.receiver,
+        ],
+      }),
+      requireSuccess: true,
+      value: 0n,
+    } as Call3Value;
+
+    const txs = override.useOracleCalls
+      ? await this._getOracleCalls([grantPermissionTx, unwindTx])
+      : [grantPermissionTx, unwindTx];
+
+    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
+
+    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
+    if (!override.submit) return [tx];
+
+    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
   }
 }

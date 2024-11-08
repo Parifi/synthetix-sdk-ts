@@ -1,6 +1,7 @@
 import { SynthetixSdk } from '..';
+import { ZAP_BY_CHAIN } from './addreses/zap';
 import { dynamicImportAbi, dynamicImportMeta } from './helpers';
-import { getContract, Hex } from 'viem';
+import { erc20Abi, getContract, Hex } from 'viem';
 
 export class Contracts {
   sdk: SynthetixSdk;
@@ -185,6 +186,46 @@ export class Contracts {
       console.log(error);
       throw new Error(
         `Unsupported chain ${this.sdk.rpcConfig.chainId} or preset ${this.sdk.rpcConfig.preset} for USDProxy`,
+      );
+    }
+  }
+
+  public async getZapInstance() {
+    try {
+      const address = ZAP_BY_CHAIN[this.sdk.rpcConfig.chainId];
+      const abi = await dynamicImportAbi(this.sdk.rpcConfig.chainId, this.sdk.rpcConfig.preset, 'SynthZap');
+      const zapInstance = getContract({
+        address,
+        abi: abi,
+        client: this.sdk.publicClient,
+      });
+      return zapInstance;
+    } catch (error) {
+      console.log(error);
+      throw new Error(`Unsupported chain ${this.sdk.rpcConfig.chainId} or preset ${this.sdk.rpcConfig.preset} for Zap`);
+    }
+  }
+
+  public async getCollateralInstance(symbol: string) {
+    try {
+      symbol = symbol.toUpperCase();
+      const meta = await dynamicImportMeta(this.sdk.rpcConfig.chainId, this.sdk.rpcConfig.preset);
+      // @ts-expect-error - TS doesn't know that the key exists
+      const address = meta.contracts[`CollateralToken_${symbol}`];
+      if (!address) {
+        throw new Error(`CollateralToken_${symbol} not found in meta`);
+      }
+
+      const collateralInstance = getContract({
+        address,
+        abi: erc20Abi,
+        client: this.sdk.publicClient,
+      });
+      return collateralInstance;
+    } catch (error) {
+      console.log(error);
+      throw new Error(
+        `Unsupported chain ${this.sdk.rpcConfig.chainId} or preset ${this.sdk.rpcConfig.preset} for CollateralToken_${symbol}`,
       );
     }
   }
