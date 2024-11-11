@@ -155,9 +155,7 @@ export class Utils {
 
       const signedRequiredData = await this.fetchOracleUpdateData(oracleQuery);
       const dataVerificationTx = this.generateDataVerificationTx(oracleAddress, signedRequiredData);
-      dataVerificationTx.requireSuccess = false;
-      dataVerificationTx.value = 500n;
-      calls.unshift(dataVerificationTx);
+      calls.unshift({ ...dataVerificationTx });
 
       return calls;
     }
@@ -184,8 +182,8 @@ export class Utils {
         functionName: 'fulfillOracleQuery',
         args: [signedRequiredData],
       }),
-      value: 0n,
-      requireSuccess: true,
+      value: 500n,
+      requireSuccess: false,
     };
     return priceUpdateCall;
   }

@@ -1467,11 +1467,11 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
   public async grantPermission(
     { accountId = this.defaultAccountId, permission, user }: GrantPermission,
-    override: OverrideParamsWrite = {},
+    override: Omit<OverrideParamsWrite, 'useOracleCalls'> = {},
   ) {
     const grantPermissionTx = await this._buildGrantPermission({ accountId, permission, user });
 
-    const txs = override.useOracleCalls ? await this._getOracleCalls([grantPermissionTx]) : [grantPermissionTx];
+    const txs = [grantPermissionTx];
 
     if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
 
@@ -1491,7 +1491,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
   public async revokePermission(
     { accountId = this.defaultAccountId, permission, user }: GrantPermission,
-    override: OverrideParamsWrite = {},
+    override: Omit<OverrideParamsWrite, 'useOracleCalls'> = {},
   ) {
     const coreProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
@@ -1506,7 +1506,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       requireSuccess: true,
     };
 
-    const txs = override.useOracleCalls ? await this._getOracleCalls([grantPermissionTx]) : [grantPermissionTx];
+    const txs = [grantPermissionTx];
 
     if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
 
