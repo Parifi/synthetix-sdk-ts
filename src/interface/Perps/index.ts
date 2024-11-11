@@ -1,9 +1,10 @@
 import { Address } from 'viem';
 import { MarketIdOrName } from '../commonTypes';
+import { PERPS_PERMISSIONS } from '../../constants/perpsPermissions';
 
 export interface GrantPermission {
   user: Address;
-  permission: string;
+  permission: PERPS_PERMISSIONS;
   accountId?: bigint;
 }
 export type GetPermissions = Omit<GrantPermission, 'permission' | 'user'>;

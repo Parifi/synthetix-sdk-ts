@@ -29,6 +29,7 @@ import {
 } from '../interface/Perps';
 import { PerpsRepository } from '../interface/Perps/repositories';
 import { Market } from '../utils/market';
+import { PERPS_PERMISSIONS } from '../constants/perpsPermissions';
 
 /**
  * Class for interacting with Synthetix Perps V3 contracts
@@ -1531,7 +1532,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
   public async payDebtAndWithdraw(params: PayDebtAndWithdraw, override: OverrideParamsWrite) {
     const zapInstance = await this.sdk.contracts.getZapInstance();
-    const modifyPerpsPermission = '0x50455250535f4d4f444946595f434f4c4c41544552414c000000000000000000';
+    const modifyPerpsPermission = PERPS_PERMISSIONS.PERPS_MODIFY_COLLATERAL;
     const { resolvedMarketId } = this.sdk.spot.resolveMarket(params.collateralIdOrName);
 
     const fee = (await zapInstance.read.FEE_TIER()) as bigint;
