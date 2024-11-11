@@ -1545,8 +1545,9 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
     const amount = this.formatSize(params.collateralAmount, resolvedMarketId);
     const usdcInstance = await this.sdk.contracts.getCollateralInstance('USDC');
-    // 10%
-    const offset = 100n;
+
+    // 5%
+    const offset = 50n;
     const amountToPay = (amount * offset) / 1000n;
 
     const zapMinAmountOut = amount - amountToPay;
