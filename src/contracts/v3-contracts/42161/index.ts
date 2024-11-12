@@ -59,6 +59,7 @@ import * as MintableTokensMain from '@synthetixio/v3-contracts/42161-main/mintab
 import * as RewardsDistributorsMain from '@synthetixio/v3-contracts/42161-main/rewardsDistributors.json';
 import * as SynthTokensMain from '@synthetixio/v3-contracts/42161-main/synthTokens.json';
 import * as SystemTokenMain from '@synthetixio/v3-contracts/42161-main/systemToken.json';
+import { ZAP_ABI } from '../../abis/zap';
 
 export const metaMappingArb = {
   arbthetix: (arbthetixMeta as any).default, // Access the default export for JSON data
@@ -123,5 +124,6 @@ export const abiMappingArb = {
     mintableTokens: (MintableTokensMain as any).default,
     rewardsDistributors: (RewardsDistributorsMain as any).default,
     synthTokens: (SynthTokensMain as any).default,
+    SynthZap: ZAP_ABI,
   },
 };

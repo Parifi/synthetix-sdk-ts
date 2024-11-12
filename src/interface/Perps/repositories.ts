@@ -1,4 +1,13 @@
-import { CommitOrder, CreateIsolateOrder, GetPerpsQuote, ModifyCollateral, PayDebt } from '.';
+import {
+  AccountPermissions,
+  CommitOrder,
+  CreateIsolateOrder,
+  GetPermissions,
+  GetPerpsQuote,
+  GrantPermission,
+  ModifyCollateral,
+  PayDebt,
+} from '.';
 import {
   CollateralData,
   FundingParameters,
@@ -66,4 +75,6 @@ export interface PerpsRepository {
   liquidate(accountId?: bigint, override?: OverrideParamsWrite): Promise<WriteReturnType | number>;
   settleOrder(accountId?: bigint, override?: OverrideParamsWrite): Promise<WriteReturnType>;
   createIsolatedAccountOrder(data: CreateIsolateOrder, override?: OverrideParamsWrite): Promise<WriteReturnType>;
+  grantPermission(data: GrantPermission, override?: OverrideParamsWrite): Promise<WriteReturnType>;
+  getAccountPermissions(data: GetPermissions): Promise<AccountPermissions[]>;
 }

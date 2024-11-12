@@ -19,7 +19,13 @@ import { IERC7412Abi } from '../contracts/abis/IERC7412';
 import { Call3Value, Result } from '../interface/contractTypes';
 import { parseError } from './parseError';
 import { MAX_ERC7412_RETRIES, SIG_FEE_REQUIRED, SIG_ORACLE_DATA_REQUIRED } from '../constants';
-import { OverrideParamsWrite, TransactionData, WriteContractParams, WriteErc7412 } from '../interface/commonTypes';
+import {
+  OverrideParamsWrite,
+  TransactionData,
+  WriteContractParams,
+  WriteErc7412,
+  WriteReturnType,
+} from '../interface/commonTypes';
 /**
  * Utility class
  *
@@ -155,9 +161,7 @@ export class Utils {
 
       const signedRequiredData = await this.fetchOracleUpdateData(oracleQuery);
       const dataVerificationTx = this.generateDataVerificationTx(oracleAddress, signedRequiredData);
-      dataVerificationTx.requireSuccess = false;
-      dataVerificationTx.value = 500n;
-      calls.unshift(dataVerificationTx);
+      calls.unshift({ ...dataVerificationTx });
 
       return calls;
     }
@@ -184,8 +188,8 @@ export class Utils {
         functionName: 'fulfillOracleQuery',
         args: [signedRequiredData],
       }),
-      value: 0n,
-      requireSuccess: true,
+      value: 500n,
+      requireSuccess: false,
     };
     return priceUpdateCall;
   }
@@ -536,40 +540,49 @@ export class Utils {
   public async getMissingOracleCalls(
     calls: Call3Value[],
     resultCalls: Call3Value[] = [],
-    { attempts = MAX_ERC7412_RETRIES }: { attempts?: number } = {},
+    { attempts = MAX_ERC7412_RETRIES, account }: { attempts?: number; account?: Address } = {},
   ): Promise<Call3Value[]> {
+    const publicClient = this.sdk.getPublicClient();
+    const totalValue = calls.reduce((acc, tx) => {
+      return acc + (tx.value || 0n);
+    }, 0n);
+
+    const multicallInstance = await this.sdk.contracts.getMulticallInstance();
+    const multicallData = encodeFunctionData({
+      abi: multicallInstance.abi,
+      functionName: 'aggregate3Value',
+      args: [calls],
+    });
+
+    const parsedTx = {
+      account: account || this.sdk.accountAddress,
+      to: multicallInstance.address,
+      data: multicallData,
+      value: totalValue,
+    };
+    const blockNumber = await publicClient.getBlockNumber();
+
     try {
-      const publicClient = this.sdk.getPublicClient();
-      const totalValue = calls.reduce((acc, tx) => {
-        return acc + (tx.value || 0n);
-      }, 0n);
-
-      const multicallInstance = await this.sdk.contracts.getMulticallInstance();
-      const multicallData = encodeFunctionData({
-        abi: multicallInstance.abi,
-        functionName: 'aggregate3Value',
-        args: [calls],
-      });
-
-      const parsedTx = {
-        account: this.sdk.accountAddress,
-        to: multicallInstance.address,
-        data: multicallData,
-        value: totalValue,
-      };
       await publicClient.call(parsedTx);
       return resultCalls;
     } catch (error) {
+      console.log('=== attempts', { attempts, parsedTx, calls, blockNumber });
+      console.log('=== error oracleCall', error);
+
       const parsedError = parseError(error as CallExecutionError);
+
       const isErc7412Error =
         parsedError.startsWith(SIG_ORACLE_DATA_REQUIRED) || parsedError.startsWith(SIG_FEE_REQUIRED);
+
+      console.log('=== parsedError multicall', parsedError);
+      console.log('=== error isErc7412Error', isErc7412Error);
 
       if (!isErc7412Error) return resultCalls;
       if (isErc7412Error && !attempts) return resultCalls;
 
       const data = await this.handleErc7412Error(error, calls);
 
-      return await this.getMissingOracleCalls(calls, [...resultCalls, data[0]], { attempts: attempts - 1 });
+      return await this.getMissingOracleCalls(calls, [...resultCalls, data[0]], { attempts: attempts - 1, account });
     }
   }
 
@@ -596,5 +609,18 @@ export class Utils {
       data: data.data,
       value: BigInt(data.value || 0),
     } as CallParameters;
+  }
+
+  async processTransactions(data: Call3Value[], override: OverrideParamsWrite): Promise<WriteReturnType> {
+    const useOracleCall = override.useOracleCalls ?? true;
+    const oracleCalls = useOracleCall ? await this.getMissingOracleCalls(data) : [];
+
+    const txs = [...oracleCalls, ...data];
+    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
+
+    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
+    if (!override.submit) return [tx];
+
+    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
   }
 }

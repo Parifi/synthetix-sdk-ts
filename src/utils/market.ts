@@ -123,19 +123,9 @@ export abstract class Market<T extends MarketData | SpotMarketData> {
 
     // set `requireSuccess` to false in this case, since sometimes
     // the wrapper will return an error if the price has already been updated
-    dataVerificationTx.requireSuccess = false;
 
     // @note A better approach would be to fetch the priceUpdateFee for tx dynamically
     // from the Pyth contract instead of using arbitrary values for pyth price update fees
-    dataVerificationTx.value = 500n;
-    return [dataVerificationTx];
-  }
-
-  protected async _getOracleCalls(txs: Call3Value[]) {
-    const oracleCalls = await this.prepareOracleCall([]);
-    const calls = [...oracleCalls, ...txs];
-    const missingCalls = await this.sdk.utils.getMissingOracleCalls(calls);
-
-    return [...missingCalls, ...calls];
+    return [{ ...dataVerificationTx, value: 500n, requireSuccess: false }];
   }
 }

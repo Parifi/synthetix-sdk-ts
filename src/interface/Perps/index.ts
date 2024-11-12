@@ -1,4 +1,24 @@
+import { Address } from 'viem';
 import { MarketIdOrName } from '../commonTypes';
+import { PERPS_PERMISSIONS } from '../../constants/perpsPermissions';
+
+export interface GrantPermission {
+  user: Address;
+  permission: PERPS_PERMISSIONS;
+  accountId?: bigint;
+}
+export type GetPermissions = Omit<GrantPermission, 'permission' | 'user'>;
+
+export type AccountPermissions = {
+  /**
+   * @dev The address for which all the permissions are granted.
+   */
+  user: string;
+  /**
+   * @dev The array of permissions given to the associated address.
+   */
+  permissions: string[];
+};
 
 export type CommitOrder = {
   size: number;

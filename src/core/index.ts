@@ -20,12 +20,6 @@ export class Core implements CoreRepository {
     this.accountIds = [];
   }
 
-  protected async _getOracleCalls(txs: Call3Value[]) {
-    const oracleCalls = await this.sdk.utils.getMissingOracleCalls(txs);
-
-    return [...oracleCalls, ...txs];
-  }
-
   async initCore() {
     await this.getAccountIds();
   }
@@ -163,7 +157,7 @@ export class Core implements CoreRepository {
 
   public async createAccount(
     accountId?: bigint,
-    override: OverrideParamsWrite = { shouldRevertOnTxFailure: false },
+    override: Omit<OverrideParamsWrite, 'useOracleCalls'> = { shouldRevertOnTxFailure: false },
   ): Promise<WriteReturnType> {
     const txArgs = [];
     if (accountId != undefined) {
@@ -181,13 +175,8 @@ export class Core implements CoreRepository {
       value: 0n,
       requireSuccess: true,
     };
-    if (!override.useMultiCall && !override.submit)
-      return [createAccountTx].map(this.sdk.utils._fromCall3ToTransactionData);
-
-    const tx = await this.sdk.utils.writeErc7412({ calls: [createAccountTx] }, override);
-    if (!override.submit) return [tx];
-
-    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
+    const txs = [createAccountTx];
+    return this.sdk.utils.processTransactions(txs, { ...override, useOracleCalls: false });
   }
 
   public async deposit(
@@ -218,13 +207,8 @@ export class Core implements CoreRepository {
       requireSuccess: true,
     };
 
-    const txs = override.useOracleCalls ? await this._getOracleCalls([depositTx]) : [depositTx];
-
-    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
-    const tx = await this.sdk.utils.writeErc7412({ calls: [depositTx] }, override);
-    if (!override.submit) return [tx];
-
-    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
+    const txs = [depositTx];
+    return this.sdk.utils.processTransactions(txs, override);
   }
 
   public async withdraw(
@@ -257,13 +241,8 @@ export class Core implements CoreRepository {
       requireSuccess: true,
     };
 
-    const txs = override.useOracleCalls ? await this._getOracleCalls([withdrawTx]) : [withdrawTx];
-
-    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
-    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
-    if (!override.submit) return [tx];
-
-    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
+    const txs = [withdrawTx];
+    return this.sdk.utils.processTransactions(txs, override);
   }
 
   public async delegateCollateral(
@@ -297,13 +276,8 @@ export class Core implements CoreRepository {
       requireSuccess: true,
     };
 
-    const txs = override.useOracleCalls ? await this._getOracleCalls([delegateCollateralTx]) : [delegateCollateralTx];
-    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
-
-    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
-    if (!override.submit) return [tx];
-
-    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
+    const txs = [delegateCollateralTx];
+    return this.sdk.utils.processTransactions(txs, override);
   }
 
   public async mintUsd(
@@ -334,18 +308,7 @@ export class Core implements CoreRepository {
       requireSuccess: true,
     };
 
-    if (!override.useMultiCall && !override.submit) return [mintUsdTx].map(this.sdk.utils._fromCall3ToTransactionData);
-    const tx = await this.sdk.utils.writeErc7412({ calls: [mintUsdTx] }, override);
-    if (!override.submit) return [tx];
-
-    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
-
-    //
-    // console.log(
-    //   `Minting ${amount} sUSD with ${tokenAddress} collateral against pool id ${poolId} for account ${accountId}`,
-    // );
-    // const txHash = await this.sdk.executeTransaction(tx);
-    // console.log('Mint tx hash', txHash);
-    // return txHash;
+    const txs = [mintUsdTx];
+    return this.sdk.utils.processTransactions(txs, override);
   }
 }

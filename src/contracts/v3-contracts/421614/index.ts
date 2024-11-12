@@ -72,6 +72,7 @@ import * as RewardsDistributor_1_WETH_sETHMain from '@synthetixio/v3-contracts/4
 import * as SynthDAITokenMain from '@synthetixio/v3-contracts/421614-main/SynthDAIToken.json';
 import * as SynthToken_sSOLMain from '@synthetixio/v3-contracts/421614-main/SynthToken_sSOL.json';
 import * as SynthToken_sUSDeMain from '@synthetixio/v3-contracts/421614-main/SynthToken_sUSDe.json';
+import { ZAP_ABI } from '../../abis/zap';
 
 export const metaMappingArbSepolia = {
   main: (mainMeta as any).default, // Access the default export for JSON data
@@ -151,5 +152,6 @@ export const abiMappingArbSepolia = {
     SynthDAIToken: (SynthDAITokenMain as any).default,
     SynthToken_sSOL: (SynthToken_sSOLMain as any).default,
     SynthToken_sUSDe: (SynthToken_sUSDeMain as any).default,
+    SynthZap: ZAP_ABI,
   },
 };

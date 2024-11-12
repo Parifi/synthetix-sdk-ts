@@ -1,3 +1,12 @@
+import { Address } from 'viem';
+
+export type PayDebtAndWithdraw = {
+  accountId?: bigint;
+  collateralIdOrName: number | string;
+  collateralAmount: number;
+  receiver: Address;
+};
+
 export interface MarketSummary {
   marketId?: number;
   marketName?: string;
