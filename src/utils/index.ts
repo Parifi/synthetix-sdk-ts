@@ -19,7 +19,13 @@ import { IERC7412Abi } from '../contracts/abis/IERC7412';
 import { Call3Value, Result } from '../interface/contractTypes';
 import { parseError } from './parseError';
 import { MAX_ERC7412_RETRIES, SIG_FEE_REQUIRED, SIG_ORACLE_DATA_REQUIRED } from '../constants';
-import { OverrideParamsWrite, TransactionData, WriteContractParams, WriteErc7412 } from '../interface/commonTypes';
+import {
+  OverrideParamsWrite,
+  TransactionData,
+  WriteContractParams,
+  WriteErc7412,
+  WriteReturnType,
+} from '../interface/commonTypes';
 /**
  * Utility class
  *
@@ -603,5 +609,18 @@ export class Utils {
       data: data.data,
       value: BigInt(data.value || 0),
     } as CallParameters;
+  }
+
+  async processTransactions(data: Call3Value[], override: OverrideParamsWrite): Promise<WriteReturnType> {
+    const useOracleCall = override.useOracleCalls ?? true;
+    const oracleCalls = useOracleCall ? await this.getMissingOracleCalls(data) : [];
+
+    const txs = [...oracleCalls, ...data];
+    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
+
+    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
+    if (!override.submit) return [tx];
+
+    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
   }
 }

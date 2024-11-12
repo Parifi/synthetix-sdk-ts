@@ -128,12 +128,4 @@ export abstract class Market<T extends MarketData | SpotMarketData> {
     // from the Pyth contract instead of using arbitrary values for pyth price update fees
     return [{ ...dataVerificationTx, value: 500n, requireSuccess: false }];
   }
-
-  protected async _getOracleCalls(txs: Call3Value[]) {
-    const oracleCalls = await this.prepareOracleCall([]);
-    const calls = [...oracleCalls, ...txs];
-    const missingCalls = await this.sdk.utils.getMissingOracleCalls(calls);
-
-    return [...missingCalls, ...calls];
-  }
 }

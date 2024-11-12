@@ -1147,14 +1147,9 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    */
   public async commitOrder(data: CommitOrder, override: OverrideParamsWrite = {}): Promise<WriteReturnType> {
     const builtTx = await this._buildCommitOrder(data);
-    const txs = override.useOracleCalls ? await this._getOracleCalls([builtTx]) : [builtTx];
+    const txs = [builtTx];
 
-    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
-
-    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
-    if (!override.submit) return [tx];
-
-    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
+    return this.sdk.utils.processTransactions(txs, { ...override });
   }
   /**
    * @name modifyCollateral
@@ -1174,20 +1169,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       collateralMarketIdOrName,
       accountId,
     });
-
-    const txs = override.useOracleCalls ? await this._getOracleCalls([processedTx]) : [processedTx];
-
-    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
-
-    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
-    if (!override.submit) return [tx];
-
-    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
-
-    // if (!override.submit) return tx;
-    // const txHash = await this.sdk.executeTransaction(tx);
-    // console.log('Modify collateral tx: ', txHash);
-    // return txHash;
+    const txs = [processedTx];
+    return this.sdk.utils.processTransactions(txs, { ...override });
   }
   /**
    * @name payDebt
@@ -1222,20 +1205,9 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       value: 0n,
       requireSuccess: true,
     };
+    const txs = [rawTx];
 
-    const txs = override.useOracleCalls ? await this._getOracleCalls([rawTx]) : [rawTx];
-    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
-
-    const tx = await this.sdk.utils.writeErc7412(
-      {
-        calls: txs,
-      },
-      override,
-    );
-
-    if (!override.submit) return [tx];
-
-    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
+    return this.sdk.utils.processTransactions(txs, { ...override });
   }
   /**
    * Submit a liquidation for an account, or static call the liquidation function to fetch
@@ -1272,20 +1244,9 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       requireSuccess: true,
     };
 
-    const txs = override.useOracleCalls ? await this._getOracleCalls([rawTx]) : [rawTx];
+    const txs = [rawTx];
 
-    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
-
-    const tx = await this.sdk.utils.writeErc7412(
-      {
-        calls: txs,
-      },
-      override,
-    );
-
-    if (!override.submit) return [tx];
-
-    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
+    return this.sdk.utils.processTransactions(txs, { ...override });
   }
   /**
    * @name settleOrder
@@ -1328,14 +1289,9 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       }),
       value: 0n,
     };
+    const txs = [settleTx];
 
-    const txs = override.useOracleCalls ? await this._getOracleCalls([settleTx]) : [settleTx];
-
-    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
-    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
-    if (!override.submit) return [tx];
-
-    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
+    return this.sdk.utils.processTransactions(txs, { ...override });
   }
 
   /**
@@ -1374,14 +1330,9 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     override: Omit<OverrideParamsWrite, 'useOracleCalls'> = {},
   ): Promise<WriteReturnType> {
     const processedTx = await this._buildCreateAccount(accountId);
+    const txs = [processedTx];
 
-    if (!override.useMultiCall && !override.submit)
-      return [processedTx].map(this.sdk.utils._fromCall3ToTransactionData);
-
-    const tx = await this.sdk.utils.writeErc7412({ calls: [processedTx] }, override);
-    if (!override.submit) return [tx];
-
-    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
+    return this.sdk.utils.processTransactions(txs, { ...override });
   }
 
   /**
@@ -1431,14 +1382,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     });
 
     const rawTxs = [createAccountCall, wrapTxs, modifyCollateralCall, commitOrderCall].flat();
-    const txs = override.useOracleCalls ? await this._getOracleCalls(rawTxs) : rawTxs;
 
-    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
-
-    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
-    if (!override.submit) return [tx];
-
-    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
+    return this.sdk.utils.processTransactions(rawTxs, override);
   }
 
   async _buildGrantPermission({ accountId, permission, user }: GrantPermission): Promise<Call3Value> {
@@ -1474,12 +1419,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
     const txs = [grantPermissionTx];
 
-    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
-
-    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
-    if (!override.submit) return [tx];
-
-    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
+    return this.sdk.utils.processTransactions(txs, { ...override, useOracleCalls: false });
   }
 
   /*
@@ -1509,12 +1449,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
     const txs = [grantPermissionTx];
 
-    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
-
-    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
-    if (!override.submit) return [tx];
-
-    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
+    return this.sdk.utils.processTransactions(txs, { ...override, useOracleCalls: false });
   }
 
   /*
@@ -1580,16 +1515,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       requireSuccess: true,
       value: 0n,
     } as Call3Value;
-
-    const txs = override.useOracleCalls
-      ? await this._getOracleCalls([grantPermissionTx, unwindTx])
-      : [grantPermissionTx, unwindTx];
-
-    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
-
-    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
-    if (!override.submit) return [tx];
-
-    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
+    const txs = [grantPermissionTx, unwindTx];
+    return this.sdk.utils.processTransactions(txs, { ...override });
   }
 }

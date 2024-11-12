@@ -458,13 +458,9 @@ export class Spot extends Market<SpotMarketData> {
       marketIdOrName,
     });
 
-    const txs = override.useOracleCalls ? await this._getOracleCalls([atomicOrderTx]) : [atomicOrderTx];
+    const txs = [atomicOrderTx];
 
-    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
-
-    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
-    if (!override.submit) return [tx];
-    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
+    return this.sdk.utils.processTransactions(txs, { ...override });
   }
   public async _buildWrap({ size, marketIdOrName }: Wrap): Promise<Call3Value> {
     const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
@@ -503,13 +499,9 @@ export class Spot extends Market<SpotMarketData> {
    */
   public async wrap({ size, marketIdOrName }: Wrap, override: OverrideParamsWrite = {}): Promise<WriteReturnType> {
     const wrapTx = await this._buildWrap({ size, marketIdOrName });
-    const txs = override.useOracleCalls ? await this._getOracleCalls([wrapTx]) : [wrapTx];
-    if (!override.useMultiCall && override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
 
-    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
-    if (!override.submit) return [tx];
-
-    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
+    const txs = [wrapTx];
+    return this.sdk.utils.processTransactions(txs, { ...override });
   }
 
   async _buildCommitOrder({
@@ -594,13 +586,8 @@ export class Spot extends Market<SpotMarketData> {
       settlementStrategyId,
       marketIdOrName,
     });
-    const txs = override.useOracleCalls ? await this._getOracleCalls([commitTx]) : [commitTx];
-    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
-
-    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
-    if (!override.submit) return [tx];
-
-    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
+    const txs = [commitTx];
+    return this.sdk.utils.processTransactions(txs, { ...override });
   }
 
   /**
@@ -654,15 +641,8 @@ export class Spot extends Market<SpotMarketData> {
       value: 0n,
       requireSuccess: true,
     };
-
-    const txs = override.useOracleCalls ? await this._getOracleCalls([settleTx]) : [settleTx];
-
-    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
-
-    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
-    if (!override.submit) return [tx];
-
-    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
+    const txs = [settleTx];
+    return this.sdk.utils.processTransactions(txs, { ...override });
   }
 
   /**
@@ -678,7 +658,7 @@ export class Spot extends Market<SpotMarketData> {
    */
   public async approve(
     { targetAddress, amount = 0, marketIdOrName }: Approve,
-    override: OverrideParamsWrite = {},
+    override: Omit<OverrideParamsWrite, 'useOracleCalls'> = {},
   ): Promise<WriteReturnType> {
     let amountInWei: bigint = maxUint256;
     if (amount) {
@@ -700,10 +680,6 @@ export class Spot extends Market<SpotMarketData> {
       },
     ];
 
-    if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
-
-    const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
-    if (!override.submit) return [tx];
-    return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
+    return this.sdk.utils.processTransactions(txs, { ...override, useOracleCalls: false });
   }
 }
