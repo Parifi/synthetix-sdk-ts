@@ -12,6 +12,7 @@ export type OverrideParamsWrite = {
   useMultiCall?: boolean;
   useOracleCalls?: boolean;
   submit?: boolean;
+  account?: Address;
   // staticCall?: boolean;
   // txDelay?: number;
   // maxTries?: number;

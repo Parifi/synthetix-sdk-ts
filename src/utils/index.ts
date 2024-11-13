@@ -425,7 +425,7 @@ export class Utils {
     }
 
     const finalTx = {
-      account: this.sdk.accountAddress,
+      account: override.account || this.sdk.accountAddress,
       to: multicallInstance.address,
       data: multicallData,
       value: totalValue,
@@ -566,7 +566,7 @@ export class Utils {
       await publicClient.call(parsedTx);
       return resultCalls;
     } catch (error) {
-      console.log('=== attempts', { attempts, parsedTx, calls, blockNumber });
+      console.log('=== attempts', { attempts, parsedTx, calls, blockNumber, resultCalls });
       console.log('=== error oracleCall', error);
 
       const parsedError = parseError(error as CallExecutionError);
