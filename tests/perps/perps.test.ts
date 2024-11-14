@@ -203,7 +203,7 @@ describe('Perps', () => {
     }
   });
 
-  it.only('should return liquidation price for an account', async () => {
+  it('should return liquidation price for an account', async () => {
     const accountsIds = await sdk.perps.getAccountIds();
     console.log('=== accountsIds', accountsIds);
     const accountId = accountsIds[0];
@@ -216,5 +216,51 @@ describe('Perps', () => {
     const liquidationPrice = await sdk.perps.getApproxLiquidationPrice(marketId, accountId);
     console.log('liquidationPrice', liquidationPrice);
     expect(liquidationPrice).not.toBe(0);
+  });
+
+  it.only('should build an isolated account order', async () => {
+    // const initialSusdBalance = await sdk.getSusdBalance();
+    const collateralAmount = 70; // 70 usdc.Min 62.5 USD collateral is required
+    await sdk.init();
+    // const submit = false;
+
+    // if (initialSusdBalance == 0 || initialSusdBalance < collateralAmount) {
+    //   console.log('USD Token balance of address is less than collateralAmount');
+    //   return;
+    // }
+
+    // const marketProxy = await sdk.contracts.getPerpsMarketProxyInstance();
+    // const tx = await sdk.spot.approve(
+    //   {
+    //     targetAddress: marketProxy.address,
+    //     amount: collateralAmount,
+    //     marketIdOrName: 'sUSDe',
+    //   },
+    //   { submit: true },
+    // );
+    // console.log('=== tx', tx);
+
+    const collateralMarketName = 'sUSDe';
+    console.log('=== sdk.spot.marketsByName', sdk.spot.marketsByName);
+    const collateralMarketId = sdk.spot.marketsByName.get(collateralMarketName)?.marketId ?? 0;
+    const marketName = 'Ethereum';
+    const orderSize = 0.01; // 0.01 ETH
+
+    const response = await sdk.perps.createIsolatedAccountOrder(
+      {
+        collateralAmount,
+        size: orderSize,
+        collateralMarketId,
+        marketIdOrName: marketName,
+        settlementStrategyId: 0,
+        desiredFillPrice: 3550,
+      },
+      { useMultiCall: true, useOracleCalls: true, shouldRevertOnTxFailure: false },
+    );
+    console.log('=== response', JSON.stringify(response));
+
+    // if (submit) {
+    // console.log(`Transaction hash and account details: ${response}`);
+    // }
   });
 });
