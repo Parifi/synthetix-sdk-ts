@@ -172,6 +172,7 @@ export class Utils {
     if (err?.errorName === 'Errors') {
       const oracleCalls = err.args[0] as Hex[];
       const resolvedCalls = [];
+      // TODO: add batch logic to made this encode in parallel
       for (const oracleCall of oracleCalls) {
         const resolvedCall = await this.handleErc7412Error(oracleCall);
         resolvedCalls.push(resolvedCall);
