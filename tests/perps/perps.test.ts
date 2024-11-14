@@ -221,7 +221,7 @@ describe('Perps', () => {
   it.only('should build an isolated account order', async () => {
     // const initialSusdBalance = await sdk.getSusdBalance();
     const collateralAmount = 70; // 70 usdc.Min 62.5 USD collateral is required
-    await sdk.init();
+    // await sdk.init();
     // const submit = false;
 
     // if (initialSusdBalance == 0 || initialSusdBalance < collateralAmount) {

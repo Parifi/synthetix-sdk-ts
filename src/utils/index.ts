@@ -336,6 +336,7 @@ export class Utils {
     };
 
     const response = await publicClient.call(finalTx);
+    console.log('=== response', response);
 
     const multicallResult: Result[] = this.decodeResponse(
       multicallInstance.abi,
@@ -491,10 +492,10 @@ export class Utils {
   public async getMissingOracleCalls(
     calls: Call3Value[],
     oracleCalls: Call3Value[] = [],
-    { attempts = MAX_ERC7412_RETRIES, account }: { attempts?: number; account?: Address } = {},
+    { account }: { account?: Address } = {},
   ): Promise<Call3Value[]> {
     const publicClient = this.sdk.getPublicClient();
-    const totalValue = calls.reduce((acc, tx) => {
+    const totalValue = oracleCalls.reduce((acc, tx) => {
       return acc + (tx.value || 0n);
     }, 0n);
 
@@ -518,26 +519,21 @@ export class Utils {
       return oracleCalls;
     } catch (error) {
       const parsedError = parseError(error as CallExecutionError);
+      const shouldRetry = this.shouldRetryLogic(error);
 
-      const isErc7412Error = this.isErc7412Error(parsedError);
-
-      console.log('=== attempts', {
-        attempts,
+      console.log('=== data', {
+        shouldRetry,
         parsedTx,
         calls,
         blockNumber,
         oracleCalls,
         error,
-        parsedError,
-        isErc7412Error,
       });
-      //
-      if (!isErc7412Error) return oracleCalls;
-      if (isErc7412Error && !attempts) return oracleCalls;
 
+      if (!shouldRetry) return oracleCalls;
       const data = await this.handleErc7412Error(parsedError);
 
-      return await this.getMissingOracleCalls(calls, [...oracleCalls, ...data], { attempts: attempts - 1, account });
+      return await this.getMissingOracleCalls(calls, [...oracleCalls, ...data], { account });
     }
   }
 
@@ -579,20 +575,22 @@ export class Utils {
     return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
   }
 
-  handleRetryLogic(error: unknown, override: OverrideParamsWrite, totalRetries: number = MAX_ERC7412_RETRIES): boolean {
+  shouldRetryLogic(error: unknown, totalRetries: number = MAX_ERC7412_RETRIES): boolean {
     totalRetries -= 1;
-    if (totalRetries <= MAX_ERC7412_RETRIES) {
-      if (override.shouldRevertOnTxFailure)
-        throw new Error('MAX_ERC7412_RETRIES retries reached, tx failed after multiple attempts');
+    const parsedError = parseError(error as CallExecutionError);
+    const isErc7412Error = this.isErc7412Error(parsedError);
+
+    console.log('=== parsedError', {
+      totalRetries,
+      parsedError,
+      isErc7412Error,
+    });
+
+    if (!totalRetries) {
       return false;
     }
 
-    const parsedError = parseError(error as CallExecutionError);
-
-    const isErc7412Error = this.isErc7412Error(parsedError);
-
     if (!isErc7412Error) {
-      if (override.shouldRevertOnTxFailure) throw new Error('Error is not related to Oracle data');
       return false;
     }
 
