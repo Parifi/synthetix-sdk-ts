@@ -321,7 +321,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       indexPrice: bigint;
     }
 
-    const oracleCalls = await this.prepareOracleCall([resolvedMarketId]);
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     const interestRate = await this.sdk.utils.callErc7412({
@@ -330,7 +329,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       abi: perpsMarketProxy.abi,
       functionName: 'interestRate',
       args: [],
-      calls: oracleCalls,
     });
 
     const marketSummaryResponse: MarketSummaryResponse = (await this.sdk.utils.callErc7412({
@@ -338,7 +336,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       abi: perpsMarketProxy.abi,
       functionName: 'getMarketSummary',
       args: [resolvedMarketId],
-      calls: oracleCalls,
     })) as MarketSummaryResponse;
 
     console.log('marketSummaryResponse', marketSummaryResponse);

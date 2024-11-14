@@ -172,7 +172,6 @@ export class Utils {
     if (err?.errorName === 'Errors') {
       const oracleCalls = err.args[0] as Hex[];
       const resolvedCalls = [];
-      console.log('=== oracleError', oracleCalls.length);
       for (const oracleCall of oracleCalls) {
         const resolvedCall = await this.handleErc7412Error(oracleCall);
         resolvedCalls.push(resolvedCall);
@@ -250,7 +249,7 @@ export class Utils {
       args: [[...oracleCalls, ...calls]],
     });
 
-    const totalValue = calls.reduce((acc, tx) => {
+    const totalValue = oracleCalls.reduce((acc, tx) => {
       return acc + (tx.value || 0n);
     }, 0n);
 
@@ -296,7 +295,6 @@ export class Utils {
     calls = [],
   }: WriteContractParams) {
     const multicallInstance = await this.sdk.contracts.getMulticallInstance();
-
     // Format the args to the required array format
     argsList = argsList.map((args) => (Array.isArray(args) ? args : [args]));
 
@@ -314,23 +312,24 @@ export class Utils {
       calls.push(currentCall);
     });
     const oracleCalls = await this.getMissingOracleCalls(calls);
-    console.log('=== oracleCalls', oracleCalls);
 
-    const numCalls = calls.length;
+    const numCalls = calls.length - oracleCalls.length;
+
     const publicClient = this.sdk.getPublicClient();
+
+    const totalValue = oracleCalls.reduce((acc, tx) => {
+      return acc + (tx.value || 0n);
+    }, 0n);
+
     const multicallData = encodeFunctionData({
       abi: multicallInstance.abi,
       functionName: 'aggregate3Value',
       args: [[...oracleCalls, ...calls]],
     });
 
-    const totalValue = oracleCalls.reduce((acc, tx) => {
-      return acc + (tx.value || 0n);
-    }, 0n);
-
     const finalTx = {
       account: this.sdk.accountAddress,
-      to: publicClient.chain?.contracts?.multicall3?.address,
+      to: multicallInstance.address,
       data: multicallData,
       value: totalValue,
     };
@@ -345,6 +344,7 @@ export class Utils {
     ) as unknown as Result[];
 
     const callsToDecode = multicallResult.slice(-numCalls);
+    console.log('=== numCalls', numCalls, callsToDecode);
 
     const decodedResult = callsToDecode.map((result) => this.decodeResponse(abi, functionName, result.returnData));
     return decodedResult;
@@ -492,7 +492,7 @@ export class Utils {
   public async getMissingOracleCalls(
     calls: Call3Value[],
     oracleCalls: Call3Value[] = [],
-    { account }: { account?: Address } = {},
+    { attemps = MAX_ERC7412_RETRIES, account }: { account?: Address; attemps?: number } = {},
   ): Promise<Call3Value[]> {
     const publicClient = this.sdk.getPublicClient();
     const totalValue = oracleCalls.reduce((acc, tx) => {
@@ -519,9 +519,10 @@ export class Utils {
       return oracleCalls;
     } catch (error) {
       const parsedError = parseError(error as CallExecutionError);
-      const shouldRetry = this.shouldRetryLogic(error);
+      const shouldRetry = this.shouldRetryLogic(error, attemps);
 
       console.log('=== data', {
+        attemps,
         shouldRetry,
         parsedTx,
         calls,
@@ -533,7 +534,7 @@ export class Utils {
       if (!shouldRetry) return oracleCalls;
       const data = await this.handleErc7412Error(parsedError);
 
-      return await this.getMissingOracleCalls(calls, [...oracleCalls, ...data], { account });
+      return await this.getMissingOracleCalls(calls, [...oracleCalls, ...data], { account, attemps: attemps - 1 });
     }
   }
 
@@ -564,8 +565,9 @@ export class Utils {
 
   async processTransactions(data: Call3Value[], override: OverrideParamsWrite): Promise<WriteReturnType> {
     const useOracleCall = override.useOracleCalls ?? true;
-    const oracleCalls = useOracleCall ? await this.getMissingOracleCalls(data) : [];
-    console.log('=== oracleCalls', oracleCalls);
+    const oracleCalls = useOracleCall
+      ? await this.getMissingOracleCalls(data, undefined, { account: override.account })
+      : [];
     const txs = [...oracleCalls, ...data];
     if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
 
@@ -575,24 +577,19 @@ export class Utils {
     return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
   }
 
-  shouldRetryLogic(error: unknown, totalRetries: number = MAX_ERC7412_RETRIES): boolean {
-    totalRetries -= 1;
+  shouldRetryLogic(error: unknown, attemps: number = 0): boolean {
     const parsedError = parseError(error as CallExecutionError);
     const isErc7412Error = this.isErc7412Error(parsedError);
 
     console.log('=== parsedError', {
-      totalRetries,
       parsedError,
       isErc7412Error,
     });
 
-    if (!totalRetries) {
-      return false;
-    }
-
     if (!isErc7412Error) {
       return false;
     }
+    if (!attemps && !isErc7412Error) return false;
 
     return true;
   }
