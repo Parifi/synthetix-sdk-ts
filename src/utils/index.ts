@@ -26,6 +26,7 @@ import {
   WriteErc7412,
   WriteReturnType,
 } from '../interface/commonTypes';
+import { batchArray } from './common';
 /**
  * Utility class
  *
@@ -164,20 +165,23 @@ export class Utils {
       throw new Error('Handle ERC7412 error');
     }
 
-    console.log('=== err', err);
-
     if (!['OracleDataRequired', 'FeeRequired', 'Errors'].includes(err?.errorName))
       throw new Error('Handle ERC7412 error');
 
     if (err?.errorName === 'Errors') {
-      const oracleCalls = err.args[0] as Hex[];
-      const resolvedCalls = [];
-      // TODO: add batch logic to made this encode in parallel
-      for (const oracleCall of oracleCalls) {
-        const resolvedCall = await this.handleErc7412Error(oracleCall);
-        resolvedCalls.push(resolvedCall);
+      const oracleErrors = err.args[0] as Hex[];
+      let oracleCalls: Call3Value[] = [];
+      const batchedOracleErrors = batchArray<Hex>(oracleErrors, 10);
+
+      for (const oracleErrors of batchedOracleErrors) {
+        const promiseOracleCalls = oracleErrors.map((oracleError) => {
+          return this.handleErc7412Error(oracleError);
+        });
+        const resolvedCalls = await Promise.all(promiseOracleCalls);
+        oracleCalls = [...oracleCalls, ...resolvedCalls.flat()];
       }
-      return resolvedCalls.flat();
+
+      return oracleCalls.flat();
     }
 
     if (err?.errorName === 'OracleDataRequired') {
@@ -587,10 +591,10 @@ export class Utils {
       isErc7412Error,
     });
 
+    if (!attemps) return false;
     if (!isErc7412Error) {
       return false;
     }
-    if (!attemps && !isErc7412Error) return false;
 
     return true;
   }

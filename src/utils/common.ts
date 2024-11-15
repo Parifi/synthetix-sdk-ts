@@ -62,3 +62,7 @@ export function generateRandomAccountId(): bigint {
   }
   return randomAccountId;
 }
+
+export const batchArray = <T>(arr: T[], batchSize: number): T[][] => {
+  return arr.reduce((acc, _, i) => (i % batchSize ? acc : [...acc, arr.slice(i, i + batchSize)]), [] as T[][]);
+};
