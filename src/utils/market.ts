@@ -82,24 +82,24 @@ export abstract class Market<T extends MarketData | SpotMarketData> {
    * @returns {Promise<Call3Value[]>} objects representing the target contract, call data, value, requireSuccess flag and other necessary details for executing the function in the blockchain.
    */
   public async prepareOracleCall(marketIds: number[] = []): Promise<Call3Value[]> {
-    let marketSymbols: string[] = [];
+    let priceFeedIds: string[] = [];
 
-    if (marketIds.length == 0) {
-      marketSymbols = Array.from(this.marketsBySymbol.keys());
-    } else {
+    if (marketIds.length != 0) {
+      const marketSymbols: string[] = [];
       marketIds.forEach((marketId) => {
         const marketSymbol = this.marketsById.get(marketId)?.symbol;
         if (!marketSymbol) return;
         marketSymbols.push(marketSymbol);
       });
-    }
 
-    const priceFeedIds: string[] = [];
-    marketSymbols.forEach((marketSymbol) => {
-      const feedId = this.sdk.pyth.priceFeedIds.get(marketSymbol);
-      if (!feedId) return;
-      priceFeedIds.push(feedId);
-    });
+      marketSymbols.forEach((marketSymbol) => {
+        const feedId = this.sdk.pyth.priceFeedIds.get(marketSymbol);
+        if (!feedId) return;
+        priceFeedIds.push(feedId);
+      });
+    } else {
+      priceFeedIds = Array.from(this.sdk.pyth.priceFeedIds.values());
+    }
 
     if (!priceFeedIds.length) {
       return [];

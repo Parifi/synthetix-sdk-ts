@@ -254,7 +254,7 @@ export class Utils {
       args: [[...oracleCalls, ...calls]],
     });
 
-    const totalValue = oracleCalls.reduce((acc, tx) => {
+    const totalValue = [...oracleCalls, ...calls].reduce((acc, tx) => {
       return acc + (tx.value || 0n);
     }, 0n);
 
@@ -322,7 +322,7 @@ export class Utils {
 
     const publicClient = this.sdk.getPublicClient();
 
-    const totalValue = oracleCalls.reduce((acc, tx) => {
+    const totalValue = [...oracleCalls, ...calls].reduce((acc, tx) => {
       return acc + (tx.value || 0n);
     }, 0n);
 
@@ -467,7 +467,7 @@ export class Utils {
     });
 
     let totalValue = 0n;
-    for (const tx of oracleCalls) {
+    for (const tx of [...oracleCalls, ...calls]) {
       totalValue += tx.value || 0n;
     }
 
@@ -500,7 +500,7 @@ export class Utils {
     { attemps = MAX_ERC7412_RETRIES, account }: { account?: Address; attemps?: number } = {},
   ): Promise<Call3Value[]> {
     const publicClient = this.sdk.getPublicClient();
-    const totalValue = oracleCalls.reduce((acc, tx) => {
+    const totalValue = [...oracleCalls, ...calls].reduce((acc, tx) => {
       return acc + (tx.value || 0n);
     }, 0n);
 
@@ -591,7 +591,7 @@ export class Utils {
       isErc7412Error,
     });
 
-    if (!attemps) return false;
+    if (!attemps && !isErc7412Error) return false;
     if (!isErc7412Error) {
       return false;
     }

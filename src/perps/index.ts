@@ -166,12 +166,13 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
     // Response type from metadata smart contract call - [MarketName, MarketSymbol]
     type MetadataResponse = [string, string];
-
+    const oracleCalls = await this.prepareOracleCall([]);
     const marketMetadataResponse = (await this.sdk.utils.multicallErc7412({
       contractAddress: perpsMarketProxy.address,
       abi: perpsMarketProxy.abi,
       functionName: 'metadata',
       args: marketIds as unknown[],
+      calls: oracleCalls,
     })) as MetadataResponse[];
 
     const settlementStrategies = await this.getSettlementStrategies(marketIds);
@@ -259,7 +260,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       indexPrice: bigint;
     }
 
-    // const oracleCalls = await this.prepareOracleCall(marketIds);
+    const oracleCalls = await this.prepareOracleCall(marketIds);
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     const interestRate = await this.sdk.utils.callErc7412({
@@ -267,7 +268,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       abi: perpsMarketProxy.abi,
       functionName: 'interestRate',
       args: [],
-      // calls: oracleCalls,
+      calls: oracleCalls,
     });
 
     const marketSummariesInput = marketIds.map((marketId) => [marketId]);
@@ -276,7 +277,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       abi: perpsMarketProxy.abi,
       functionName: 'getMarketSummary',
       args: marketSummariesInput,
-      // calls: oracleCalls,
+      calls: oracleCalls,
     })) as MarketSummaryResponse[];
 
     if (marketIds.length !== marketSummariesResponse.length) {
