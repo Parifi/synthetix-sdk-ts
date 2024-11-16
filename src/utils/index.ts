@@ -316,6 +316,12 @@ export class Utils {
       };
       calls.push(currentCall);
     });
+    calls = calls.map((call) => {
+      return {
+        ...call,
+        requireSuccess: call.value === 0n ? true : false,
+      };
+    });
     const oracleCalls = await this.getMissingOracleCalls(calls);
 
     const numCalls = calls.length - oracleCalls.length;
@@ -349,7 +355,6 @@ export class Utils {
     ) as unknown as Result[];
 
     const callsToDecode = multicallResult.slice(-numCalls);
-    console.log('=== numCalls', numCalls, callsToDecode);
 
     const decodedResult = callsToDecode.map((result) => this.decodeResponse(abi, functionName, result.returnData));
     return decodedResult;
