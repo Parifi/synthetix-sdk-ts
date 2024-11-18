@@ -478,7 +478,7 @@ export class Utils {
 
     const finalTx = {
       account: this.sdk.accountAddress,
-      to: publicClient.chain?.contracts?.multicall3?.address,
+      to: multicallInstance.address,
       data: multicallData,
       value: totalValue,
     };
