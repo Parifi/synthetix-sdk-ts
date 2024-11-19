@@ -1,9 +1,13 @@
 import { Hex, zeroAddress } from 'viem';
 
 export const ZERO_ADDRESS: Hex = zeroAddress;
+
 export const SIG_ORACLE_DATA_REQUIRED = '0xcf2cabdf';
-export const SIG_FEE_REQUIRED = '0xea958df6';
-export const MAX_ERC7412_RETRIES = 50; // Limit the max failures to prevent infinite loops
+export const SIG_FEE_REQUIRED = '0x0e7186fb';
+export const SIG_ERRORS = '0x0b42fd17';
+
+// for markets metadata it is requesting too much oracle updates
+export const MAX_ERC7412_RETRIES = 80; // Limit the max failures to prevent infinite loops
 
 // List of market ids disabled by chainId
 export const DISABLED_MARKETS: { [key: number]: number[] } = {

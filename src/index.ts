@@ -60,7 +60,7 @@ export class SynthetixSdk {
   pyth: Pyth;
   perps: Perps;
   spot: Spot;
-  protected initialized: boolean = false;
+  public initialized: boolean = false;
 
   constructor({ accountConfig, partnerConfig, pythConfig, rpcConfig }: SdkConfigParams) {
     this.accountConfig = accountConfig;

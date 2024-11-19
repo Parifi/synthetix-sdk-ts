@@ -18,7 +18,7 @@ import { SynthetixSdk } from '..';
 import { IERC7412Abi } from '../contracts/abis/IERC7412';
 import { Call3Value, Result } from '../interface/contractTypes';
 import { parseError } from './parseError';
-import { MAX_ERC7412_RETRIES, SIG_FEE_REQUIRED, SIG_ORACLE_DATA_REQUIRED } from '../constants';
+import { MAX_ERC7412_RETRIES, SIG_ERRORS, SIG_FEE_REQUIRED, SIG_ORACLE_DATA_REQUIRED } from '../constants';
 import {
   OverrideParamsWrite,
   TransactionData,
@@ -26,6 +26,7 @@ import {
   WriteErc7412,
   WriteReturnType,
 } from '../interface/commonTypes';
+import { batchArray } from './common';
 /**
  * Utility class
  *
@@ -130,48 +131,71 @@ export class Utils {
     }
   }
 
+  async handleOracleDataRequiredError(parsedError: Hash): Promise<Call3Value> {
+    const err = decodeErrorResult({
+      abi: IERC7412Abi,
+      data: parsedError,
+    });
+
+    const oracleAddress = err.args![0] as Address;
+    const oracleQuery = err.args![1] as Hex;
+    const signedRequiredData = await this.fetchOracleUpdateData(oracleQuery);
+    const dataVerificationTx = this.generateDataVerificationTx(oracleAddress, signedRequiredData);
+
+    return dataVerificationTx;
+  }
+
   /**
    * Handles ERC7412 error by creating a price update tx which is prepended to the existing calls
    * @param error Error thrown by the call function
    * @param calls Multicall call data
    * @returns call array with ERC7412 fulfillOracleQuery transaction
    */
-  public async handleErc7412Error(error: unknown, calls: Call3Value[]): Promise<Call3Value[]> {
+  public async handleErc7412Error(parsedError: Hash): Promise<Call3Value[]> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let err: any;
 
     try {
       err = decodeErrorResult({
         abi: IERC7412Abi,
-        data: parseError(error as CallExecutionError),
+        data: parsedError,
       });
     } catch (decodeErr) {
       console.log('Decode Error: ', decodeErr);
       throw new Error('Handle ERC7412 error');
     }
 
-    if (!['OracleDataRequired', 'FeeRequired'].includes(err?.errorName)) throw new Error('Handle ERC7412 error');
+    if (!['OracleDataRequired', 'FeeRequired', 'Errors'].includes(err?.errorName))
+      throw new Error('Handle ERC7412 error');
+
+    if (err?.errorName === 'Errors') {
+      const oracleErrors = err.args[0] as Hex[];
+      let oracleCalls: Call3Value[] = [];
+      const batchedOracleErrors = batchArray<Hex>(oracleErrors, 10);
+
+      for (const oracleErrors of batchedOracleErrors) {
+        const promiseOracleCalls = oracleErrors.map((oracleError) => {
+          return this.handleErc7412Error(oracleError);
+        });
+        const resolvedCalls = await Promise.all(promiseOracleCalls);
+        oracleCalls = [...oracleCalls, ...resolvedCalls.flat()];
+      }
+
+      return oracleCalls.flat();
+    }
 
     if (err?.errorName === 'OracleDataRequired') {
       console.log('Oracle Data Required error, adding price update data to tx');
 
-      const oracleAddress = err.args![0] as Address;
-
-      const oracleQuery = err.args![1] as Hex;
-
-      const signedRequiredData = await this.fetchOracleUpdateData(oracleQuery);
-      const dataVerificationTx = this.generateDataVerificationTx(oracleAddress, signedRequiredData);
-      calls.unshift({ ...dataVerificationTx });
-
-      return calls;
+      return [await this.handleOracleDataRequiredError(parsedError)];
     }
 
-    console.log('Fee Required oracle error. Adding fee to tx.value', err);
-    if (!calls.length) throw new Error('Handle ERC7412 error: Calls.length == 0');
+    // console.log('Fee Required oracle error. Adding fee to tx.value', err);
+    // if (!calls.length) throw new Error('Handle ERC7412 error: Calls.length == 0');
+    //
+    // calls[0].value = err.args[0] as bigint;
 
-    calls[0].value = err.args[0] as bigint;
-
-    return calls;
+    return [];
   }
 
   /**
@@ -182,6 +206,7 @@ export class Utils {
    */
   public generateDataVerificationTx(oracleContract: Hex, signedRequiredData: string): Call3Value {
     const priceUpdateCall: Call3Value = {
+      // target: '0x59d6Ec32e05900949D7FFF679a4aDc7F94F0208C',
       target: oracleContract,
       callData: encodeFunctionData({
         abi: IERC7412Abi as unknown as Abi,
@@ -222,64 +247,39 @@ export class Utils {
 
     const publicClient = this.sdk.getPublicClient();
 
-    let totalRetries = 0;
-    while (true) {
-      try {
-        const multicallData = encodeFunctionData({
-          abi: multicallInstance.abi,
-          functionName: 'aggregate3Value',
-          args: [calls],
-        });
+    const oracleCalls = await this.getMissingOracleCalls(calls);
+    const multicallData = encodeFunctionData({
+      abi: multicallInstance.abi,
+      functionName: 'aggregate3Value',
+      args: [[...oracleCalls, ...calls]],
+    });
 
-        const totalValue = calls.reduce((acc, tx) => {
-          return acc + (tx.value || 0n);
-        }, 0n);
+    const totalValue = [...oracleCalls, ...calls].reduce((acc, tx) => {
+      return acc + (tx.value || 0n);
+    }, 0n);
 
-        const finalTx = {
-          account: this.sdk.accountAddress,
-          to: multicallInstance.address,
-          data: multicallData,
-          value: totalValue,
-        };
+    const finalTx = {
+      account: this.sdk.accountAddress,
+      to: multicallInstance.address,
+      data: multicallData,
+      value: totalValue,
+    };
 
-        const response = await publicClient.call(finalTx);
-        if (response.data != undefined) {
-          const multicallResult: Result[] = this.decodeResponse(
-            multicallInstance.abi,
-            'aggregate3Value',
-            response.data as Hex,
-          ) as unknown as Result[];
+    const response = await publicClient.call(finalTx);
 
-          const returnData = multicallResult.at(-1);
+    if (!response.data) throw new Error('Error decoding call data');
+    const multicallResult: Result[] = this.decodeResponse(
+      multicallInstance.abi,
+      'aggregate3Value',
+      response.data as Hex,
+    ) as unknown as Result[];
 
-          if (returnData?.success && returnData.returnData != undefined) {
-            const decodedResult = this.decodeResponse(abi, functionName, returnData.returnData);
-            return decodedResult;
-          } else {
-            throw new Error('Error decoding call data');
-          }
-        } else {
-          throw new Error('Invalid response from function call');
-        }
-      } catch (error) {
-        totalRetries += 1;
-        if (totalRetries > MAX_ERC7412_RETRIES) {
-          throw new Error('MAX_ERC7412_RETRIES retries reached, tx failed after multiple attempts');
-        }
+    const returnData = multicallResult.at(-1);
 
-        const parsedError = parseError(error as CallExecutionError);
+    if (!returnData?.success) throw new Error('Error decoding call data');
 
-        const isErc7412Error =
-          parsedError.startsWith(SIG_ORACLE_DATA_REQUIRED) || parsedError.startsWith(SIG_FEE_REQUIRED);
-        if (!isErc7412Error) {
-          console.log('Error details: ', error);
-          console.log('Parsed Error details: ', parsedError);
-          throw new Error('Error is not related to Oracle data');
-        }
-
-        calls = await this.handleErc7412Error(error, calls);
-      }
-    }
+    const decodedResult = this.decodeResponse(abi, functionName, returnData.returnData);
+    return decodedResult;
   }
 
   /**
@@ -300,10 +300,8 @@ export class Utils {
     calls = [],
   }: WriteContractParams) {
     const multicallInstance = await this.sdk.contracts.getMulticallInstance();
-
     // Format the args to the required array format
     argsList = argsList.map((args) => (Array.isArray(args) ? args : [args]));
-    const numPrependedCalls = calls.length;
 
     argsList.forEach((args) => {
       const currentCall: Call3Value = {
@@ -318,61 +316,48 @@ export class Utils {
       };
       calls.push(currentCall);
     });
+    calls = calls.map((call) => {
+      return {
+        ...call,
+        requireSuccess: call.value === 0n ? true : false,
+      };
+    });
+    const oracleCalls = await this.getMissingOracleCalls(calls);
 
-    const numCalls = calls.length - numPrependedCalls;
+    const numCalls = calls.length - oracleCalls.length;
+
     const publicClient = this.sdk.getPublicClient();
 
-    let totalRetries = 0;
-    while (true) {
-      try {
-        const multicallData = encodeFunctionData({
-          abi: multicallInstance.abi,
-          functionName: 'aggregate3Value',
-          args: [calls],
-        });
+    const totalValue = [...oracleCalls, ...calls].reduce((acc, tx) => {
+      return acc + (tx.value || 0n);
+    }, 0n);
 
-        const totalValue = calls.reduce((acc, tx) => {
-          return acc + (tx.value || 0n);
-        }, 0n);
+    const multicallData = encodeFunctionData({
+      abi: multicallInstance.abi,
+      functionName: 'aggregate3Value',
+      args: [[...oracleCalls, ...calls]],
+    });
 
-        const finalTx = {
-          account: this.sdk.accountAddress,
-          to: publicClient.chain?.contracts?.multicall3?.address,
-          data: multicallData,
-          value: totalValue,
-        };
+    const finalTx = {
+      account: this.sdk.accountAddress,
+      to: multicallInstance.address,
+      data: multicallData,
+      value: totalValue,
+    };
 
-        const response = await publicClient.call(finalTx);
+    const response = await publicClient.call(finalTx);
+    console.log('=== response', response);
 
-        const multicallResult: Result[] = this.decodeResponse(
-          multicallInstance.abi,
-          'aggregate3Value',
-          response.data as Hex,
-        ) as unknown as Result[];
+    const multicallResult: Result[] = this.decodeResponse(
+      multicallInstance.abi,
+      'aggregate3Value',
+      response.data as Hex,
+    ) as unknown as Result[];
 
-        const callsToDecode = multicallResult.slice(-numCalls);
+    const callsToDecode = multicallResult.slice(-numCalls);
 
-        const decodedResult = callsToDecode.map((result) => this.decodeResponse(abi, functionName, result.returnData));
-        return decodedResult;
-      } catch (error) {
-        totalRetries += 1;
-        if (totalRetries > MAX_ERC7412_RETRIES) {
-          throw new Error('MAX_ERC7412_RETRIES retries reached, tx failed after multiple attempts');
-        }
-        const parsedError = parseError(error as CallExecutionError);
-
-        const isErc7412Error =
-          parsedError.startsWith(SIG_ORACLE_DATA_REQUIRED) || parsedError.startsWith(SIG_FEE_REQUIRED);
-        if (!isErc7412Error) {
-          console.log('Error details: ', error);
-          console.log('Parsed Error details: ', parsedError);
-          throw new Error('Error is not related to Oracle data');
-        }
-
-        calls = await this.handleErc7412Error(error, calls);
-        // console.log('Calls array after handleErc7412Error', calls);
-      }
-    }
+    const decodedResult = callsToDecode.map((result) => this.decodeResponse(abi, functionName, result.returnData));
+    return decodedResult;
   }
   protected isWriteContractParams(data: WriteErc7412): data is WriteContractParams {
     return (data as WriteContractParams).contractAddress !== undefined;
@@ -459,7 +444,6 @@ export class Utils {
 
     // Format the args to the required array format
     argsList = argsList.map((args) => (Array.isArray(args) ? args : [args]));
-    const numPrependedCalls = calls.length;
 
     if (argsList.length != functionNames.length) {
       throw new Error("Inconsistent data: args and functionName don't match");
@@ -478,72 +462,50 @@ export class Utils {
       calls.push(currentCall);
     });
 
-    const numCalls = calls.length - numPrependedCalls;
     const publicClient = this.sdk.getPublicClient();
+    const oracleCalls = await this.getMissingOracleCalls(calls);
 
-    let totalRetries = 0;
-    while (true) {
-      try {
-        const multicallData = encodeFunctionData({
-          abi: multicallInstance.abi,
-          functionName: 'aggregate3Value',
-          args: [calls],
-        });
+    const multicallData = encodeFunctionData({
+      abi: multicallInstance.abi,
+      functionName: 'aggregate3Value',
+      args: [[...oracleCalls, ...calls]],
+    });
 
-        let totalValue = 0n;
-        for (const tx of calls) {
-          totalValue += tx.value || 0n;
-        }
-
-        const finalTx = {
-          account: this.sdk.accountAddress,
-          to: publicClient.chain?.contracts?.multicall3?.address,
-          data: multicallData,
-          value: totalValue,
-        };
-
-        const response = await publicClient.call(finalTx);
-
-        const multicallResult: Result[] = this.decodeResponse(
-          multicallInstance.abi,
-          'aggregate3Value',
-          response.data as Hex,
-        ) as unknown as Result[];
-
-        const callsToDecode = multicallResult.slice(-numCalls);
-
-        const decodedResult = callsToDecode.map((result, idx) =>
-          this.decodeResponse(abi, functionNames[idx], result.returnData),
-        );
-        return decodedResult;
-      } catch (error) {
-        totalRetries += 1;
-        if (totalRetries > MAX_ERC7412_RETRIES) {
-          throw new Error('MAX_ERC7412_RETRIES retries reached, tx failed after multiple attempts');
-        }
-        const parsedError = parseError(error as CallExecutionError);
-
-        const isErc7412Error =
-          parsedError.startsWith(SIG_ORACLE_DATA_REQUIRED) || parsedError.startsWith(SIG_FEE_REQUIRED);
-        if (!isErc7412Error) {
-          console.log('Error details: ', error);
-          console.log('Parsed Error details: ', parsedError);
-          throw new Error('Error is not related to Oracle data');
-        }
-
-        calls = await this.handleErc7412Error(error, calls);
-        // console.log('Calls array after handleErc7412Error', calls);
-      }
+    let totalValue = 0n;
+    for (const tx of [...oracleCalls, ...calls]) {
+      totalValue += tx.value || 0n;
     }
+
+    const finalTx = {
+      account: this.sdk.accountAddress,
+      to: multicallInstance.address,
+      data: multicallData,
+      value: totalValue,
+    };
+
+    const response = await publicClient.call(finalTx);
+
+    const multicallResult: Result[] = this.decodeResponse(
+      multicallInstance.abi,
+      'aggregate3Value',
+      response.data as Hex,
+    ) as unknown as Result[];
+
+    const callsToDecode = multicallResult.slice(-oracleCalls.length);
+
+    const decodedResult = callsToDecode.map((result, idx) =>
+      this.decodeResponse(abi, functionNames[idx], result.returnData),
+    );
+    return decodedResult;
   }
 
   public async getMissingOracleCalls(
     calls: Call3Value[],
-    resultCalls: Call3Value[] = [],
-    { attempts = MAX_ERC7412_RETRIES, account }: { attempts?: number; account?: Address } = {},
+    oracleCalls: Call3Value[] = [],
+    { attemps = MAX_ERC7412_RETRIES, account }: { account?: Address; attemps?: number } = {},
   ): Promise<Call3Value[]> {
     const publicClient = this.sdk.getPublicClient();
-    const totalValue = calls.reduce((acc, tx) => {
+    const totalValue = [...oracleCalls, ...calls].reduce((acc, tx) => {
       return acc + (tx.value || 0n);
     }, 0n);
 
@@ -551,7 +513,7 @@ export class Utils {
     const multicallData = encodeFunctionData({
       abi: multicallInstance.abi,
       functionName: 'aggregate3Value',
-      args: [calls],
+      args: [[...oracleCalls, ...calls]],
     });
 
     const parsedTx = {
@@ -564,25 +526,25 @@ export class Utils {
 
     try {
       await publicClient.call(parsedTx);
-      return resultCalls;
+      return oracleCalls;
     } catch (error) {
-      console.log('=== attempts', { attempts, parsedTx, calls, blockNumber, resultCalls });
-      console.log('=== error oracleCall', error);
-
       const parsedError = parseError(error as CallExecutionError);
+      const shouldRetry = this.shouldRetryLogic(error, attemps);
 
-      const isErc7412Error =
-        parsedError.startsWith(SIG_ORACLE_DATA_REQUIRED) || parsedError.startsWith(SIG_FEE_REQUIRED);
+      console.log('=== data', {
+        attemps,
+        shouldRetry,
+        parsedTx,
+        calls,
+        blockNumber,
+        oracleCalls,
+        error,
+      });
 
-      console.log('=== parsedError multicall', parsedError);
-      console.log('=== error isErc7412Error', isErc7412Error);
+      if (!shouldRetry) return oracleCalls;
+      const data = await this.handleErc7412Error(parsedError);
 
-      if (!isErc7412Error) return resultCalls;
-      if (isErc7412Error && !attempts) return resultCalls;
-
-      const data = await this.handleErc7412Error(error, calls);
-
-      return await this.getMissingOracleCalls(calls, [...resultCalls, data[0]], { attempts: attempts - 1, account });
+      return await this.getMissingOracleCalls(calls, [...oracleCalls, ...data], { account, attemps: attemps - 1 });
     }
   }
 
@@ -613,8 +575,9 @@ export class Utils {
 
   async processTransactions(data: Call3Value[], override: OverrideParamsWrite): Promise<WriteReturnType> {
     const useOracleCall = override.useOracleCalls ?? true;
-    const oracleCalls = useOracleCall ? await this.getMissingOracleCalls(data) : [];
-
+    const oracleCalls = useOracleCall
+      ? await this.getMissingOracleCalls(data, undefined, { account: override.account })
+      : [];
     const txs = [...oracleCalls, ...data];
     if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
 
@@ -622,5 +585,30 @@ export class Utils {
     if (!override.submit) return [tx];
 
     return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
+  }
+
+  shouldRetryLogic(error: unknown, attemps: number = 0): boolean {
+    const parsedError = parseError(error as CallExecutionError);
+    const isErc7412Error = this.isErc7412Error(parsedError);
+
+    console.log('=== parsedError', {
+      parsedError,
+      isErc7412Error,
+    });
+
+    if (!attemps && !isErc7412Error) return false;
+    if (!isErc7412Error) {
+      return false;
+    }
+
+    return true;
+  }
+
+  isErc7412Error(parsedError: Hash): boolean {
+    return (
+      parsedError.startsWith(SIG_ORACLE_DATA_REQUIRED) ||
+      parsedError.startsWith(SIG_FEE_REQUIRED) ||
+      parsedError.startsWith(SIG_ERRORS)
+    );
   }
 }
