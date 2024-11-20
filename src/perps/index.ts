@@ -16,7 +16,7 @@ import {
 } from './interface';
 import { convertEtherToWei, convertWeiToEther, generateRandomAccountId, sleep } from '../utils';
 import { Call3Value } from '../interface/contractTypes';
-import { MarketIdOrName, OverrideParamsWrite, WriteReturnType } from '../interface/commonTypes';
+import { MarketIdOrName, OverrideParamsRead, OverrideParamsWrite, WriteReturnType } from '../interface/commonTypes';
 import {
   AccountPermissions,
   CommitOrder,
@@ -1019,6 +1019,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   public async getApproxLiquidationPrice(
     marketIdOrName: MarketIdOrName,
     accountId = this.defaultAccountId,
+    override: OverrideParamsRead,
   ): Promise<bigint> {
     if (!accountId) throw new Error('Account ID is required');
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
@@ -1043,15 +1044,15 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     functionNames.push('indexPrice');
     argsList.push([resolvedMarketId]);
 
-    const oracleCalls = await this.prepareOracleCall();
-
-    const multicallResponse: unknown[] = await this.sdk.utils.multicallMultifunctionErc7412({
-      contractAddress: marketProxy.address,
-      abi: marketProxy.abi,
-      functionNames,
-      args: argsList,
-      calls: oracleCalls,
-    });
+    const multicallResponse: unknown[] = await this.sdk.utils.multicallMultifunctionErc7412(
+      {
+        contractAddress: marketProxy.address,
+        abi: marketProxy.abi,
+        functionNames,
+        args: argsList,
+      },
+      override,
+    );
 
     // 0. Available Margin
     const availableMargin = multicallResponse.at(0) as bigint;
@@ -1469,8 +1470,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const modifyPerpsPermission = PERPS_PERMISSIONS.PERPS_MODIFY_COLLATERAL;
     const { resolvedMarketId } = this.sdk.spot.resolveMarket(params.collateralIdOrName);
 
-    const fee = (await zapInstance.read.FEE_TIER()) as bigint;
-
     const grantPermissionTx = await this._buildGrantPermission({
       accountId: params.accountId,
       permission: modifyPerpsPermission,
@@ -1478,17 +1477,11 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     });
 
     const amount = this.formatSize(params.collateralAmount, resolvedMarketId);
-    const usdcInstance = await this.sdk.contracts.getCollateralInstance('USDC');
 
-    // 5%
-    const offset = 50n;
-    const amountToPay = (amount * offset) / 1000n;
-
-    const zapMinAmountOut = amount - amountToPay;
-    const unwrapMinAmountOut = amount - amountToPay;
     const swapMaxAmountIn = amount;
 
     const collateral = this.sdk.spot.getSynthContract(resolvedMarketId);
+    const minAmount = this.formatSize(params.minToReceive, resolvedMarketId);
 
     const unwindTx = {
       target: zapInstance.address,
@@ -1500,13 +1493,9 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
           resolvedMarketId,
           amount,
           collateral.address,
-          encodePacked(
-            ['address', 'uint256', 'address'],
-            // usdc - fee - collateral
-            [usdcInstance.address, fee, collateral.address],
-          ),
-          zapMinAmountOut,
-          unwrapMinAmountOut,
+          params.path,
+          minAmount,
+          minAmount,
           swapMaxAmountIn,
           params.receiver,
         ],
