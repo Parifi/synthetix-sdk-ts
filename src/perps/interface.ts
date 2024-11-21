@@ -7,6 +7,7 @@ export type PayDebtAndWithdraw = {
   receiver: Address;
   minToReceive: number;
   path: string;
+  collateral: Address;
 };
 
 export interface MarketSummary {

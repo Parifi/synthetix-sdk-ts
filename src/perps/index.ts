@@ -923,21 +923,30 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       price = await this.sdk.pyth.getFormattedPrice(feedId as Hex);
       console.log('Formatted price:', price);
     }
-
-    // Smart contract call returns (uint256 orderFees, uint256 fillPrice)
-    const orderFeesWithPriceResponse = (await this.sdk.utils.callErc7412({
-      contractAddress: marketProxy.address,
-      abi: marketProxy.abi,
-      functionName: 'computeOrderFeesWithPrice',
-      args: [resolvedMarketId, convertEtherToWei(size), convertEtherToWei(price)],
-    })) as [bigint, bigint];
-
-    const settlementRewardCost = (await this.sdk.utils.callErc7412({
-      contractAddress: marketProxy.address,
-      abi: marketProxy.abi,
-      functionName: 'getSettlementRewardCost',
-      args: [resolvedMarketId, settlementStrategyId],
-    })) as bigint;
+    console.log('=== recursivee');
+    const [orderFeesWithPriceResponse, settlementRewardCost, requiredMargin] = await Promise.all([
+      this.sdk.utils.callErc7412({
+        contractAddress: marketProxy.address,
+        abi: marketProxy.abi,
+        functionName: 'computeOrderFeesWithPrice',
+        args: [resolvedMarketId, convertEtherToWei(size), convertEtherToWei(price)],
+      }) as Promise<[bigint, bigint]>,
+      this.sdk.utils.callErc7412({
+        contractAddress: marketProxy.address,
+        abi: marketProxy.abi,
+        functionName: 'getSettlementRewardCost',
+        args: [resolvedMarketId, settlementStrategyId],
+      }) as Promise<bigint>,
+      includeRequiredMargin && accountId
+        ? (this.sdk.utils.callErc7412({
+            contractAddress: marketProxy.address,
+            abi: marketProxy.abi,
+            functionName: 'requiredMarginForOrderWithPrice',
+            args: [accountId, resolvedMarketId, convertEtherToWei(size), convertEtherToWei(price)],
+          }) as Promise<bigint>)
+        : 0n,
+    ]);
+    console.log('=== recursivee end');
 
     const orderQuote: OrderQuote = {
       orderSize: size,
@@ -948,13 +957,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     };
 
     if (includeRequiredMargin && accountId) {
-      const requiredMargin = (await this.sdk.utils.callErc7412({
-        contractAddress: marketProxy.address,
-        abi: marketProxy.abi,
-        functionName: 'requiredMarginForOrderWithPrice',
-        args: [accountId, resolvedMarketId, convertEtherToWei(size), convertEtherToWei(price)],
-      })) as bigint;
-
       orderQuote.requiredMargin = convertWeiToEther(requiredMargin);
     }
     return orderQuote;
@@ -1456,7 +1458,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
     const swapMaxAmountIn = amount;
 
-    const collateral = this.sdk.spot.getSynthContract(resolvedMarketId);
     const minAmount = this.formatSize(params.minToReceive, resolvedMarketId);
 
     const unwindTx = {
@@ -1468,7 +1469,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
           params.accountId,
           resolvedMarketId,
           amount,
-          collateral.address,
+          params.collateral,
           params.path,
           minAmount,
           minAmount,
