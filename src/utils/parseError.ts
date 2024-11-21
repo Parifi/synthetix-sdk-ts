@@ -20,9 +20,10 @@ export function parseError(error: any): Hex {
       return error.cause?.cause?.cause?.error?.data;
     }
   } catch (err) {
-    console.error('exception in erc7412 error parser:', err);
+    console.error('=== exception in erc7412 error parser:', err);
   }
+  console.log('=== a', JSON.stringify(error, null, 2));
   // rethrow the error (and log it so we can see the original)
-  console.error('got unknown error in erc7412 parse', error);
-  throw error;
+  console.error('=== got unknown error in erc7412 parse', error);
+  return '0x';
 }

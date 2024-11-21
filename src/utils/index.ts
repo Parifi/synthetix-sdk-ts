@@ -20,6 +20,7 @@ import { Call3Value, Result } from '../interface/contractTypes';
 import { parseError } from './parseError';
 import { MAX_ERC7412_RETRIES, SIG_ERRORS, SIG_FEE_REQUIRED, SIG_ORACLE_DATA_REQUIRED } from '../constants';
 import {
+  OverrideParamsRead,
   OverrideParamsWrite,
   TransactionData,
   WriteContractParams,
@@ -164,6 +165,7 @@ export class Utils {
       console.log('Decode Error: ', decodeErr);
       throw new Error('Handle ERC7412 error');
     }
+    console.log('=== decodedErr', err);
 
     if (!['OracleDataRequired', 'FeeRequired', 'Errors'].includes(err?.errorName))
       throw new Error('Handle ERC7412 error');
@@ -206,14 +208,14 @@ export class Utils {
    */
   public generateDataVerificationTx(oracleContract: Hex, signedRequiredData: string): Call3Value {
     const priceUpdateCall: Call3Value = {
-      // target: '0x59d6Ec32e05900949D7FFF679a4aDc7F94F0208C',
-      target: oracleContract,
+      target: '0xe87ceB87b63267ef925E2897B629052eb815bB7d',
+      // target: oracleContract,
       callData: encodeFunctionData({
         abi: IERC7412Abi as unknown as Abi,
         functionName: 'fulfillOracleQuery',
         args: [signedRequiredData],
       }),
-      value: 500n,
+      value: 0n,
       requireSuccess: false,
     };
     return priceUpdateCall;
@@ -433,13 +435,16 @@ export class Utils {
    * @param calls Array of Call3Value calls for Multicall contract
    * @returns Array of responses from the contract function call for the multicalls
    */
-  public async multicallMultifunctionErc7412({
-    contractAddress,
-    abi,
-    functionNames,
-    args: argsList,
-    calls = [],
-  }: Omit<WriteContractParams, 'functionName'> & { functionNames: string[] }) {
+  public async multicallMultifunctionErc7412(
+    {
+      contractAddress,
+      abi,
+      functionNames,
+      args: argsList,
+      calls = [],
+    }: Omit<WriteContractParams, 'functionName'> & { functionNames: string[] },
+    override: OverrideParamsRead = {},
+  ) {
     const multicallInstance = await this.sdk.contracts.getMulticallInstance();
 
     // Format the args to the required array format
@@ -477,7 +482,7 @@ export class Utils {
     }
 
     const finalTx = {
-      account: this.sdk.accountAddress,
+      account: override.account || this.sdk.accountAddress,
       to: multicallInstance.address,
       data: multicallData,
       value: totalValue,
@@ -504,6 +509,7 @@ export class Utils {
     oracleCalls: Call3Value[] = [],
     { attemps = MAX_ERC7412_RETRIES, account }: { account?: Address; attemps?: number } = {},
   ): Promise<Call3Value[]> {
+    console.log('=== init data', { oracleCalls, calls, attemps });
     const publicClient = this.sdk.getPublicClient();
     const totalValue = [...oracleCalls, ...calls].reduce((acc, tx) => {
       return acc + (tx.value || 0n);
@@ -525,11 +531,17 @@ export class Utils {
     const blockNumber = await publicClient.getBlockNumber();
 
     try {
+      console.log('=== calling');
       await publicClient.call(parsedTx);
+      console.log('=== oracle calls resolved');
       return oracleCalls;
     } catch (error) {
+      console.log('=== catched error', error);
       const parsedError = parseError(error as CallExecutionError);
+      console.log('=== parsedError', parsedError);
+
       const shouldRetry = this.shouldRetryLogic(error, attemps);
+      console.log('=== shouldRetry', shouldRetry);
 
       console.log('=== data', {
         attemps,

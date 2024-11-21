@@ -18,11 +18,9 @@ export type OverrideParamsWrite = {
   // maxTries?: number;
 };
 
-export type OverrideParamsRead = unknown;
-// {
-// shouldRevertOnTxFailure?: boolean;
-// submit?: boolean;
-// };
+export type OverrideParamsRead = {
+  account?: Address;
+};
 
 export type WriteCallParams = {
   calls: Call3Value[];

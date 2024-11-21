@@ -5,6 +5,9 @@ export type PayDebtAndWithdraw = {
   collateralIdOrName: number | string;
   collateralAmount: number;
   receiver: Address;
+  minToReceive: number;
+  path: string;
+  collateral: Address;
 };
 
 export interface MarketSummary {
