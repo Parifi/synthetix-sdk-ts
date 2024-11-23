@@ -1,4 +1,13 @@
-import { encodeFunctionData, encodePacked, formatEther, getAbiItem, Hex, parseEther, parseUnits } from 'viem';
+import {
+  encodeFunctionData,
+  encodePacked,
+  formatEther,
+  getAbiItem,
+  Hex,
+  parseEther,
+  parseUnits,
+  zeroAddress,
+} from 'viem';
 import { SynthetixSdk } from '..';
 import {
   CollateralData,
@@ -1346,18 +1355,42 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     // 1. Create Account
     const createAccountCall = await this._buildCreateAccount(accountId);
 
-    // 2. Add Collateral
+    // 2. Wrap Collateral
     const wrapTxs = await this.sdk.spot._buildWrap({
       size: collateralAmount,
       marketIdOrName: collateralMarketId,
     });
 
+    // 3. sell wrapped collateral
+    const isUsdc = collateralMarketId === 2;
+    const sellTx = isUsdc
+      ? await this.sdk.spot._buildSell({
+          amount: collateralAmount,
+          collateralIdOrName: collateralMarketId,
+        })
+      : undefined;
+
+    // predict the amount returning by sell
+    // const staticCall = sellTx
+    //   ? await this.sdk.utils.callErc7412({
+    //       contractAddress: sellTx.target,
+    //       abi: (await this.sdk.contracts.getSpotMarketProxyInstance()).abi,
+    //       functionName: 'sell',
+    //       args: [collateralMarketId, this.sdk.spot.formatSize(collateralAmount, collateralMarketId), 1, zeroAddress],
+    //       calls: [wrapTxs].filter((a) => !!a),
+    //     })
+    //   : collateralAmount;
+    //
+    // console.log('=== staticCall', staticCall);
+
+    // 4. send collateral to the account
     const modifyCollateralCall = await this._buildModifyCollateral({
       amount: collateralAmount,
-      collateralMarketIdOrName: collateralMarketId,
+      collateralMarketIdOrName: isUsdc ? 0 : collateralMarketId,
       accountId,
     });
 
+    // 5. create order
     const commitOrderCall = await this._buildCommitOrder({
       size: size,
       settlementStrategyId,
@@ -1367,7 +1400,9 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       maxPriceImpact,
     });
 
-    const rawTxs = [createAccountCall, wrapTxs, modifyCollateralCall, commitOrderCall].flat();
+    const rawTxs = [createAccountCall, wrapTxs, sellTx, modifyCollateralCall, commitOrderCall]
+      .filter((a) => !!a)
+      .flat();
 
     return this.sdk.utils.processTransactions(rawTxs, override);
   }

@@ -348,7 +348,6 @@ export class Utils {
     };
 
     const response = await publicClient.call(finalTx);
-    console.log('=== response', response);
 
     const multicallResult: Result[] = this.decodeResponse(
       multicallInstance.abi,

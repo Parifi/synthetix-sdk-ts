@@ -1,5 +1,12 @@
+import { Address } from 'viem';
 import { Side } from '../../spot/interface';
 import { MarketIdOrName } from '../commonTypes';
+
+export type Sell = {
+  amount: number;
+  collateralIdOrName: MarketIdOrName;
+  referrer?: Address;
+};
 
 export type CommitOrderSpot = {
   side: Side;

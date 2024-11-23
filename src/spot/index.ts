@@ -1,4 +1,13 @@
-import { Address, ContractFunctionParameters, encodeFunctionData, erc20Abi, getContract, Hex, maxUint256 } from 'viem';
+import {
+  Address,
+  ContractFunctionParameters,
+  encodeFunctionData,
+  erc20Abi,
+  getContract,
+  Hex,
+  maxUint256,
+  zeroAddress,
+} from 'viem';
 import { SynthetixSdk } from '..';
 import { SpotMarketData } from '../perps/interface';
 import { ZERO_ADDRESS } from '../constants';
@@ -11,6 +20,7 @@ import {
   GetOrder,
   GetSettlementStrategies,
   GetSettlementStrategy,
+  Sell,
   SettlementStrategyResponse,
   SettleOrder,
   Wrap,
@@ -681,5 +691,45 @@ export class Spot extends Market<SpotMarketData> {
     ];
 
     return this.sdk.utils.processTransactions(txs, { ...override, useOracleCalls: false });
+  }
+
+  async _buildSell({ amount, referrer, collateralIdOrName }: Sell): Promise<Call3Value> {
+    const spotMarket = await this.sdk.contracts.getSpotMarketProxyInstance();
+    const marketId = this.resolveMarket(collateralIdOrName).resolvedMarketId;
+    console.log('=== this.markets', this.marketsBySymbol);
+    const sizeInWei = this.formatSize(amount, marketId);
+    const referrerAddress = referrer || zeroAddress;
+
+    const tx: Call3Value = {
+      target: spotMarket.address,
+      callData: encodeFunctionData({
+        abi: spotMarket.abi,
+        functionName: 'sell',
+        args: [marketId, sizeInWei, 1, referrerAddress],
+      }),
+      value: 0n,
+      requireSuccess: true,
+    };
+
+    return tx;
+  }
+
+  /**
+   * Sell a synth for the underlying asset.
+   * Sells the specified ``amount`` of the synth for the underlying asset.
+   * If ``referrer`` is not provided, the default referrer will be used.
+   * Requires either a ``marketId`` or ``marketName`` to be provided to resolve the market.
+   * @param {Sell} data The data for the sell transaction.
+   * @param {number} data.amount The amount of the synth to sell.
+   * @param {string} data.referrer The referrer address for the transaction. Default is the default referrer.
+   * @param {MarketIdOrName} data.marketIdOrName - The unique identifier or name of the market.
+   * @param {OverrideParamsWrite} override - Override the default parameters for the transaction.
+   * @returns {WriteReturnType} The transaction hash if ``submit`` is ``true``.
+   */
+
+  public async sell(params: Sell, override: OverrideParamsWrite = {}): Promise<WriteReturnType> {
+    const txs = [await this._buildSell(params)];
+
+    return this.sdk.utils.processTransactions(txs, override);
   }
 }
