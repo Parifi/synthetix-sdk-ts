@@ -1,8 +1,8 @@
 import { Logger } from 'tslog';
-import { MessageType } from '../constants';
+import { DEFAULT_LOGGER_LEVEL, MessageType } from '../constants';
 
 const baseLogger = new Logger({
-  minLevel: 2, 
+  minLevel: DEFAULT_LOGGER_LEVEL, 
   
 });
 

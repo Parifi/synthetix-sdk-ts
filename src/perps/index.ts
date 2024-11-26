@@ -65,6 +65,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   // Set multicollateral to false by default
   isMulticollateralEnabled: boolean = false;
   disabledMarkets: number[] = [];
+  isInitialized: boolean = false;
 
   constructor(synthetixSdk: SynthetixSdk) {
     super(synthetixSdk);
@@ -77,6 +78,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   // === READ CALLS ===
 
   async initPerps() {
+    if (this.isInitialized) return;
     await this.getMarkets();
     await this.getAccountIds();
 
@@ -96,6 +98,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       this.isMulticollateralEnabled = true;
       logger.info('Multicollateral perps is enabled')
     }
+    this.isInitialized = true;
   }
 
   formatSize(size: number, collateralId: number) {
@@ -166,14 +169,17 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
     // Response type from metadata smart contract call - [MarketName, MarketSymbol]
     type MetadataResponse = [string, string];
-    const marketMetadataResponse = (await this.sdk.utils.multicallErc7412({
-      contractAddress: perpsMarketProxy.address,
-      abi: perpsMarketProxy.abi,
-      functionName: 'metadata',
-      args: marketIds as unknown[],
-    })) as MetadataResponse[];
 
-    const settlementStrategies = await this.getSettlementStrategies(marketIds);
+    const [marketMetadataResponse, settlementStrategies] = await Promise.all([
+      this.sdk.utils.multicallErc7412({
+        contractAddress: perpsMarketProxy.address,
+        abi: perpsMarketProxy.abi,
+        functionName: 'metadata',
+        args: marketIds as unknown[],
+      }) as Promise<MetadataResponse[]>,
+      this.getSettlementStrategies(marketIds),
+    ]);
+
     const pythPriceIds: { symbol: string; feedId: string }[] = [];
 
     // Set market metadata for all markets and populate Pyth price ids
@@ -197,10 +203,12 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     // Update Pyth price feeds
     this.sdk.pyth.updatePriceFeedIds(pythPriceIds);
 
-    const marketSummaries = await this.getMarketSummaries(marketIds);
-    const fundingParameters = await this.getFundingParameters(marketIds);
-    const orderFees = await this.getOrderFees(marketIds);
-    const maxMarketValues = await this.getMaxMarketValues(marketIds);
+    const [marketSummaries, fundingParameters, orderFees, maxMarketValues] = await Promise.all([
+      this.getMarketSummaries(marketIds),
+      this.getFundingParameters(marketIds),
+      this.getOrderFees(marketIds),
+      this.getMaxMarketValues(marketIds),
+    ]);
 
     marketIds.forEach((marketId) => {
       // Skip disabled markets

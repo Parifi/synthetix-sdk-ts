@@ -29,6 +29,7 @@ import {
 } from '../interface/commonTypes';
 import { batchArray } from './common';
 import { logger } from './logger/logger';
+import { ORACLE_PROXY_BY_CHAIN } from '../contracts/addreses/oracleProxy';
 /**
  * Utility class
  *
@@ -200,10 +201,9 @@ export class Utils {
    * @param signedRequiredData Encoded Price Update data
    * @returns Transaction Request for Oracle price update
    */
-  public generateDataVerificationTx(oracleContract: Hex, signedRequiredData: string): Call3Value {
+  public generateDataVerificationTx(_oracleContract: Hex, signedRequiredData: string): Call3Value {
     const priceUpdateCall: Call3Value = {
-      target: '0xe87ceB87b63267ef925E2897B629052eb815bB7d',
-      // target: oracleContract,
+      target: ORACLE_PROXY_BY_CHAIN[this.sdk.rpcConfig.chainId],
       callData: encodeFunctionData({
         abi: IERC7412Abi as unknown as Abi,
         functionName: 'fulfillOracleQuery',
