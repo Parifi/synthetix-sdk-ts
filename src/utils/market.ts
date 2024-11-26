@@ -4,6 +4,7 @@ import { DISABLED_MARKETS } from '../constants';
 import { MarketIdOrName } from '../interface/commonTypes';
 import { MarketData, SpotMarketData } from '../perps/interface';
 import { Call3Value } from '../interface/contractTypes';
+import { logger } from './logger/logger';
 
 export abstract class Market<T extends MarketData | SpotMarketData> {
   sdk: SynthetixSdk;
@@ -68,7 +69,8 @@ export abstract class Market<T extends MarketData | SpotMarketData> {
     } else {
       sizeInWei = parseUnits(size.toString(), 18);
     }
-    console.log(`Size ${size} in wei for market ${resolvedMarketName}: ${sizeInWei}`);
+    logger.info(`Size ${size} in wei for market ${resolvedMarketName}: ${sizeInWei}`);
+
     return sizeInWei;
   }
 

@@ -28,6 +28,7 @@ import {
   WriteReturnType,
 } from '../interface/commonTypes';
 import { batchArray } from './common';
+import { logger } from './logger/logger';
 /**
  * Utility class
  *
@@ -83,9 +84,6 @@ export class Utils {
         data,
       );
 
-      console.log('Update type: ', updateType);
-      console.log('priceIds: ', priceIds);
-
       const stalenessTolerance = stalenessOrTime;
       const updateData = (await this.sdk.pyth.pythConnection.getPriceFeedsUpdateData(
         priceIds as string[],
@@ -109,8 +107,8 @@ export class Utils {
         ],
         data,
       );
-      console.log('Update type: ', updateType);
-      console.log('priceIds: ', priceId);
+      logger.info('Update type: ', updateType);
+      logger.info('priceIds: ', priceId);
 
       const [priceFeedUpdateVaa] = await this.sdk.pyth.pythConnection.getVaa(
         priceId as string,
@@ -162,11 +160,9 @@ export class Utils {
         data: parsedError,
       });
     } catch (decodeErr) {
-      console.log('Decode Error: ', decodeErr);
+      logger.error('Decode Error: ', decodeErr);
       throw new Error('Handle ERC7412 error');
     }
-    console.log('=== decodedErr', err);
-
     if (!['OracleDataRequired', 'FeeRequired', 'Errors'].includes(err?.errorName))
       throw new Error('Handle ERC7412 error');
 
@@ -187,12 +183,10 @@ export class Utils {
     }
 
     if (err?.errorName === 'OracleDataRequired') {
-      console.log('Oracle Data Required error, adding price update data to tx');
-
       return [await this.handleOracleDataRequiredError(parsedError)];
     }
 
-    // console.log('Fee Required oracle error. Adding fee to tx.value', err);
+    // logger.info('Fee Required oracle error. Adding fee to tx.value', err);
     // if (!calls.length) throw new Error('Handle ERC7412 error: Calls.length == 0');
     //
     // calls[0].value = err.args[0] as bigint;
@@ -348,8 +342,6 @@ export class Utils {
     };
 
     const response = await publicClient.call(finalTx);
-    console.log('=== response', response);
-
     const multicallResult: Result[] = this.decodeResponse(
       multicallInstance.abi,
       'aggregate3Value',
@@ -509,7 +501,6 @@ export class Utils {
     oracleCalls: Call3Value[] = [],
     { attemps = MAX_ERC7412_RETRIES, account }: { account?: Address; attemps?: number } = {},
   ): Promise<Call3Value[]> {
-    console.log('=== init data', { oracleCalls, calls, attemps });
     const publicClient = this.sdk.getPublicClient();
     const totalValue = [...oracleCalls, ...calls].reduce((acc, tx) => {
       return acc + (tx.value || 0n);
@@ -528,30 +519,13 @@ export class Utils {
       data: multicallData,
       value: totalValue,
     };
-    const blockNumber = await publicClient.getBlockNumber();
-
     try {
-      console.log('=== calling');
       await publicClient.call(parsedTx);
-      console.log('=== oracle calls resolved');
       return oracleCalls;
     } catch (error) {
-      console.log('=== catched error', error);
       const parsedError = parseError(error as CallExecutionError);
-      console.log('=== parsedError', parsedError);
 
       const shouldRetry = this.shouldRetryLogic(error, attemps);
-      console.log('=== shouldRetry', shouldRetry);
-
-      console.log('=== data', {
-        attemps,
-        shouldRetry,
-        parsedTx,
-        calls,
-        blockNumber,
-        oracleCalls,
-        error,
-      });
 
       if (!shouldRetry) return oracleCalls;
       const data = await this.handleErc7412Error(parsedError);
@@ -602,12 +576,6 @@ export class Utils {
   shouldRetryLogic(error: unknown, attemps: number = 0): boolean {
     const parsedError = parseError(error as CallExecutionError);
     const isErc7412Error = this.isErc7412Error(parsedError);
-
-    console.log('=== parsedError', {
-      parsedError,
-      isErc7412Error,
-    });
-
     if (!attemps && !isErc7412Error) return false;
     if (!isErc7412Error) {
       return false;

@@ -4,6 +4,7 @@ import { DEFAULT_PYTH_TIMEOUT, PUBLIC_PYTH_ENDPOINT } from '../constants';
 import { EvmPriceServiceConnection, PriceFeed } from '@pythnetwork/pyth-evm-js';
 import { PythConfig } from '../interface/classConfigs';
 import { formatUnits, Hex } from 'viem';
+import { logger } from '../utils/logger/logger';
 
 /**
  * Pyth class for interacting with the Pyth price service. The price service is
@@ -118,7 +119,7 @@ export class Pyth {
         throw new Error('Error fetching data from Pyth');
       }
     } catch (error) {
-      console.log('Error fetching data from Pyth', error);
+      logger.error('Error fetching data from Pyth', error);
       throw error;
     }
     const updateData = priceUpdateData.map((vaa) => '0x' + vaa);

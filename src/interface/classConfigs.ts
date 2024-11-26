@@ -1,4 +1,5 @@
-import { PrivateKeyAccount, WalletClient } from 'viem';
+import { PrivateKeyAccount } from 'viem';
+import { MessageType } from '../utils/constants';
 
 export interface AccountConfig {
   address?: string;
@@ -28,4 +29,6 @@ export interface SdkConfigParams {
   partnerConfig?: PartnerConfig;
   pythConfig?: PythConfig;
   rpcConfig: RpcConfig;
+  logLevel?:number
+  loggerMessageType?:MessageType
 }

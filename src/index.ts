@@ -24,6 +24,7 @@ import { Perps } from './perps';
 import { privateKeyToAccount } from 'viem/accounts';
 import { Spot } from './spot';
 import { DEFAULT_REFERRER, DEFAULT_TRACKING_CODE } from './constants';
+import  { initializeLogger, logger } from './utils/logger/logger';
 export { generateRandomAccountId } from './utils';
 
 /**
@@ -62,7 +63,7 @@ export class SynthetixSdk {
   spot: Spot;
   public initialized: boolean = false;
 
-  constructor({ accountConfig, partnerConfig, pythConfig, rpcConfig }: SdkConfigParams) {
+  constructor({ accountConfig, partnerConfig, pythConfig, logLevel,rpcConfig,loggerMessageType }: SdkConfigParams) {
     this.accountConfig = accountConfig;
     this.rpcConfig = rpcConfig;
     this.core = new Core(this);
@@ -71,7 +72,7 @@ export class SynthetixSdk {
     this.pyth = new Pyth(this, pythConfig);
     this.perps = new Perps(this);
     this.spot = new Spot(this);
-
+    if(logLevel && loggerMessageType)initializeLogger(logLevel,loggerMessageType);
     if (partnerConfig != undefined) {
       this.trackingCode = partnerConfig.trackingCode ?? DEFAULT_TRACKING_CODE;
       this.referrer = partnerConfig.referrer ?? DEFAULT_REFERRER;
@@ -144,7 +145,7 @@ export class SynthetixSdk {
       }
       this.accountAddress = this.accountConfig.address as Hex;
     } catch (error) {
-      console.log('Error:', error);
+      logger.error(`Error: while init ${error}`);
       throw error;
     }
 
@@ -266,7 +267,6 @@ export class SynthetixSdk {
 
     if (submit) {
       const txHash = await this.executeTransaction(tx);
-      console.log('Transaction hash: ', txHash);
       return txHash;
     } else {
       return tx;

@@ -1,6 +1,6 @@
 {
   "name": "@parifi/synthetix-sdk-ts",
-  "version": "0.3.19-dev",
+  "version": "0.4.2-dev",
   "description": "A Typescript SDK for interactions with the Synthetix protocol",
   "files": [
     "dist",
@@ -58,6 +58,10 @@
     "@synthetixio/v3-contracts": "^6.9.0",
     "axios": "^1.7.5",
     "dotenv": "^16.4.5",
-    "viem": "2.14.1"
+    "morgan": "^1.10.0",
+    "ts-log": "^2.2.7",
+    "tslog": "^4.9.3",
+    "viem": "2.14.1",
+    "winston": "^3.17.0"
   }
 }

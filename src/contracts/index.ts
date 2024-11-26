@@ -1,4 +1,5 @@
 import { SynthetixSdk } from '..';
+import { logger } from '../utils/logger/logger';
 import { ZAP_BY_CHAIN } from './addreses/zap';
 import { dynamicImportAbi, dynamicImportMeta } from './helpers';
 import { erc20Abi, getContract, Hex } from 'viem';
@@ -29,7 +30,7 @@ export class Contracts {
       });
       return multicallInstance;
     } catch (error) {
-      console.log(error);
+      logger.error(`Error: while getMulticallInstance ${error}`);
       throw new Error(
         `Unsupported chain ${this.sdk.rpcConfig.chainId} or preset ${this.sdk.rpcConfig.preset} for MulticallInstance`,
       );
@@ -51,7 +52,7 @@ export class Contracts {
       });
       return coreProxyInstance;
     } catch (error) {
-      console.log(error);
+      logger.error(`Error: while getCoreProxyInstance ${error}`);
       throw new Error(
         `Unsupported chain ${this.sdk.rpcConfig.chainId} or preset ${this.sdk.rpcConfig.preset} for CoreProxy`,
       );
@@ -73,7 +74,7 @@ export class Contracts {
       });
       return accountProxyInstance;
     } catch (error) {
-      console.log(error);
+      logger.error(`Error: while getAccountProxyInstance ${error}`);
       throw new Error(
         `Unsupported chain ${this.sdk.rpcConfig.chainId} or preset ${this.sdk.rpcConfig.preset} for AccountProxy`,
       );
@@ -95,7 +96,7 @@ export class Contracts {
       });
       return perpsMarketProxyInstance;
     } catch (error) {
-      console.log(error);
+            logger.error(`Error: while getPerpsMarketProxyInstance ${error}`);
       throw new Error(
         `Unsupported chain ${this.sdk.rpcConfig.chainId} or preset ${this.sdk.rpcConfig.preset} for PerpsMarketProxy`,
       );
@@ -117,7 +118,7 @@ export class Contracts {
       });
       return perpsAccountProxyInstance;
     } catch (error) {
-      console.log(error);
+            logger.error(`Error: while getPerpsAccountProxyInstance ${error}`);
       throw new Error(
         `Unsupported chain ${this.sdk.rpcConfig.chainId} or preset ${this.sdk.rpcConfig.preset} for PerpsAccountProxy`,
       );
@@ -139,7 +140,7 @@ export class Contracts {
       });
       return pythERC7412WrapperInstance;
     } catch (error) {
-      console.log(error);
+            logger.error(`Error: while getPythErc7412WrapperInstance ${error}`);
       throw new Error(
         `Unsupported chain ${this.sdk.rpcConfig.chainId} or preset ${this.sdk.rpcConfig.preset} for PythERC7412Wrapper`,
       );
@@ -161,7 +162,7 @@ export class Contracts {
       });
       return spotMarketProxyInstance;
     } catch (error) {
-      console.log(error);
+            logger.error(`Error: while getSpotMarketProxyInstance ${error}`);
       throw new Error(
         `Unsupported chain ${this.sdk.rpcConfig.chainId} or preset ${this.sdk.rpcConfig.preset} for SpotMarketProxy`,
       );
@@ -183,7 +184,7 @@ export class Contracts {
       });
       return usdProxyInstance;
     } catch (error) {
-      console.log(error);
+            logger.error(`Error: while getUSDProxyInstance ${error}`);
       throw new Error(
         `Unsupported chain ${this.sdk.rpcConfig.chainId} or preset ${this.sdk.rpcConfig.preset} for USDProxy`,
       );
@@ -201,7 +202,7 @@ export class Contracts {
       });
       return zapInstance;
     } catch (error) {
-      console.log(error);
+            logger.error(`Error: while getZapInstance ${error}`);
       throw new Error(`Unsupported chain ${this.sdk.rpcConfig.chainId} or preset ${this.sdk.rpcConfig.preset} for Zap`);
     }
   }
@@ -223,7 +224,7 @@ export class Contracts {
       });
       return collateralInstance;
     } catch (error) {
-      console.log(error);
+            logger.error(`Error: while getAccountProxyInstance ${error}`);
       throw new Error(
         `Unsupported chain ${this.sdk.rpcConfig.chainId} or preset ${this.sdk.rpcConfig.preset} for CollateralToken_${symbol}`,
       );
