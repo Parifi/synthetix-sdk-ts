@@ -62,7 +62,7 @@ export abstract class Market<T extends MarketData | SpotMarketData> {
     } else {
       sizeInWei = parseUnits(size.toString(), 18);
     }
-    console.log(`Size ${size} in wei for market ${resolvedMarketName}: ${sizeInWei}`);
+
     return sizeInWei;
   }
 

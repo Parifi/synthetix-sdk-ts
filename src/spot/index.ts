@@ -652,6 +652,22 @@ export class Spot extends Market<SpotMarketData> {
     return this.sdk.utils.processTransactions(txs, { ...override });
   }
 
+  public async _buildApprove({ spender, amount, token }: { spender: Address; amount: number; token: Address }) {
+    const amountInWei = convertEtherToWei(amount);
+    const tx = {
+      target: token,
+      callData: encodeFunctionData({
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [spender as Hex, amountInWei],
+      }),
+      value: 0n,
+      requireSuccess: true,
+    };
+
+    return tx;
+  }
+
   /**
    * Approve an address to transfer a specified synth from the connected address.
    * Approves the ``targetAddress`` to transfer up to the ``amount`` from your account.

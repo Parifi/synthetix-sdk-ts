@@ -1,4 +1,4 @@
-import { encodeFunctionData, encodePacked, formatEther, getAbiItem, Hex, parseEther, parseUnits } from 'viem';
+import { Address, encodeFunctionData, encodePacked, formatEther, getAbiItem, Hex, parseEther, parseUnits } from 'viem';
 import { SynthetixSdk } from '..';
 import {
   CollateralData,
@@ -919,7 +919,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       price = await this.sdk.pyth.getFormattedPrice(feedId as Hex);
       console.log('Formatted price:', price);
     }
-    console.log('=== recursivee');
     const [orderFeesWithPriceResponse, settlementRewardCost, requiredMargin] = await Promise.all([
       this.sdk.utils.callErc7412({
         contractAddress: marketProxy.address,
@@ -1069,15 +1068,17 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     accountId = this.defaultAccountId,
     desiredFillPrice,
     maxPriceImpact,
+    collateralId,
   }: CommitOrder): Promise<Call3Value> {
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     const { resolvedMarketId, resolvedMarketName: marketName } = await this.resolveMarket(marketIdOrName);
+    const { resolvedMarketId: resolvedCollateralId } = await this.sdk.spot.resolveMarket(collateralId);
     if (desiredFillPrice != undefined && maxPriceImpact != undefined) {
       throw new Error('Cannot set both desiredFillPrice and maxPriceImpact');
     }
     const isShort = size < 0 ? -1 : 1;
-    const sizeInWei = parseEther(Math.abs(size).toString()) * BigInt(isShort);
+    const sizeInWei = (await this.sdk.spot.formatSize(Math.abs(size), resolvedCollateralId)) * BigInt(isShort);
     let acceptablePrice: number;
 
     // If desired price is provided, use the provided price, else fetch price
@@ -1329,12 +1330,26 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     }: CreateIsolateOrder,
     override: OverrideParamsWrite = {},
   ): Promise<WriteReturnType> {
-    const { resolvedMarketId } = await this.resolveMarket(marketIdOrName);
-    const { resolvedMarketName } = await this.sdk.spot.resolveMarket(collateralMarketId);
+    const spotInstance = await this.sdk.contracts.getSpotMarketProxyInstance();
+    const perpsInstance = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
-    console.log('=== resolvedMarketName', resolvedMarketName);
-    // throw new Error('Not implemented');
-    // const collatera = this.sdk.contracts.getCollateralInstance()
+    const { resolvedMarketName, resolvedMarketId: spotCollateralId } =
+      await this.sdk.spot.resolveMarket(collateralMarketId);
+
+    const syntCollateral = await this.sdk.spot.getMarket(collateralMarketId);
+    const collateral = await this.sdk.contracts.getCollateralInstance(resolvedMarketName.replace('s', ''));
+
+    const approveCollateral = await this.sdk.spot._buildApprove({
+      spender: perpsInstance.address,
+      amount: collateralAmount,
+      token: collateral.address,
+    });
+
+    const approveSyntCollateral = await this.sdk.spot._buildApprove({
+      spender: spotInstance.address,
+      amount: collateralAmount,
+      token: syntCollateral.contractAddress as Address,
+    });
 
     // 1. Create Account
     const createAccountCall = await this._buildCreateAccount(accountId);
@@ -1354,15 +1369,30 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const commitOrderCall = await this._buildCommitOrder({
       size: size,
       settlementStrategyId,
-      marketIdOrName: resolvedMarketId,
+      marketIdOrName,
       accountId,
       desiredFillPrice,
       maxPriceImpact,
+      collateralId: spotCollateralId,
     });
 
-    const rawTxs = [createAccountCall, wrapTxs, modifyCollateralCall, commitOrderCall].flat();
+    const rawTxs = [
+      // approveCollateral,
+      // approveSyntCollateral,
+      createAccountCall,
+      wrapTxs,
+      modifyCollateralCall,
+      commitOrderCall,
+    ].flat();
 
-    return this.sdk.utils.processTransactions(rawTxs, override);
+    return this.sdk.utils.processTransactions(rawTxs, {
+      ...override,
+      prepend: [
+        this.sdk.utils._fromCall3ToTransactionData(approveCollateral),
+        this.sdk.utils._fromCall3ToTransactionData(approveSyntCollateral),
+        ...(override?.prepend ? override.prepend : []),
+      ],
+    });
   }
 
   async _buildGrantPermission({ accountId, permission, user }: GrantPermission): Promise<Call3Value> {
