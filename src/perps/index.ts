@@ -64,6 +64,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   // Set multicollateral to false by default
   isMulticollateralEnabled: boolean = false;
   disabledMarkets: number[] = [];
+  isInitialized: boolean = false;
 
   constructor(synthetixSdk: SynthetixSdk) {
     super(synthetixSdk);
@@ -76,6 +77,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   // === READ CALLS ===
 
   async initPerps() {
+    if (this.isInitialized) return;
     await this.getAccountIds();
 
     // Check if the Multicollateral is enabled
@@ -94,6 +96,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       this.isMulticollateralEnabled = true;
       console.log('Multicollateral perps is enabled');
     }
+    this.isInitialized = true;
   }
 
   async formatSize(size: number, collateralId: number) {
@@ -198,10 +201,12 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
     this.sdk.pyth.updatePriceFeedIds([pythPriceIds]);
 
-    const marketSummaries = await this.getMarketSummaries(marketIds);
-    const fundingParameters = await this.getFundingParameters(marketIds);
-    const orderFees = await this.getOrderFees(marketIds);
-    const maxMarketValues = await this.getMaxMarketValues(marketIds);
+    const [marketSummaries, fundingParameters, orderFees, maxMarketValues] = await Promise.all([
+      this.getMarketSummaries(marketIds),
+      this.getFundingParameters(marketIds),
+      this.getOrderFees(marketIds),
+      this.getMaxMarketValues(marketIds),
+    ]);
 
     const marketId = Number(marketIds.at(0) || 0);
     const marketSummary = marketSummaries.find((summary) => summary.marketId == marketId);
