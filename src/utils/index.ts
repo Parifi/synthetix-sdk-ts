@@ -262,7 +262,7 @@ export class Utils {
     };
 
     const response = await publicClient.call(finalTx);
-
+    logger.info('=== response', response);
     if (!response.data) throw new Error('Error decoding call data');
     const multicallResult: Result[] = this.decodeResponse(
       multicallInstance.abi,
@@ -342,6 +342,7 @@ export class Utils {
     };
 
     const response = await publicClient.call(finalTx);
+    logger.info('=== response', response);
     const multicallResult: Result[] = this.decodeResponse(
       multicallInstance.abi,
       'aggregate3Value',
@@ -481,7 +482,7 @@ export class Utils {
     };
 
     const response = await publicClient.call(finalTx);
-
+    logger.info('=== response', response);
     const multicallResult: Result[] = this.decodeResponse(
       multicallInstance.abi,
       'aggregate3Value',
@@ -505,7 +506,7 @@ export class Utils {
     const totalValue = [...oracleCalls, ...calls].reduce((acc, tx) => {
       return acc + (tx.value || 0n);
     }, 0n);
-
+    logger.info('=== init data', { oracleCalls, calls, attemps });
     const multicallInstance = await this.sdk.contracts.getMulticallInstance();
     const multicallData = encodeFunctionData({
       abi: multicallInstance.abi,
@@ -519,14 +520,27 @@ export class Utils {
       data: multicallData,
       value: totalValue,
     };
+    const blockNumber = await publicClient.getBlockNumber();
     try {
+      logger.info('=== calling');
       await publicClient.call(parsedTx);
+      logger.info('=== oracle calls resolved');
       return oracleCalls;
     } catch (error) {
+   logger.error('=== catched error in getMissingOracleCalls ', error);
       const parsedError = parseError(error as CallExecutionError);
-
+      logger.error('=== parsedError in getMissingOracleCalls', parsedError);
       const shouldRetry = this.shouldRetryLogic(error, attemps);
-
+      console.info('=== shouldRetry in getMissingOracleCalls', shouldRetry);
+      console.info('=== data getMissingOracleCalls', {
+        attemps,
+        shouldRetry,
+        parsedTx,
+        calls,
+        blockNumber,
+        oracleCalls,
+        error,
+      });
       if (!shouldRetry) return oracleCalls;
       const data = await this.handleErc7412Error(parsedError);
 
@@ -576,6 +590,11 @@ export class Utils {
   shouldRetryLogic(error: unknown, attemps: number = 0): boolean {
     const parsedError = parseError(error as CallExecutionError);
     const isErc7412Error = this.isErc7412Error(parsedError);
+
+    logger.error('=== parsedError in  processTransactions ', {
+      parsedError,
+      isErc7412Error,
+    });
     if (!attemps && !isErc7412Error) return false;
     if (!isErc7412Error) {
       return false;

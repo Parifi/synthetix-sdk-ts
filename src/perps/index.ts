@@ -94,6 +94,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
     if (debtFunctionData != undefined && payDebtFunctionData != undefined) {
       this.isMulticollateralEnabled = true;
+      logger.info('Multicollateral perps is enabled')
     }
   }
 
@@ -124,7 +125,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
     const accountProxy = await this.sdk.contracts.getPerpsAccountProxyInstance();
     const balance = await accountProxy.read.balanceOf([accountAddress]);
-
+    logger.info('balance',balance)
     const argsList = [];
 
     for (let index = 0; index < Number(balance); index++) {
@@ -140,10 +141,12 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     if (accountIds == undefined) return [];
     // Set Perps account ids
     this.accountIds = accountIds as bigint[];
+    logger.info('accountIds', accountIds)
     if (defaultAccountId) {
       this.defaultAccountId = defaultAccountId;
     } else if (this.accountIds.length > 0) {
       this.defaultAccountId = this.accountIds[0] as bigint;
+      logger.info('Using default account id as ', this.defaultAccountId);
     }
     return accountIds as bigint[];
   }
@@ -272,9 +275,9 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       args: marketSummariesInput,
     })) as MarketSummaryResponse[];
 
-    // if (marketIds.length !== marketSummariesResponse.length) {
-    //   console.log('Inconsistent data');
-    // }
+    if (marketIds.length !== marketSummariesResponse.length) {
+     logger.info('Inconsistent data');
+    }
 
     const marketSummaries: MarketSummary[] = [];
     marketSummariesResponse.forEach((market, index) => {
@@ -331,7 +334,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       functionName: 'getMarketSummary',
       args: [resolvedMarketId],
     })) as MarketSummaryResponse;
-
+    logger.info('marketSummaryResponse', marketSummaryResponse);
     return {
       marketId: resolvedMarketId,
       marketName: resolvedMarketName,
@@ -662,6 +665,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
         const inputs = collateralIds.map((id) => {
           return [accountId, id];
         });
+        logger.info('inputs', inputs);
         const collateralAmounts = (await this.sdk.utils.multicallErc7412({
           contractAddress: marketProxy.address,
           abi: marketProxy.abi,
@@ -687,7 +691,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       maintenanceMarginRequirement: convertWeiToEther(requiredMaintenanceMargin),
       maxLiquidationReward: convertWeiToEther(maxLiquidationReward),
     };
-
+   logger.info(`${marginInfo}marginInfo` )
     return marginInfo;
   }
 
@@ -707,9 +711,9 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   }: ModifyCollateral): Promise<Call3Value> {
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
-    const { resolvedMarketId: collateralMarketId } =
+    const { resolvedMarketId: collateralMarketId,resolvedMarketName: collateralMarketName } =
       this.sdk.spot.resolveMarket(collateralMarketIdOrName);
-
+      logger.info(`Building ${amount} ${collateralMarketName} for account ${accountId}`);
     return {
       target: marketProxy.address,
       callData: encodeFunctionData({
@@ -754,6 +758,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       functionName: 'canLiquidate',
       args: [accountId],
     })) as boolean;
+    logger.info('canBeLiquidated', canBeLiquidated);
     return canBeLiquidated;
   }
 
@@ -790,6 +795,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
         canLiquidate: response,
       };
     });
+    logger.info('canLiquidates', canLiquidates);
     return canLiquidates;
   }
 
@@ -826,6 +832,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       positionSize: convertWeiToEther(response.at(2)),
       owedInterest: convertWeiToEther(response.at(3)),
     };
+    logger.info('openPositionData', openPositionData);
     return openPositionData;
   }
 
@@ -909,7 +916,9 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
     if (!price) {
       price = await this.sdk.pyth.getFormattedPrice(feedId as Hex);
+      logger.info('Formatted price:', price);
     }
+    logger.info('=== recursivee');
     const [orderFeesWithPriceResponse, settlementRewardCost, requiredMargin] = await Promise.all([
       this.sdk.utils.callErc7412({
         contractAddress: marketProxy.address,
@@ -932,6 +941,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
           }) as Promise<bigint>)
         : 0n,
     ]);
+    logger.info('=== recursivee end');
     const orderQuote: OrderQuote = {
       orderSize: size,
       indexPrice: price,
@@ -964,7 +974,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       functionName: 'debt',
       args: [accountId],
     })) as bigint;
-
+    logger.info('Account Debt: ', debt);
     return convertWeiToEther(debt);
   }
 
@@ -1058,14 +1068,16 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   }: CommitOrder): Promise<Call3Value> {
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
-    const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
+    const { resolvedMarketId, resolvedMarketName: marketName } = this.resolveMarket(marketIdOrName);
     if (desiredFillPrice != undefined && maxPriceImpact != undefined) {
       throw new Error('Cannot set both desiredFillPrice and maxPriceImpact');
     }
     const isShort = size < 0 ? -1 : 1;
     const sizeInWei = parseEther(Math.abs(size).toString()) * BigInt(isShort);
     let acceptablePrice: number;
-
+   logger.info(
+      `Building order size ${sizeInWei} (${size}) to ${marketName} (id: ${resolvedMarketId}) for account ${accountId}`,
+    );
     // If desired price is provided, use the provided price, else fetch price
     if (desiredFillPrice) {
       acceptablePrice = desiredFillPrice;
@@ -1228,6 +1240,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       throw new Error(`Order is already settled for account ${accountId}`);
     } else if (settlementTime > currentTimestamp) {
       const duration = settlementTime - currentTimestamp;
+      logger.info(`Waiting ${duration} seconds to settle order`);
       await sleep(duration);
     } else if (expirationTime < currentTimestamp) {
       throw new Error(`Order has expired for account ${accountId}`);
