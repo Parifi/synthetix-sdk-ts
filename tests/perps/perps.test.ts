@@ -219,13 +219,13 @@ describe('Perps', () => {
 
   it.only('should build an isolated account order', async () => {
     // const initialSusdBalance = await sdk.getSusdBalance();
-    const collateralAmount = 70; // 70 usdc.Min 62.5 USD collateral is required
-    const start = Date.now();
+    const collateralAmount = 20; // 70 usdc.Min 62.5 USD collateral is required
+    // const start = Date.now();
     await sdk.init();
-    const end = Date.now();
-    console.log('Time taken to init sdk:', end - start);
-    console.log('=== time taken in seconds', (end - start) / 1000);
-    console.log('=== time taken in minutes', (end - start) / 1000 / 60);
+    // const end = Date.now();
+    // console.log('Time taken to init sdk:', end - start);
+    // console.log('=== time taken in seconds', (end - start) / 1000);
+    // console.log('=== time taken in minutes', (end - start) / 1000 / 60);
     // const submit = false;
 
     // if (initialSusdBalance == 0 || initialSusdBalance < collateralAmount) {
@@ -233,36 +233,25 @@ describe('Perps', () => {
     //   return;
     // }
 
-    // const marketProxy = await sdk.contracts.getPerpsMarketProxyInstance();
-    // const tx = await sdk.spot.approve(
-    //   {
-    //     targetAddress: marketProxy.address,
-    //     amount: collateralAmount,
-    //     marketIdOrName: 'sUSDe',
-    //   },
-    //   { submit: true },
-    // );
-    // console.log('=== tx', tx);
+    const collateralMarketName = 'sUSDe';
+    console.log('=== sdk.spot.marketsByName', sdk.spot.marketsByName);
+    const collateralMarketId = sdk.spot.marketsByName.get(collateralMarketName)?.marketId ?? 0;
+    const marketName = 'Ethereum';
+    const orderSize = 0.01; // 0.01 ETH
 
-    // const collateralMarketName = 'sUSDe';
-    // console.log('=== sdk.spot.marketsByName', sdk.spot.marketsByName);
-    // const collateralMarketId = sdk.spot.marketsByName.get(collateralMarketName)?.marketId ?? 0;
-    // const marketName = 'Ethereum';
-    // const orderSize = 0.01; // 0.01 ETH
-    //
-    // const response = await sdk.perps.createIsolatedAccountOrder(
-    //   {
-    //     collateralAmount,
-    //     size: orderSize,
-    //     collateralMarketId,
-    //     marketIdOrName: marketName,
-    //     settlementStrategyId: 0,
-    //     desiredFillPrice: 3550,
-    //   },
-    //   { useMultiCall: true, useOracleCalls: true, shouldRevertOnTxFailure: false },
-    // );
+    const response = await sdk.perps.createIsolatedAccountOrder(
+      {
+        collateralAmount,
+        size: orderSize,
+        collateralMarketId,
+        marketIdOrName: marketName,
+        settlementStrategyId: 0,
+        desiredFillPrice: 3550,
+      },
+      { useMultiCall: true, useOracleCalls: true, shouldRevertOnTxFailure: false },
+    );
     // logger.log('=== response', response);
-    // console.log('=== response', response);
+    console.log('=== response', response);
 
     // if (submit) {
     // console.log(`Transaction hash and account details: ${response}`);

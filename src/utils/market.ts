@@ -32,19 +32,13 @@ export abstract class Market<T extends MarketData | SpotMarketData> {
    * the other is resolved. If both are provided, they are checked for consistency.
    * @param marketIdOrName Id or name of the market to resolve
    */
-  public resolveMarket(marketIdOrName: MarketIdOrName): { resolvedMarketId: number; resolvedMarketName: string } {
-    const isMarketId = typeof marketIdOrName === 'number';
+  public async resolveMarket(
+    marketIdOrName: MarketIdOrName,
+  ): Promise<{ resolvedMarketId: number; resolvedMarketName: string }> {
+    const market = await this.getMarket(marketIdOrName);
+    if (!market?.marketName || !market?.marketId) throw new Error(`Market not found for ${marketIdOrName}`);
 
-    if (!isMarketId) {
-      if (!this.marketsByName.has(marketIdOrName)) throw new Error('Invalid market name');
-      const resolvedMarketId = this.marketsByName.get(marketIdOrName)!.marketId;
-      return { resolvedMarketId: resolvedMarketId!, resolvedMarketName: marketIdOrName };
-    }
-
-    if (!this.marketsById.has(marketIdOrName)) throw new Error('Invalid market id');
-    const resolvedMarketName = this.marketsById.get(marketIdOrName)!.marketName;
-
-    return { resolvedMarketName: resolvedMarketName!, resolvedMarketId: marketIdOrName };
+    return { resolvedMarketName: market.marketName, resolvedMarketId: market.marketId };
   }
 
   /**
@@ -55,8 +49,8 @@ export abstract class Market<T extends MarketData | SpotMarketData> {
    * @param marketId The id of the market.
    * @returns The formatted size in wei. (e.g. 100 = 100000000000000000000)
    */
-  public formatSize(size: number, marketId: number): bigint {
-    const { resolvedMarketName } = this.resolveMarket(marketId);
+  public async formatSize(size: number, marketId: number) {
+    const { resolvedMarketName } = await this.resolveMarket(marketId);
     let sizeInWei: bigint;
 
     const chainIds = [8453, 84532, 42161, 421614];
@@ -127,5 +121,9 @@ export abstract class Market<T extends MarketData | SpotMarketData> {
     // @note A better approach would be to fetch the priceUpdateFee for tx dynamically
     // from the Pyth contract instead of using arbitrary values for pyth price update fees
     return [{ ...dataVerificationTx, value: 500n, requireSuccess: false }];
+  }
+
+  public async getMarket(_marketIdOrName: MarketIdOrName): Promise<T> {
+    throw new Error('Method not implemented.');
   }
 }

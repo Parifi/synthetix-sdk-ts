@@ -53,6 +53,13 @@ export class Spot extends Market<SpotMarketData> {
     await this.getMarkets();
   }
 
+  public async getMarket(marketIdOrName: MarketIdOrName): Promise<SpotMarketData> {
+    const market = this.marketsById.get(Number(marketIdOrName)) ?? this.marketsByName.get(marketIdOrName as string);
+    if (market) return market;
+
+    throw new Error(`Invalid market id or name: ${marketIdOrName}`);
+  }
+
   /**
    * Fetches contracts and metadata about all spot markets on the network. This includes
    * the market id, synth name, contract address, and the underlying synth contract. Each
@@ -183,8 +190,8 @@ export class Spot extends Market<SpotMarketData> {
    * @param {MarketIdOrName} marketIdOrName - The unique identifier or name of the market.
    * @returns {Contract<Synth>} - An instance of the Synth contract associated with the provided market.
    */
-  public getSynthContract(marketIdOrName: MarketIdOrName) {
-    const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
+  public async getSynthContract(marketIdOrName: MarketIdOrName) {
+    const { resolvedMarketId } = await this.resolveMarket(marketIdOrName);
 
     const contractAddress = this.marketsById.get(resolvedMarketId)?.contractAddress;
     if (contractAddress == undefined) {
@@ -208,7 +215,7 @@ export class Spot extends Market<SpotMarketData> {
    * @returns {number} The balance of the synth in ether.
    */
   public async getBalance(address: string = this.sdk.accountAddress, marketIdOrName: MarketIdOrName): Promise<number> {
-    const synthContract = this.getSynthContract(marketIdOrName);
+    const synthContract = await this.getSynthContract(marketIdOrName);
     const balance = await synthContract.read.balanceOf([address as Hex]);
     return convertWeiToEther(balance);
   }
@@ -226,7 +233,7 @@ export class Spot extends Market<SpotMarketData> {
     address: string = this.sdk.accountAddress,
     marketIdOrName: MarketIdOrName,
   ): Promise<number> {
-    const synthContract = this.getSynthContract(marketIdOrName);
+    const synthContract = await this.getSynthContract(marketIdOrName);
     const allowance = await synthContract.read.allowance([address as Hex, targetAddress as Hex]);
     return convertWeiToEther(allowance);
   }
@@ -247,7 +254,7 @@ export class Spot extends Market<SpotMarketData> {
     marketIdOrName,
     fetchSettlementStrategy = true,
   }: GetOrder): Promise<SpotOrder> {
-    const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
+    const { resolvedMarketId } = await this.resolveMarket(marketIdOrName);
 
     const spotProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
 
@@ -276,7 +283,7 @@ export class Spot extends Market<SpotMarketData> {
     settlementStrategyId,
     marketIdOrName,
   }: GetSettlementStrategy): Promise<SpotSettlementStrategy> {
-    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketIdOrName);
+    const { resolvedMarketId, resolvedMarketName } = await this.resolveMarket(marketIdOrName);
     const spotProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
 
     const settlementStrategy: SettlementStrategyResponse = (await this.sdk.utils.callErc7412({
@@ -377,7 +384,7 @@ export class Spot extends Market<SpotMarketData> {
     minAmountReceived,
     marketIdOrName,
   }: AtomicOrder): Promise<Call3Value> {
-    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketIdOrName);
+    const { resolvedMarketId, resolvedMarketName } = await this.resolveMarket(marketIdOrName);
     const spotMarketProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
 
     // If network is Base where USDC and sUSDC are 1:1, set minAmount to actual amount
@@ -463,10 +470,10 @@ export class Spot extends Market<SpotMarketData> {
     return this.sdk.utils.processTransactions(txs, { ...override });
   }
   public async _buildWrap({ size, marketIdOrName }: Wrap): Promise<Call3Value> {
-    const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
+    const { resolvedMarketId } = await this.resolveMarket(marketIdOrName);
     const spotMarketProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
 
-    const sizeInWei = this.formatSize(Math.abs(size), resolvedMarketId);
+    const sizeInWei = await this.formatSize(Math.abs(size), resolvedMarketId);
     const functionName = size > 0 ? 'wrap' : 'unwrap';
     const offset = (sizeInWei * 100n) / 1000n;
 
@@ -512,7 +519,7 @@ export class Spot extends Market<SpotMarketData> {
     settlementStrategyId = 0,
     marketIdOrName,
   }: CommitOrderSpot): Promise<Call3Value> {
-    const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
+    const { resolvedMarketId } = await this.resolveMarket(marketIdOrName);
     const spotMarketProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
 
     if (!minAmountReceived) {
@@ -605,7 +612,7 @@ export class Spot extends Market<SpotMarketData> {
     { asyncOrderId, marketIdOrName }: SettleOrder,
     override: OverrideParamsWrite = {},
   ): Promise<WriteReturnType> {
-    const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
+    const { resolvedMarketId } = await this.resolveMarket(marketIdOrName);
     const spotMarketProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
 
     const order = await this.getOrder({ asyncOrderId, marketIdOrName: resolvedMarketId });
@@ -665,7 +672,7 @@ export class Spot extends Market<SpotMarketData> {
       amountInWei = convertEtherToWei(amount);
     }
 
-    const synthContract = this.getSynthContract(marketIdOrName);
+    const synthContract = await this.getSynthContract(marketIdOrName);
 
     const txs = [
       {

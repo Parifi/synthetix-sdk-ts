@@ -30,6 +30,7 @@ import {
 import { PerpsRepository } from '../interface/Perps/repositories';
 import { Market } from '../utils/market';
 import { PERPS_PERMISSIONS } from '../constants/perpsPermissions';
+import { MetadataResponse, PythPriceId } from '../interface/Markets';
 
 /**
  * Class for interacting with Synthetix Perps V3 contracts
@@ -75,7 +76,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   // === READ CALLS ===
 
   async initPerps() {
-    await this.getMarkets();
     await this.getAccountIds();
 
     // Check if the Multicollateral is enabled
@@ -96,8 +96,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     }
   }
 
-  formatSize(size: number, collateralId: number) {
-    const { resolvedMarketName } = this.sdk.spot.resolveMarket(collateralId);
+  async formatSize(size: number, collateralId: number) {
+    const { resolvedMarketName } = await this.sdk.spot.resolveMarket(collateralId);
 
     const chainIds = [8453, 84532, 42161, 421614];
     const marketNames = ['sUSDC', 'sStataUSDC'];
@@ -123,7 +123,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
     const accountProxy = await this.sdk.contracts.getPerpsAccountProxyInstance();
     const balance = await accountProxy.read.balanceOf([accountAddress]);
-    console.log('balance', balance);
 
     const argsList = [];
 
@@ -141,7 +140,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     // Set Perps account ids
     this.accountIds = accountIds as bigint[];
 
-    console.log('accountIds', accountIds);
     if (defaultAccountId) {
       this.defaultAccountId = defaultAccountId;
     } else if (this.accountIds.length > 0) {
@@ -151,94 +149,92 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     return accountIds as bigint[];
   }
 
-  /**
-   * Fetch the ids and summaries for all perps markets. Market summaries include
-   * information about the market's price, open interest, funding rate, and skew
-   * @returns {Promise<{ marketsById: Map<number, MarketData>; marketsByName: Map<string, MarketData> }>} - A map of market data objects indexed by market id and market name
-   */
-  public async getMarkets(): Promise<{ marketsById: Map<number, MarketData>; marketsByName: Map<string, MarketData> }> {
+  public async getMarket(marketIdOrName: MarketIdOrName): Promise<MarketData> {
+    const market = this.marketsById.get(Number(marketIdOrName)) ?? this.marketsByName.get(marketIdOrName as string);
+    if (market) return market;
+
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-    const marketIdsResponse: bigint[] = (await perpsMarketProxy.read.getMarkets([])) as bigint[];
+    const marketIdResponse: bigint[] = (await perpsMarketProxy.read.getMarkets()) as bigint[];
 
-    const marketIds = marketIdsResponse.map((id) => {
-      return Number(id);
-    });
-
-    // Response type from metadata smart contract call - [MarketName, MarketSymbol]
-    type MetadataResponse = [string, string];
     const marketMetadataResponse = (await this.sdk.utils.multicallErc7412({
       contractAddress: perpsMarketProxy.address,
       abi: perpsMarketProxy.abi,
       functionName: 'metadata',
-      args: marketIds as unknown[],
+      args: marketIdResponse as unknown[],
     })) as MetadataResponse[];
 
+    const marketIds = marketIdResponse
+      .map((id) => Number(id))
+      .filter((id, index) => {
+        const name = marketMetadataResponse[index][0];
+        const symbol = marketMetadataResponse[index][1];
+
+        return name == marketIdOrName || symbol == marketIdOrName || id == marketIdOrName;
+      });
+
     const settlementStrategies = await this.getSettlementStrategies(marketIds);
-    const pythPriceIds: { symbol: string; feedId: string }[] = [];
+    const { marketMetadata, pythPriceIds } = marketMetadataResponse.reduce(
+      (acc, market, index) => {
+        const [name, symbol] = market;
+        const strategy = settlementStrategies.find((strategy) => strategy.marketId == marketIds[index]);
 
-    // Set market metadata for all markets and populate Pyth price ids
-    marketMetadataResponse.forEach((market, index) => {
-      const marketName = market[0];
-      const marketSymbol = market[1];
-      const settlementStrategy = settlementStrategies.find((strategy) => strategy.marketId == marketIds[index]);
+        acc.pythPriceIds = {
+          symbol,
+          feedId: strategy?.feedId ?? '0x',
+        };
+        acc.marketMetadata = {
+          marketName: name,
+          symbol,
+          feedId: strategy?.feedId ?? '0x',
+        };
 
-      this.marketMetadata.set(marketIds[index], {
-        marketName: marketName,
-        symbol: marketSymbol,
-        feedId: settlementStrategy?.feedId ?? '0x',
-      });
+        return acc;
+      },
+      {
+        pythPriceIds: {},
+        marketMetadata: {},
+      } as { pythPriceIds: PythPriceId; marketMetadata: MarketMetadata },
+    );
 
-      pythPriceIds.push({
-        symbol: marketSymbol,
-        feedId: settlementStrategy?.feedId ?? '0x',
-      });
-    });
-
-    // Update Pyth price feeds
-    this.sdk.pyth.updatePriceFeedIds(pythPriceIds);
+    this.sdk.pyth.updatePriceFeedIds([pythPriceIds]);
 
     const marketSummaries = await this.getMarketSummaries(marketIds);
     const fundingParameters = await this.getFundingParameters(marketIds);
     const orderFees = await this.getOrderFees(marketIds);
     const maxMarketValues = await this.getMaxMarketValues(marketIds);
 
-    marketIds.forEach((marketId) => {
-      // Skip disabled markets
-      if (!this.disabledMarkets.includes(marketId)) {
-        const marketSummary = marketSummaries.find((summary) => summary.marketId == marketId);
-        const fundingParam = fundingParameters.find((fundingParam) => fundingParam.marketId == marketId);
-        const orderFee = orderFees.find((orderFee) => orderFee.marketId == marketId);
-        const maxMarketValue = maxMarketValues.find((maxMarketValue) => maxMarketValue.marketId == marketId);
+    const marketId = Number(marketIds.at(0) || 0);
+    const marketSummary = marketSummaries.find((summary) => summary.marketId == marketId);
+    const fundingParam = fundingParameters.find((fundingParam) => fundingParam.marketId == marketId);
+    const orderFee = orderFees.find((orderFee) => orderFee.marketId == marketId);
+    const maxMarketValue = maxMarketValues.find((maxMarketValue) => maxMarketValue.marketId == marketId);
 
-        const marketName = this.marketMetadata.get(marketId)?.marketName ?? '0x';
-        const marketSymbol = this.marketMetadata.get(marketId)?.symbol ?? 'INVALID';
+    const result = {
+      marketId,
+      marketName: marketMetadata.marketName,
+      symbol: marketMetadata.symbol,
+      feedId: marketMetadata.feedId,
+      skew: marketSummary?.skew,
+      size: marketSummary?.size,
+      maxOpenInterest: marketSummary?.maxOpenInterest,
+      interestRate: marketSummary?.interestRate,
+      currentFundingRate: marketSummary?.currentFundingRate,
+      currentFundingVelocity: marketSummary?.currentFundingVelocity,
+      indexPrice: marketSummary?.indexPrice,
+      skewScale: fundingParam?.skewScale,
+      maxFundingVelocity: fundingParam?.maxFundingVelocity,
+      makerFee: orderFee?.makerFeeRatio,
+      takerFee: orderFee?.takerFeeRatio,
+      maxMarketValue: maxMarketValue?.maxMarketValue,
+    };
 
-        const marketData = {
-          marketId: marketId,
-          marketName: marketName,
-          symbol: marketSymbol,
-          feedId: this.marketMetadata.get(marketId)?.feedId,
-          skew: marketSummary?.skew,
-          size: marketSummary?.size,
-          maxOpenInterest: marketSummary?.maxOpenInterest,
-          interestRate: marketSummary?.interestRate,
-          currentFundingRate: marketSummary?.currentFundingRate,
-          currentFundingVelocity: marketSummary?.currentFundingVelocity,
-          indexPrice: marketSummary?.indexPrice,
-          skewScale: fundingParam?.skewScale,
-          maxFundingVelocity: fundingParam?.maxFundingVelocity,
-          makerFee: orderFee?.makerFeeRatio,
-          takerFee: orderFee?.takerFeeRatio,
-          maxMarketValue: maxMarketValue?.maxMarketValue,
-        };
+    this.marketMetadata.set(marketId, marketMetadata);
 
-        this.marketsById.set(marketId, marketData);
-        this.marketsByName.set(marketName, marketData);
-        this.marketsBySymbol.set(marketSymbol, marketData);
-      }
-    });
+    this.marketsById.set(marketId, result);
+    this.marketsByName.set(marketMetadata.marketName, result);
+    this.marketsBySymbol.set(marketMetadata.symbol, result);
 
-    return { marketsById: this.marketsById, marketsByName: this.marketsByName };
+    return result;
   }
 
   /**
@@ -307,7 +303,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    */
 
   public async getMarketSummary(marketIdOrName: MarketIdOrName): Promise<MarketSummary> {
-    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketIdOrName);
+    const { resolvedMarketId, resolvedMarketName } = await this.resolveMarket(marketIdOrName);
 
     interface MarketSummaryResponse {
       skew: bigint;
@@ -362,7 +358,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     settlementStrategyId: number,
     marketIdOrName: MarketIdOrName,
   ): Promise<SettlementStrategy> {
-    const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
+    const { resolvedMarketId } = await this.resolveMarket(marketIdOrName);
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     interface SettlementStrategyResponse {
@@ -715,7 +711,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     const { resolvedMarketId: collateralMarketId, resolvedMarketName: collateralMarketName } =
-      this.sdk.spot.resolveMarket(collateralMarketIdOrName);
+      await this.sdk.spot.resolveMarket(collateralMarketIdOrName);
 
     console.log(`Building ${amount} ${collateralMarketName} for account ${accountId}`);
     return {
@@ -723,7 +719,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       callData: encodeFunctionData({
         abi: marketProxy.abi,
         functionName: 'modifyCollateral',
-        args: [accountId, collateralMarketId, this.formatSize(amount, collateralMarketId)],
+        args: [accountId, collateralMarketId, await this.formatSize(amount, collateralMarketId)],
       }),
       value: 0n,
       requireSuccess: true,
@@ -818,7 +814,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   ): Promise<OpenPositionData> {
     if (!accountId) throw new Error('Account ID is required');
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketIdOrName);
+    const { resolvedMarketId, resolvedMarketName } = await this.resolveMarket(marketIdOrName);
 
     // Smart contract response:
     // returns (int256 totalPnl, int256 accruedFunding, int128 positionSize, uint256 owedInterest);
@@ -859,7 +855,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
     const marketIds: number[] = !marketIdsOrNames
       ? Array.from(this.marketsById.keys())
-      : marketIdsOrNames.map((market) => this.resolveMarket(market).resolvedMarketId);
+      : await Promise.all(marketIdsOrNames.map(async (market) => (await this.resolveMarket(market)).resolvedMarketId));
 
     const inputs = marketIds?.map((marketId) => {
       return [accountId, marketId];
@@ -914,7 +910,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     if (!accountId) throw new Error('No account Id!');
 
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-    const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
+    const { resolvedMarketId } = await this.resolveMarket(marketIdOrName);
 
     const feedId = this.marketsById.get(resolvedMarketId)?.feedId;
     if (!feedId) throw new Error('Invalid feed id received from market data');
@@ -1001,7 +997,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   ): Promise<bigint> {
     if (!accountId) throw new Error('Account ID is required');
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-    const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
+    const { resolvedMarketId } = await this.resolveMarket(marketIdOrName);
 
     const functionNames: string[] = [];
     const argsList: unknown[] = [];
@@ -1076,7 +1072,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   }: CommitOrder): Promise<Call3Value> {
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
-    const { resolvedMarketId, resolvedMarketName: marketName } = this.resolveMarket(marketIdOrName);
+    const { resolvedMarketId, resolvedMarketName: marketName } = await this.resolveMarket(marketIdOrName);
     if (desiredFillPrice != undefined && maxPriceImpact != undefined) {
       throw new Error('Cannot set both desiredFillPrice and maxPriceImpact');
     }
@@ -1333,7 +1329,12 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     }: CreateIsolateOrder,
     override: OverrideParamsWrite = {},
   ): Promise<WriteReturnType> {
-    const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
+    const { resolvedMarketId } = await this.resolveMarket(marketIdOrName);
+    const { resolvedMarketName } = await this.sdk.spot.resolveMarket(collateralMarketId);
+
+    console.log('=== resolvedMarketName', resolvedMarketName);
+    // throw new Error('Not implemented');
+    // const collatera = this.sdk.contracts.getCollateralInstance()
 
     // 1. Create Account
     const createAccountCall = await this._buildCreateAccount(accountId);
@@ -1446,7 +1447,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   public async payDebtAndWithdraw(params: PayDebtAndWithdraw, override: OverrideParamsWrite) {
     const zapInstance = await this.sdk.contracts.getZapInstance();
     const modifyPerpsPermission = PERPS_PERMISSIONS.PERPS_MODIFY_COLLATERAL;
-    const { resolvedMarketId } = this.sdk.spot.resolveMarket(params.collateralIdOrName);
+    const { resolvedMarketId } = await this.sdk.spot.resolveMarket(params.collateralIdOrName);
 
     const grantPermissionTx = await this._buildGrantPermission({
       accountId: params.accountId,
@@ -1454,11 +1455,11 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       user: zapInstance.address,
     });
 
-    const amount = this.formatSize(params.collateralAmount, resolvedMarketId);
+    const amount = await this.formatSize(params.collateralAmount, resolvedMarketId);
 
     const swapMaxAmountIn = amount;
 
-    const minAmount = this.formatSize(params.minToReceive, resolvedMarketId);
+    const minAmount = await this.formatSize(params.minToReceive, resolvedMarketId);
 
     const unwindTx = {
       target: zapInstance.address,

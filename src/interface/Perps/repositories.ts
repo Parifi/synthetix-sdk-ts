@@ -46,9 +46,8 @@ export interface PerpsRepository {
 
   // === Methods
   initPerps(): Promise<void>;
-  resolveMarket(marketIdOrName: MarketIdOrName): { resolvedMarketId: number; resolvedMarketName: string };
+  resolveMarket(marketIdOrName: MarketIdOrName): Promise<{ resolvedMarketId: number; resolvedMarketName: string }>;
   getAccountIds(address?: string, defaultAccountId?: bigint): Promise<bigint[]>;
-  getMarkets(): Promise<{ marketsById: MarketById; marketsByName: MarketByName }>;
   getMarketSummaries(marketIds: number[]): Promise<MarketSummary[]>;
   getMarketSummary(marketIdOrName: MarketIdOrName): Promise<MarketSummary>;
   getSettlementStrategy(settlementId: number, marketIdOrName: MarketIdOrName): Promise<SettlementStrategy>;
