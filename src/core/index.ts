@@ -4,6 +4,7 @@ import { ZERO_ADDRESS } from '../constants/common';
 import { CoreRepository } from '../interface/Core';
 import { OverrideParamsWrite, WriteReturnType } from '../interface/commonTypes';
 import { Call3Value } from '../interface/contractTypes';
+import { logger } from '../utils/logger/logger';
 
 /**
  * Class for interacting with Synthetix V3 core contracts
@@ -37,7 +38,8 @@ export class Core implements CoreRepository {
       args: [accountId],
     });
 
-    console.log(`Core account Owner for id ${accountId} is ${response}`);
+   logger.info(`Core account Owner for id ${accountId} is ${response}`);
+
     return response as Hex;
   }
 
@@ -55,7 +57,7 @@ export class Core implements CoreRepository {
       args: [],
     });
 
-    console.log('USD Token address: ', response);
+    logger.info('USD Token address: ', response);
     return response as Hex;
   }
 
@@ -82,7 +84,7 @@ export class Core implements CoreRepository {
 
     const accountProxy = await this.sdk.contracts.getAccountProxyInstance();
     const balance = await accountProxy.read.balanceOf([accountAddress]);
-    console.log('balance', balance);
+    logger.info('balance',balance)
 
     const argsList = [];
 
@@ -98,13 +100,12 @@ export class Core implements CoreRepository {
 
     // Set Core account ids
     this.accountIds = accountIds;
-
-    console.log('accountIds', accountIds);
+    logger.info('accountIds', accountIds);
     if (defaultAccountId) {
       this.defaultAccountId = defaultAccountId;
     } else if (this.accountIds.length > 0) {
       this.defaultAccountId = this.accountIds[0];
-      console.log('Using default account id as ', this.defaultAccountId);
+      logger.info('Using default account id as ', this.defaultAccountId);
     }
     return accountIds;
   }
@@ -150,8 +151,7 @@ export class Core implements CoreRepository {
       functionName: 'getPreferredPool',
       args: [],
     });
-
-    console.log(preferredPool);
+    logger.info(preferredPool)
     return preferredPool as bigint;
   }
 

@@ -1,4 +1,5 @@
 import { Hex } from 'viem';
+import { logger } from './logger/logger';
 
 // TODO: Generalize this. See https://github.com/usecannon/cannon/blob/main/packages/builder/src/error/index.ts
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -20,9 +21,9 @@ export function parseError(error: any): Hex {
       return error.cause?.cause?.cause?.error?.data;
     }
   } catch (err) {
-    console.error('=== exception in erc7412 error parser:', err);
+    logger.error('=== exception in erc7412 error parser:', err);
   }
-  console.log('=== a', JSON.stringify(error, null, 2));
+  logger.info('=== a', JSON.stringify(error, null, 2));
   // rethrow the error (and log it so we can see the original)
   console.error('=== got unknown error in erc7412 parse', error);
   return '0x';
