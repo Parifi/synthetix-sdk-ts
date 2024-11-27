@@ -49,21 +49,11 @@ export abstract class Market<T extends MarketData | SpotMarketData> {
    * @param marketId The id of the market.
    * @returns The formatted size in wei. (e.g. 100 = 100000000000000000000)
    */
-  public async formatSize(size: number, marketId: number) {
-    const { resolvedMarketName } = await this.resolveMarket(marketId);
-    let sizeInWei: bigint;
+  public async formatSize(size: number, marketId: MarketIdOrName) {
+    // TODO: think in a better solution maybe get the collateral and query the decimals from the contract
+    if (marketId === 'USDC') return parseUnits(size.toString(), 6);
 
-    const chainIds = [8453, 84532, 42161, 421614];
-    const marketNames = ['sUSDC', 'sStataUSDC'];
-
-    // Hard-coding a catch for USDC with 6 decimals
-    if (chainIds.includes(this.sdk.rpcConfig.chainId) && marketNames.includes(resolvedMarketName)) {
-      sizeInWei = parseUnits(size.toString(), 6);
-    } else {
-      sizeInWei = parseUnits(size.toString(), 18);
-    }
-
-    return sizeInWei;
+    return parseUnits(size.toString(), 18);
   }
 
   /**

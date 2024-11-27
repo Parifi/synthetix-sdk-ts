@@ -1,4 +1,4 @@
-import { Address, encodeFunctionData, encodePacked, formatEther, getAbiItem, Hex, parseEther, parseUnits } from 'viem';
+import { Address, encodeFunctionData, formatEther, getAbiItem, Hex } from 'viem';
 import { SynthetixSdk } from '..';
 import {
   CollateralData,
@@ -99,19 +99,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     this.isInitialized = true;
   }
 
-  async formatSize(size: number, collateralId: number) {
-    const { resolvedMarketName } = await this.sdk.spot.resolveMarket(collateralId);
-
-    const chainIds = [8453, 84532, 42161, 421614];
-    const marketNames = ['sUSDC', 'sStataUSDC'];
-
-    // Hard-coding a catch for USDC with 6 decimals
-    if (chainIds.includes(this.sdk.rpcConfig.chainId) && marketNames.includes(resolvedMarketName))
-      return parseUnits(size.toString(), 6);
-
-    return parseUnits(size.toString(), 18);
-  }
-
   /**
    * Fetch a list of perps ``account_id`` owned by an address. Perps accounts
    * are minted as an NFT to the owner's address. The ``account_id`` is the
@@ -150,6 +137,16 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       console.log('Using default account id as ', this.defaultAccountId);
     }
     return accountIds as bigint[];
+  }
+
+  public async getMarkets(): Promise<MarketData[]> {
+    const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    const marketIdResponse: bigint[] = (await perpsMarketProxy.read.getMarkets()) as bigint[];
+    for (const marketId of marketIdResponse) {
+      await this.getMarket(Number(marketId));
+    }
+
+    return Array.from(this.marketsById.values());
   }
 
   public async getMarket(marketIdOrName: MarketIdOrName): Promise<MarketData> {
@@ -1229,7 +1226,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     return this.sdk.utils.processTransactions(txs, { ...override });
   }
   /**
-   * @name settleOrder
+   * @name settleOrderperps
    * @description Settles an open order by executing the 'settleOrder' function on Perps Market Proxy contract.
    * @param {bigint} accountId - The ID of the account associated with the order. Defaults to `this.defaultAccountId`.
    * @param {OverrideParamsWrite} override - Optional override parameters for writing transactions (defaults to default values).
@@ -1345,13 +1342,13 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const collateral = await this.sdk.contracts.getCollateralInstance(resolvedMarketName.replace('s', ''));
 
     const approveCollateral = await this.sdk.spot._buildApprove({
-      spender: perpsInstance.address,
+      spender: spotInstance.address,
       amount: collateralAmount,
       token: collateral.address,
     });
 
     const approveSyntCollateral = await this.sdk.spot._buildApprove({
-      spender: spotInstance.address,
+      spender: perpsInstance.address,
       amount: collateralAmount,
       token: syntCollateral.contractAddress as Address,
     });
