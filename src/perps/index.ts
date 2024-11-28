@@ -142,11 +142,85 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   public async getMarkets(): Promise<MarketData[]> {
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
     const marketIdResponse: bigint[] = (await perpsMarketProxy.read.getMarkets()) as bigint[];
-    for (const marketId of marketIdResponse) {
-      await this.getMarket(Number(marketId));
-    }
 
-    return Array.from(this.marketsById.values());
+    const marketMetadataResponse = (await this.sdk.utils.multicallErc7412({
+      contractAddress: perpsMarketProxy.address,
+      abi: perpsMarketProxy.abi,
+      functionName: 'metadata',
+      args: marketIdResponse as unknown[],
+    })) as MetadataResponse[];
+
+    const marketIds = marketIdResponse.map((id) => Number(id));
+
+    const settlementStrategies = await this.getSettlementStrategies(marketIds);
+    const { marketMetadatas, pythPriceIds } = marketMetadataResponse.reduce(
+      (acc, market, index) => {
+        const [name, symbol] = market;
+        const strategy = settlementStrategies.find((strategy) => strategy.marketId == marketIds[index]);
+
+        acc.pythPriceIds.push({
+          symbol,
+          feedId: strategy?.feedId ?? '0x',
+        });
+
+        acc.marketMetadatas.push({
+          marketName: name,
+          symbol,
+          feedId: strategy?.feedId ?? '0x',
+        });
+
+        return acc;
+      },
+      {
+        pythPriceIds: [],
+        marketMetadatas: [],
+      } as { pythPriceIds: PythPriceId[]; marketMetadatas: MarketMetadata[] },
+    );
+
+    this.sdk.pyth.updatePriceFeedIds(pythPriceIds);
+
+    const [marketSummaries, fundingParameters, orderFees, maxMarketValues] = await Promise.all([
+      this.getMarketSummaries(marketIds),
+      this.getFundingParameters(marketIds),
+      this.getOrderFees(marketIds),
+      this.getMaxMarketValues(marketIds),
+    ]);
+
+    const marketId = Number(marketIds.at(0) || 0);
+    const marketSummary = marketSummaries.find((summary) => summary.marketId == marketId);
+    const fundingParam = fundingParameters.find((fundingParam) => fundingParam.marketId == marketId);
+    const orderFee = orderFees.find((orderFee) => orderFee.marketId == marketId);
+    const maxMarketValue = maxMarketValues.find((maxMarketValue) => maxMarketValue.marketId == marketId);
+
+    const datas = marketMetadatas.map((marketMetadata) => {
+      const result = {
+        marketId,
+        marketName: marketMetadata.marketName,
+        symbol: marketMetadata.symbol,
+        feedId: marketMetadata.feedId,
+        skew: marketSummary?.skew,
+        size: marketSummary?.size,
+        maxOpenInterest: marketSummary?.maxOpenInterest,
+        interestRate: marketSummary?.interestRate,
+        currentFundingRate: marketSummary?.currentFundingRate,
+        currentFundingVelocity: marketSummary?.currentFundingVelocity,
+        indexPrice: marketSummary?.indexPrice,
+        skewScale: fundingParam?.skewScale,
+        maxFundingVelocity: fundingParam?.maxFundingVelocity,
+        makerFee: orderFee?.makerFeeRatio,
+        takerFee: orderFee?.takerFeeRatio,
+        maxMarketValue: maxMarketValue?.maxMarketValue,
+      };
+
+      this.marketMetadata.set(marketId, marketMetadata);
+      this.marketsById.set(marketId, result);
+      this.marketsByName.set(marketMetadata.marketName, result);
+      this.marketsBySymbol.set(marketMetadata.symbol, result);
+
+      return result;
+    });
+
+    return datas;
   }
 
   public async getMarket(marketIdOrName: MarketIdOrName): Promise<MarketData> {
