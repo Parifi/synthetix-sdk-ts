@@ -210,8 +210,17 @@ export class Contracts {
     try {
       symbol = symbol.toUpperCase();
       const meta = await dynamicImportMeta(this.sdk.rpcConfig.chainId, this.sdk.rpcConfig.preset);
-      // @ts-expect-error - TS doesn't know that the key exists
-      const address = meta.contracts[`CollateralToken_${symbol}`];
+
+      const contracts = Object.keys(meta.contracts);
+      const contract = contracts.find(
+        (contract) => contract.toLowerCase() === `CollateralToken_${symbol}`.toLowerCase(),
+      );
+
+      console.log('=== contracts', contracts, contract);
+
+      // @ts-expect-error correct type
+      const address = meta.contracts[contract as string] as Hex;
+
       if (!address) {
         throw new Error(`CollateralToken_${symbol} not found in meta`);
       }
