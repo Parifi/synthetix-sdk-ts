@@ -901,6 +901,53 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   }
 
   /**
+   * Retrieves open positions for multiple accounts and markets using a multicall.
+   * @param positions - An array of objects representing the positions,
+   * where each object contains:
+   * - accountId: {bigint} The id of the account to fetch the position for .
+   * - marketIdOrName: {MarketIdOrName} The market ID or name.
+   * @returns An array of OpenPositionData objects. */
+  public async getOpenPositionsMulticall(
+    positions: { accountId: bigint; marketIdOrName: MarketIdOrName }[],
+  ): Promise<OpenPositionData[]> {
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+
+    const marketIds: number[] = await Promise.all(
+      positions.map(async (position) => (await this.resolveMarket(position.marketIdOrName)).resolvedMarketId),
+    );
+
+    const inputs = positions.map((position, idx) => {
+      return [position.accountId, marketIds.at(idx)];
+    }) as unknown[];
+
+    // Smart contract response:
+    // returns (int256 totalPnl, int256 accruedFunding, int128 positionSize, uint256 owedInterest);
+    const response = (await this.sdk.utils.multicallErc7412({
+      contractAddress: marketProxy.address,
+      abi: marketProxy.abi,
+      functionName: 'getOpenPosition',
+      args: inputs,
+    })) as bigint[][];
+
+    const openPositionsData: OpenPositionData[] = [];
+    response.forEach((positionData, idx) => {
+      const marketId = marketIds?.at(idx) ?? 0;
+      const positionSize = convertWeiToEther(positionData.at(2));
+      if (Math.abs(positionSize) > 0) {
+        openPositionsData.push({
+          marketId: marketId,
+          marketName: this.marketsById.get(marketId)?.marketName ?? 'Unresolved market',
+          totalPnl: convertWeiToEther(positionData.at(0)),
+          accruedFunding: convertWeiToEther(positionData.at(1)),
+          positionSize: positionSize,
+          owedInterest: convertWeiToEther(positionData.at(3)),
+        });
+      }
+    });
+    return openPositionsData;
+  }
+
+  /**
    * @name getQuote
    * @description Fetches a quote for a Perpetual market, calculating the fees, fill price and required margin.
    * @param {number} data.size - The size of the order in base asset units

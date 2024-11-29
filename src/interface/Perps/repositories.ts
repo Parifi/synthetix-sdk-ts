@@ -63,6 +63,10 @@ export interface PerpsRepository {
   getCanLiquidates(accountIds: bigint[]): Promise<{ accountId: bigint; canLiquidate: boolean }[]>;
   getOpenPosition(marketIdOrName: MarketIdOrName, accountId?: bigint): Promise<OpenPositionData>;
   getOpenPositions(marketIdsOrNames: MarketIdOrName[], accountIds?: bigint): Promise<OpenPositionData[]>;
+  getOpenPositionsMulticall(
+    positions: { accountId: bigint; marketIdOrName: MarketIdOrName }[],
+  ): Promise<OpenPositionData[]>;
+
   getQuote(data: GetPerpsQuote): Promise<OrderQuote>;
   getDebt(accountId?: bigint): Promise<number>;
 
