@@ -1017,7 +1017,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
           }) as Promise<bigint>)
         : 0n,
     ]);
-    console.log('=== recursivee end');
 
     const orderQuote: OrderQuote = {
       orderSize: size,
@@ -1068,7 +1067,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   public async getApproxLiquidationPrice(
     marketIdOrName: MarketIdOrName,
     accountId = this.defaultAccountId,
-    override: OverrideParamsRead,
+    override?: OverrideParamsRead,
   ): Promise<bigint> {
     if (!accountId) throw new Error('Account ID is required');
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
@@ -1144,17 +1143,15 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     accountId = this.defaultAccountId,
     desiredFillPrice,
     maxPriceImpact,
-    collateralId,
   }: CommitOrder): Promise<Call3Value> {
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     const { resolvedMarketId, resolvedMarketName: marketName } = await this.resolveMarket(marketIdOrName);
-    const { resolvedMarketId: resolvedCollateralId } = await this.sdk.spot.resolveMarket(collateralId);
     if (desiredFillPrice != undefined && maxPriceImpact != undefined) {
       throw new Error('Cannot set both desiredFillPrice and maxPriceImpact');
     }
     const isShort = size < 0 ? -1 : 1;
-    const sizeInWei = (await this.sdk.spot.formatSize(Math.abs(size), resolvedCollateralId)) * BigInt(isShort);
+    const sizeInWei = (await this.sdk.perps.formatSize(Math.abs(size), resolvedMarketId)) * BigInt(isShort);
     let acceptablePrice: number;
 
     // If desired price is provided, use the provided price, else fetch price
@@ -1448,8 +1445,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       marketIdOrName,
       accountId,
       desiredFillPrice,
-      maxPriceImpact,
-      collateralId: spotCollateralId,
+      maxPriceImpact
     });
 
     const rawTxs = [
