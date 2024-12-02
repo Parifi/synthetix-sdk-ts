@@ -902,6 +902,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     })) as bigint[];
 
     const openPositionData: OpenPositionData = {
+      accountId: accountId,
       marketId: resolvedMarketId,
       marketName: resolvedMarketName,
       totalPnl: convertWeiToEther(response.at(0)),
@@ -952,6 +953,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       const positionSize = convertWeiToEther(positionData.at(2));
       if (Math.abs(positionSize) > 0) {
         openPositionsData.push({
+          accountId: accountId,
           marketId: marketId,
           marketName: this.marketsById.get(marketId)?.marketName ?? 'Unresolved market',
           totalPnl: convertWeiToEther(positionData.at(0)),
@@ -999,6 +1001,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       const positionSize = convertWeiToEther(positionData.at(2));
       if (Math.abs(positionSize) > 0) {
         openPositionsData.push({
+          accountId: positions.at(idx)?.accountId ?? 0n,
           marketId: marketId,
           marketName: this.marketsById.get(marketId)?.marketName ?? 'Unresolved market',
           totalPnl: convertWeiToEther(positionData.at(0)),
