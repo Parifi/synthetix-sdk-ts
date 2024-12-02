@@ -568,6 +568,15 @@ export class Utils {
     } as TransactionData;
   }
 
+  _fromTransactionDataToCall3(data: TransactionData, requireSuccess = true): Call3Value {
+    return {
+      target: data.to,
+      callData: data.data,
+      value: BigInt(data.value || 0),
+      requireSuccess,
+    } as Call3Value;
+  }
+
   _fromCallDataToTransactionData(calls: CallParameters): TransactionData {
     return {
       to: calls.to as Address,
@@ -587,14 +596,16 @@ export class Utils {
 
   async processTransactions(data: Call3Value[], override: OverrideParamsWrite): Promise<WriteReturnType> {
     const useOracleCall = override.useOracleCalls ?? true;
+
     const oracleCalls = useOracleCall
       ? await this.getMissingOracleCalls(data, undefined, { account: override.account })
       : [];
+
     const txs = [...oracleCalls, ...data];
     if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
 
     const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
-    if (!override.submit) return [tx];
+    if (!override.submit) return [...(override.prepend ? override.prepend : []), tx];
 
     return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
   }
