@@ -114,6 +114,16 @@ describe('Perps', () => {
   //   console.log('positionsData :', positionsData);
   // });
   //
+
+  it.only('should return open position data for multiple markets', async () => {
+    const positionsData = await sdk.perps.getOpenPositionsMulticall([
+      { accountId: 170141183460469231731687303715884105750n, marketIdOrName: 100 },
+      { accountId: 170141183460469231731687303715884105759n, marketIdOrName: 100 },
+      { accountId: 170141183460469231731687303715884105763n, marketIdOrName: 200 },
+    ]);
+    console.log('positionsData :', positionsData);
+  });
+
   // it('should return order quote', async () => {
   //   const orderQuote = await sdk.perps.getQuote({
   //     size: 1,
