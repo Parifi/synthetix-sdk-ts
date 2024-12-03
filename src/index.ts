@@ -154,13 +154,8 @@ export class SynthetixSdk {
       throw error;
     }
 
-    // Initialize Pyth
-    await this.pyth.initPyth();
-
-    // Initialize Perps & Spot & Core
-    await this.perps.initPerps();
-    await this.spot.initSpot();
-    await this.core.initCore();
+    // Run all initialization functions concurrently
+    await Promise.all([this.pyth.initPyth(), this.perps.initPerps(), this.spot.initSpot(), this.core.initCore()]);
 
     this.initialized = true;
   }
