@@ -606,9 +606,11 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * @returns {OrderData} The order data for the account
    */
   public async getOrder(
-    accountId: bigint | undefined = undefined,
+    accountId = this.defaultAccountId,
     fetchSettlementStrategy: boolean = true,
   ): Promise<OrderData> {
+    if (!accountId) throw new Error('Invalid account id');
+
     interface OrderCommitmentRequestRes {
       marketId: bigint;
       accountId: bigint;
@@ -625,10 +627,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     }
 
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-
-    if (accountId == undefined) {
-      accountId = this.defaultAccountId;
-    }
     const orderResponse = (await this.sdk.utils.callErc7412({
       contractAddress: perpsMarketProxy.address,
       abi: perpsMarketProxy.abi,
@@ -666,10 +664,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * @param {bigint} accountId  The id of the account to fetch the margin info for. If not provided, the default account is used
    * @returns {CollateralData} The margin information for the account
    */
-  public async getMarginInfo(accountId: bigint | undefined = undefined): Promise<CollateralData> {
-    if (accountId == undefined) {
-      accountId = this.defaultAccountId;
-    }
+  public async getMarginInfo(accountId = this.defaultAccountId): Promise<CollateralData> {
+    if (!accountId) throw new Error('Invalid account ID');
 
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
@@ -821,10 +817,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * @param accountId The id of the account to check. If not provided, the default account is used.
    * @returns {Promise<boolean>} A boolean indicating whether the account can be liquidated.
    */
-  public async getCanLiquidate(accountId: bigint | undefined = undefined): Promise<boolean> {
-    if (accountId == undefined) {
-      accountId = this.defaultAccountId;
-    }
+  public async getCanLiquidate(accountId = this.defaultAccountId): Promise<boolean> {
+    if (!accountId) throw new Error('Invalid account ID');
 
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
@@ -1037,7 +1031,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * @param accountId The id of the account to get the debt for. If not provided, the default account is used.
    * @returns debt Account debt in ether
    */
-  public async getDebt(accountId: bigint | undefined = this.defaultAccountId): Promise<number> {
+  public async getDebt(accountId= this.defaultAccountId): Promise<number> {
     if (!accountId) throw new Error('No account id selected');
     if (!this.isMulticollateralEnabled)
       throw new Error(`Multicollateral is not enabled for chainId ${this.sdk.rpcConfig.chainId}`);
@@ -1144,8 +1138,9 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     desiredFillPrice,
     maxPriceImpact,
   }: CommitOrder): Promise<Call3Value> {
-    const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    if (!accountId) throw new Error('Account ID is required');
 
+    const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
     const { resolvedMarketId, resolvedMarketName: marketName } = await this.resolveMarket(marketIdOrName);
     if (desiredFillPrice != undefined && maxPriceImpact != undefined) {
       throw new Error('Cannot set both desiredFillPrice and maxPriceImpact');
@@ -1212,6 +1207,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     { amount, collateralMarketIdOrName, accountId = this.defaultAccountId }: ModifyCollateral,
     override: OverrideParamsWrite = {},
   ): Promise<WriteReturnType> {
+    if (!accountId) throw new Error('Account ID is required');
+
     const processedTx = await this._buildModifyCollateral({
       amount,
       collateralMarketIdOrName,
@@ -1232,6 +1229,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     { amount = 0, accountId = this.defaultAccountId }: PayDebt = { amount: 0 },
     override: OverrideParamsWrite = {},
   ): Promise<WriteReturnType> {
+    if (!accountId) throw new Error('Account ID is required');
+
     if (!this.isMulticollateralEnabled) {
       throw new Error(`Multicollateral is not enabled for chainId ${this.sdk.rpcConfig.chainId}`);
     }
@@ -1270,6 +1269,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     accountId = this.defaultAccountId,
     override: OverrideParamsWrite = {},
   ): Promise<WriteReturnType> {
+    if (!accountId) throw new Error('Account ID is required');
+
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     // if (override.staticCall) {
@@ -1307,6 +1308,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     accountId = this.defaultAccountId,
     override: OverrideParamsWrite = {},
   ): Promise<WriteReturnType> {
+    if (!accountId) throw new Error('Account ID is required');
+
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     const order = await this.getOrder(accountId);
@@ -1500,6 +1503,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     { accountId = this.defaultAccountId, permission, user }: GrantPermission,
     override: Omit<OverrideParamsWrite, 'useOracleCalls'> = {},
   ) {
+    if (!accountId) throw new Error('Account ID is required');
+
     const grantPermissionTx = await this._buildGrantPermission({ accountId, permission, user });
 
     const txs = [grantPermissionTx];
@@ -1519,6 +1524,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     { accountId = this.defaultAccountId, permission, user }: GrantPermission,
     override: Omit<OverrideParamsWrite, 'useOracleCalls'> = {},
   ) {
+    if (!accountId) throw new Error('Account ID is required');
+
     const coreProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     const grantPermissionTx: Call3Value = {

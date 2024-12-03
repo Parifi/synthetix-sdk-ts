@@ -23,12 +23,13 @@ export class Core implements CoreRepository {
   async initCore() {
     await this.getAccountIds();
   }
+
   /**
    * Returns the Owner wallet address for an account ID
    * @param accountId - Account ID
    * @returns string - Address of the account owning the accountId
    */
-  public async getAccountOwner(accountId: number): Promise<Hex> {
+  public async getAccountOwner(accountId: bigint): Promise<Hex> {
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
     const response = await this.sdk.utils.callErc7412({
       contractAddress: coreProxy.address,
@@ -125,6 +126,8 @@ export class Core implements CoreRepository {
     tokenAddress: Address;
     accountId?: bigint;
   }): Promise<string> {
+    if (!accountId) throw new Error('Invalid account ID');
+
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
 
     const availableCollateral = await this.sdk.utils.callErc7412({
@@ -193,6 +196,8 @@ export class Core implements CoreRepository {
     },
     override: OverrideParamsWrite = { shouldRevertOnTxFailure: false },
   ): Promise<WriteReturnType> {
+    if (!accountId) throw new Error('Invalid account ID');
+
     const amountInWei = parseUnits(amount.toString(), decimals);
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
 
@@ -261,6 +266,8 @@ export class Core implements CoreRepository {
     },
     override: OverrideParamsWrite = { shouldRevertOnTxFailure: false },
   ): Promise<WriteReturnType> {
+    if (!accountId) throw new Error('Invalid account ID');
+
     const amountInWei = parseUnits(amount.toString(), 18);
     const leverageInWei = parseUnits(leverage.toString(), 18);
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
@@ -294,6 +301,8 @@ export class Core implements CoreRepository {
     },
     override: OverrideParamsWrite = { shouldRevertOnTxFailure: false },
   ): Promise<WriteReturnType> {
+    if (!accountId) throw new Error('Invalid account ID');
+
     const amountInWei = parseUnits(amount.toString(), 18);
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
 

@@ -15,7 +15,7 @@ describe('Core', () => {
   });
 
   it('should return response for a get call on Core proxy contract', async () => {
-    const res = await sdk.core.getAccountOwner(2);
+    const res = await sdk.core.getAccountOwner(2n);
     console.info('Account owner :', res);
   });
 
