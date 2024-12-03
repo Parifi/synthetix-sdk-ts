@@ -1406,11 +1406,15 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const spotInstance = await this.sdk.contracts.getSpotMarketProxyInstance();
     const perpsInstance = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
-    const { resolvedMarketName, resolvedMarketId: spotCollateralId } =
-      await this.sdk.spot.resolveMarket(collateralMarketId);
+    const { resolvedMarketId: spotCollateralId } = await this.sdk.spot.resolveMarket(collateralMarketId);
 
-    const syntCollateral = await this.sdk.spot.getMarket(collateralMarketId);
-    const collateral = await this.sdk.contracts.getCollateralInstance(resolvedMarketName.replace('s', ''));
+    const synthCollateral = await this.sdk.spot.getMarket(spotCollateralId);
+
+    // Remove Synthetix asset's `s` from market name.
+    // For example, remove `s` from `sUSDe` to get `USDe`
+    const collateral = await this.sdk.contracts.getCollateralInstance(
+      (synthCollateral.marketName ?? 'Unresolved Market').replace('s', ''),
+    );
 
     const approveCollateral = await this.sdk.spot._buildApprove({
       spender: spotInstance.address,
@@ -1421,7 +1425,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const approveSyntCollateral = await this.sdk.spot._buildApprove({
       spender: perpsInstance.address,
       amount: collateralAmount,
-      token: syntCollateral.contractAddress as Address,
+      token: synthCollateral.contractAddress as Address,
     });
 
     // 1. Create Account
@@ -1445,7 +1449,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       marketIdOrName,
       accountId,
       desiredFillPrice,
-      maxPriceImpact
+      maxPriceImpact,
     });
 
     const rawTxs = [

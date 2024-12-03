@@ -348,7 +348,6 @@ export class Utils {
     };
 
     const response = await publicClient.call(finalTx);
-    console.log('=== response', response);
 
     const multicallResult: Result[] = this.decodeResponse(
       multicallInstance.abi,
@@ -509,7 +508,6 @@ export class Utils {
     oracleCalls: Call3Value[] = [],
     { attemps = MAX_ERC7412_RETRIES, account }: { account?: Address; attemps?: number } = {},
   ): Promise<Call3Value[]> {
-    console.log('=== init data', { oracleCalls, calls, attemps });
     const publicClient = this.sdk.getPublicClient();
     const totalValue = [...oracleCalls, ...calls].reduce((acc, tx) => {
       return acc + (tx.value || 0n);
@@ -528,30 +526,16 @@ export class Utils {
       data: multicallData,
       value: totalValue,
     };
-    const blockNumber = await publicClient.getBlockNumber();
 
     try {
-      console.log('=== calling');
       await publicClient.call(parsedTx);
-      console.log('=== oracle calls resolved');
       return oracleCalls;
     } catch (error) {
-      console.log('=== catched error', error);
       const parsedError = parseError(error as CallExecutionError);
       console.log('=== parsedError', parsedError);
 
       const shouldRetry = this.shouldRetryLogic(error, attemps);
       console.log('=== shouldRetry', shouldRetry);
-
-      console.log('=== data', {
-        attemps,
-        shouldRetry,
-        parsedTx,
-        calls,
-        blockNumber,
-        oracleCalls,
-        error,
-      });
 
       if (!shouldRetry) return oracleCalls;
       const data = await this.handleErc7412Error(parsedError);

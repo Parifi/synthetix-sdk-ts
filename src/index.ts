@@ -54,6 +54,9 @@ export class SynthetixSdk {
   trackingCode: string;
   referrer: string;
 
+  // Default SDK configs
+  resolveMarketNames: boolean;
+
   core: Core;
   contracts: Contracts;
   utils: Utils;
@@ -62,7 +65,7 @@ export class SynthetixSdk {
   spot: Spot;
   public initialized: boolean = false;
 
-  constructor({ accountConfig, partnerConfig, pythConfig, rpcConfig }: SdkConfigParams) {
+  constructor({ accountConfig, partnerConfig, pythConfig, rpcConfig, defaultConfig }: SdkConfigParams) {
     this.accountConfig = accountConfig;
     this.rpcConfig = rpcConfig;
     this.core = new Core(this);
@@ -79,6 +82,9 @@ export class SynthetixSdk {
       this.trackingCode = DEFAULT_TRACKING_CODE;
       this.referrer = DEFAULT_REFERRER;
     }
+
+    // Default sdk configs
+    this.resolveMarketNames = defaultConfig?.resolveMarketName ?? true;
 
     /**
      * Initialize Public client to RPC chain rpc

@@ -23,9 +23,14 @@ export interface RpcConfig {
   preset?: string;
 }
 
+export interface DefaultConfig {
+  resolveMarketName?: boolean;
+}
+
 export interface SdkConfigParams {
   accountConfig: AccountConfig;
   partnerConfig?: PartnerConfig;
   pythConfig?: PythConfig;
   rpcConfig: RpcConfig;
+  defaultConfig?: DefaultConfig;
 }

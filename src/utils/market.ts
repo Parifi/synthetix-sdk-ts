@@ -35,6 +35,13 @@ export abstract class Market<T extends MarketData | SpotMarketData> {
   public async resolveMarket(
     marketIdOrName: MarketIdOrName,
   ): Promise<{ resolvedMarketId: number; resolvedMarketName: string }> {
+    // Do not resolve markets if flag is not set or if market name is passed as
+    // an argument
+    if (!this.sdk.resolveMarketNames && typeof marketIdOrName === 'number') {
+      console.log('Resolve markets set to false. Returning market id without validating...');
+      return { resolvedMarketName: 'Unresolved Market', resolvedMarketId: Number(marketIdOrName) };
+    }
+
     const market = await this.getMarket(marketIdOrName);
     if (!market?.marketName || !market?.marketId) throw new Error(`Market not found for ${marketIdOrName}`);
 
