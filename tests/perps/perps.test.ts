@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { getSdkInstanceForTesting } from '..';
 import { SynthetixSdk } from '../../src';
 import { Address } from 'viem';
+import { AccountConfig, DefaultConfig, RpcConfig, SdkConfigParams } from '../../src/interface/classConfigs';
 
 describe('Perps', () => {
   let sdk: SynthetixSdk;
@@ -259,5 +260,88 @@ describe('Perps', () => {
     // if (submit) {
     // console.log(`Transaction hash and account details: ${response}`);
     // }
+  });
+
+  it('should have fast load time when resolve market name is disabled', async () => {
+    const collateralAmount = 20;
+    const orderSize = 0.01; // 0.01 ETH
+
+    let timeOptimized = 0,
+      timeNormal = 0;
+
+    const sdkConfig: SdkConfigParams = {
+      accountConfig: sdk.accountConfig,
+      rpcConfig: sdk.rpcConfig,
+      pythConfig: {
+        pythEndpoint: process.env.PYTH_ENDPOINT,
+        username: process.env.PYTH_USERNAME,
+        password: process.env.PYTH_PASSWORD,
+        cacheTtl: Number(process.env.PYTH_CACHE_TTL),
+      },
+      defaultConfig: {},
+    };
+
+    {
+      // SDK build order when resolve market name is set to false
+      const defaultConfig: DefaultConfig = { resolveMarketName: false };
+      const start = Date.now();
+
+      const sdkWithoutResolvedMarkets = new SynthetixSdk({ ...sdkConfig, defaultConfig });
+      await sdkWithoutResolvedMarkets.init();
+
+      const collateralMarketId = 7;
+      const marketId = 100;
+
+      const response = await sdkWithoutResolvedMarkets.perps.createIsolatedAccountOrder(
+        {
+          collateralAmount,
+          size: orderSize,
+          collateralMarketId,
+          marketIdOrName: marketId,
+          settlementStrategyId: 0,
+          maxPriceImpact: 1,
+        },
+        { useMultiCall: true, useOracleCalls: true, shouldRevertOnTxFailure: false },
+      );
+      console.log('=== response', response);
+
+      const end = Date.now();
+      timeOptimized = (end - start) / 1000;
+      console.log('Time required to process in seconds when resolveMarketNames is false::::::', timeOptimized);
+    }
+
+    {
+      // SDK build order when resolve market name is set to true
+      const defaultConfig: DefaultConfig = { resolveMarketName: true };
+      const start = Date.now();
+
+      const sdkWithResolvedMarkets = new SynthetixSdk({ ...sdkConfig, defaultConfig });
+      await sdkWithResolvedMarkets.init();
+
+      const collateralMarketName = 'sUSDe';
+      const marketName = 'Ethereum';
+
+      const { resolvedMarketId: collateralMarketId, resolvedMarketName } =
+        await sdkWithResolvedMarkets.spot.resolveMarket(collateralMarketName);
+
+      const response = await sdkWithResolvedMarkets.perps.createIsolatedAccountOrder(
+        {
+          collateralAmount,
+          size: orderSize,
+          collateralMarketId,
+          marketIdOrName: marketName,
+          settlementStrategyId: 0,
+          maxPriceImpact: 1,
+        },
+        { useMultiCall: true, useOracleCalls: true, shouldRevertOnTxFailure: false },
+      );
+      console.log('=== response', response);
+
+      const end = Date.now();
+      timeNormal = (end - start) / 1000;
+
+      console.log('Time required to process in seconds when resolveMarketNames is true::::::', timeNormal);
+    }
+    expect(timeOptimized).toBeLessThan(timeNormal);
   });
 });
