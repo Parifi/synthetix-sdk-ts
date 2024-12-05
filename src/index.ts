@@ -56,6 +56,7 @@ export class SynthetixSdk {
 
   // Default SDK configs
   resolveMarketNames: boolean;
+  maxPriceImpact: number;
 
   core: Core;
   contracts: Contracts;
@@ -75,16 +76,12 @@ export class SynthetixSdk {
     this.perps = new Perps(this);
     this.spot = new Spot(this);
 
-    if (partnerConfig != undefined) {
-      this.trackingCode = partnerConfig.trackingCode ?? DEFAULT_TRACKING_CODE;
-      this.referrer = partnerConfig.referrer ?? DEFAULT_REFERRER;
-    } else {
-      this.trackingCode = DEFAULT_TRACKING_CODE;
-      this.referrer = DEFAULT_REFERRER;
-    }
+    this.trackingCode = partnerConfig?.trackingCode ?? DEFAULT_TRACKING_CODE;
+    this.referrer = partnerConfig?.referrer ?? DEFAULT_REFERRER;
 
     // Default sdk configs
     this.resolveMarketNames = defaultConfig?.resolveMarketName ?? true;
+    this.maxPriceImpact = defaultConfig?.maxPriceImpact ?? 1;
 
     /**
      * Initialize Public client to RPC chain rpc
