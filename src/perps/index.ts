@@ -236,12 +236,10 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     // 6. getOrderFees - To get maker and taker fee
     // 7. getMaxMarketValue - To get maxMarketValue
 
-    let market = this.marketsById.get(Number(marketIdOrName)) ?? this.marketsByName.get(marketIdOrName as string);
-    if (market) {
+    let market =
+      (this.marketsById.get(Number(marketIdOrName)) ?? this.marketsByName.get(marketIdOrName as string)) || {};
+    if (market.marketId) {
       return market;
-    } else {
-      // Initialize the empty market data and populate below
-      market = {} as MarketData;
     }
 
     let marketId, marketName, marketSymbol;
