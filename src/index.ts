@@ -54,6 +54,9 @@ export class SynthetixSdk {
   trackingCode: string;
   referrer: string;
 
+  // Default SDK configs
+  resolveMarketNames: boolean;
+
   core: Core;
   contracts: Contracts;
   utils: Utils;
@@ -62,7 +65,7 @@ export class SynthetixSdk {
   spot: Spot;
   public initialized: boolean = false;
 
-  constructor({ accountConfig, partnerConfig, pythConfig, rpcConfig }: SdkConfigParams) {
+  constructor({ accountConfig, partnerConfig, pythConfig, rpcConfig, defaultConfig }: SdkConfigParams) {
     this.accountConfig = accountConfig;
     this.rpcConfig = rpcConfig;
     this.core = new Core(this);
@@ -79,6 +82,9 @@ export class SynthetixSdk {
       this.trackingCode = DEFAULT_TRACKING_CODE;
       this.referrer = DEFAULT_REFERRER;
     }
+
+    // Default sdk configs
+    this.resolveMarketNames = defaultConfig?.resolveMarketName ?? true;
 
     /**
      * Initialize Public client to RPC chain rpc
@@ -148,13 +154,8 @@ export class SynthetixSdk {
       throw error;
     }
 
-    // Initialize Pyth
-    await this.pyth.initPyth();
-
-    // Initialize Perps & Spot & Core
-    await this.perps.initPerps();
-    await this.spot.initSpot();
-    await this.core.initCore();
+    // Run all initialization functions concurrently
+    await Promise.all([this.pyth.initPyth(), this.perps.initPerps(), this.spot.initSpot(), this.core.initCore()]);
 
     this.initialized = true;
   }

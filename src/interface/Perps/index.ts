@@ -27,7 +27,6 @@ export type CommitOrder = {
   accountId?: bigint;
   desiredFillPrice?: number;
   maxPriceImpact?: number;
-  collateralId: MarketIdOrName;
 };
 
 export type ModifyCollateral = {

@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { SynthetixSdk } from '../src/index';
-import { AccountConfig, PartnerConfig, PythConfig, RpcConfig } from '../src/interface/classConfigs';
+import { AccountConfig, DefaultConfig, PartnerConfig, PythConfig, RpcConfig } from '../src/interface/classConfigs';
 import { Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { getPublicRpcEndpoint } from '../src/utils';
@@ -42,7 +42,11 @@ export const getSdkInstanceForTesting = async (): Promise<SynthetixSdk> => {
     cacheTtl: Number(process.env.PYTH_CACHE_TTL),
   };
 
-  const sdk = new SynthetixSdk({ accountConfig, partnerConfig, pythConfig, rpcConfig });
+  const defaultConfig: DefaultConfig = {
+    resolveMarketName: false,
+  };
+
+  const sdk = new SynthetixSdk({ accountConfig, partnerConfig, pythConfig, rpcConfig, defaultConfig });
   await sdk.init();
 
   return sdk;
