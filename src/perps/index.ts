@@ -1154,9 +1154,9 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       acceptablePrice = desiredFillPrice;
     } else {
       const updatedMaxPriceImpact = maxPriceImpact ?? this.sdk.maxPriceImpact;
-      const marketSummary = await this.getMarketSummary(resolvedMarketId);
+      const market = await this.getMarket(resolvedMarketId);
       const priceImpact = 1 + (isShort * updatedMaxPriceImpact) / 100;
-      acceptablePrice = (marketSummary.indexPrice ?? 0) * priceImpact;
+      acceptablePrice = (market.indexPrice ?? 0) * priceImpact;
     }
 
     const txArgs = [
