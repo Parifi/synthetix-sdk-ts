@@ -319,9 +319,9 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const orderFees = multicallResponse.at(4) as bigint[];
     const maxMarketValue = multicallResponse.at(5) as bigint;
 
-    market.marketId = marketId;
-    market.marketName = marketName;
-    market.symbol = marketSymbol;
+    market.marketId = marketId || 0;
+    market.marketName = marketName || 'INVALID MARKET';
+    market.symbol = marketSymbol || 'INVALID';
 
     // From settlementStrategy data
     market.feedId = settlementStrategy.feedId;
@@ -344,6 +344,15 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
     market.maxMarketValue = Number(formatEther(maxMarketValue));
 
+    this.marketMetadata.set(market.marketId || 0, {
+      marketName: market.marketName,
+      symbol: market.symbol,
+      feedId: market.feedId,
+    });
+
+    this.marketsById.set(market.marketId, market);
+    this.marketsByName.set(market.marketName, market);
+    this.marketsBySymbol.set(market.symbol, market);
     return market;
   }
 
