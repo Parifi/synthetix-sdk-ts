@@ -248,7 +248,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     // If the market id is known, avoid fetching fetching all the markets and their metadata
-    if (typeof marketIdOrName === 'number') {
+    if (typeof marketIdOrName === 'number' || typeof marketIdOrName === 'bigint') {
       const marketMetadataResponse = (await this.sdk.utils.callErc7412({
         contractAddress: perpsMarketProxy.address,
         abi: perpsMarketProxy.abi,
