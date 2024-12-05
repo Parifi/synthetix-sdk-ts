@@ -226,96 +226,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   }
 
   public async getMarket(marketIdOrName: MarketIdOrName): Promise<MarketData> {
-    const market = this.marketsById.get(Number(marketIdOrName)) ?? this.marketsByName.get(marketIdOrName as string);
-    if (market) return market;
-
-    const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-    const marketIdResponse: bigint[] = (await perpsMarketProxy.read.getMarkets()) as bigint[];
-
-    const marketMetadataResponse = (await this.sdk.utils.multicallErc7412({
-      contractAddress: perpsMarketProxy.address,
-      abi: perpsMarketProxy.abi,
-      functionName: 'metadata',
-      args: marketIdResponse as unknown[],
-    })) as MetadataResponse[];
-
-    const marketIds = marketIdResponse
-      .map((id) => Number(id))
-      .filter((id, index) => {
-        const name = marketMetadataResponse[index][0];
-        const symbol = marketMetadataResponse[index][1];
-
-        return name == marketIdOrName || symbol == marketIdOrName || id == marketIdOrName;
-      });
-
-    const settlementStrategies = await this.getSettlementStrategies(marketIds);
-    const { marketMetadata, pythPriceIds } = marketMetadataResponse.reduce(
-      (acc, market, index) => {
-        const [name, symbol] = market;
-        const strategy = settlementStrategies.find((strategy) => strategy.marketId == marketIds[index]);
-
-        acc.pythPriceIds = {
-          symbol,
-          feedId: strategy?.feedId ?? '0x',
-        };
-        acc.marketMetadata = {
-          marketName: name,
-          symbol,
-          feedId: strategy?.feedId ?? '0x',
-        };
-
-        return acc;
-      },
-      {
-        pythPriceIds: {},
-        marketMetadata: {},
-      } as { pythPriceIds: PythPriceId; marketMetadata: MarketMetadata },
-    );
-
-    this.sdk.pyth.updatePriceFeedIds([pythPriceIds]);
-
-    const [marketSummaries, fundingParameters, orderFees, maxMarketValues] = await Promise.all([
-      this.getMarketSummaries(marketIds),
-      this.getFundingParameters(marketIds),
-      this.getOrderFees(marketIds),
-      this.getMaxMarketValues(marketIds),
-    ]);
-
-    const marketId = Number(marketIds.at(0) || 0);
-    const marketSummary = marketSummaries.find((summary) => summary.marketId == marketId);
-    const fundingParam = fundingParameters.find((fundingParam) => fundingParam.marketId == marketId);
-    const orderFee = orderFees.find((orderFee) => orderFee.marketId == marketId);
-    const maxMarketValue = maxMarketValues.find((maxMarketValue) => maxMarketValue.marketId == marketId);
-
-    const result = {
-      marketId,
-      marketName: marketMetadata.marketName,
-      symbol: marketMetadata.symbol,
-      feedId: marketMetadata.feedId,
-      skew: marketSummary?.skew,
-      size: marketSummary?.size,
-      maxOpenInterest: marketSummary?.maxOpenInterest,
-      interestRate: marketSummary?.interestRate,
-      currentFundingRate: marketSummary?.currentFundingRate,
-      currentFundingVelocity: marketSummary?.currentFundingVelocity,
-      indexPrice: marketSummary?.indexPrice,
-      skewScale: fundingParam?.skewScale,
-      maxFundingVelocity: fundingParam?.maxFundingVelocity,
-      makerFee: orderFee?.makerFeeRatio,
-      takerFee: orderFee?.takerFeeRatio,
-      maxMarketValue: maxMarketValue?.maxMarketValue,
-    };
-
-    this.marketMetadata.set(marketId, marketMetadata);
-
-    this.marketsById.set(marketId, result);
-    this.marketsByName.set(marketMetadata.marketName, result);
-    this.marketsBySymbol.set(marketMetadata.symbol, result);
-
-    return result;
-  }
-
-  public async getMarketOptimized(marketIdOrName: MarketIdOrName): Promise<MarketData> {
     // Smart contract calls to populate MarketData
     // 0. Fetch all marketIds - Only if marketName is provided, else use the market id
     // 1. metadata - To get market name and symbol
@@ -326,19 +236,17 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     // 6. getOrderFees - To get maker and taker fee
     // 7. getMaxMarketValue - To get maxMarketValue
 
-    let market = this.marketsById.get(Number(marketIdOrName)) ?? this.marketsByName.get(marketIdOrName as string);
-    if (market) {
+    let market =
+      (this.marketsById.get(Number(marketIdOrName)) ?? this.marketsByName.get(marketIdOrName as string)) || {};
+    if (market.marketId) {
       return market;
-    } else {
-      // Initialize the empty market data and populate below
-      market = {} as MarketData;
     }
 
     let marketId, marketName, marketSymbol;
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     // If the market id is known, avoid fetching fetching all the markets and their metadata
-    if (typeof marketIdOrName === 'number') {
+    if (typeof marketIdOrName === 'number' || typeof marketIdOrName === 'bigint') {
       const marketMetadataResponse = (await this.sdk.utils.callErc7412({
         contractAddress: perpsMarketProxy.address,
         abi: perpsMarketProxy.abi,
@@ -409,9 +317,9 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const orderFees = multicallResponse.at(4) as bigint[];
     const maxMarketValue = multicallResponse.at(5) as bigint;
 
-    market.marketId = marketId;
-    market.marketName = marketName;
-    market.symbol = marketSymbol;
+    market.marketId = marketId || 0;
+    market.marketName = marketName || 'INVALID MARKET';
+    market.symbol = marketSymbol || 'INVALID';
 
     // From settlementStrategy data
     market.feedId = settlementStrategy.feedId;
@@ -434,6 +342,15 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
     market.maxMarketValue = Number(formatEther(maxMarketValue));
 
+    this.marketMetadata.set(market.marketId || 0, {
+      marketName: market.marketName,
+      symbol: market.symbol,
+      feedId: market.feedId,
+    });
+
+    this.marketsById.set(market.marketId, market);
+    this.marketsByName.set(market.marketName, market);
+    this.marketsBySymbol.set(market.symbol, market);
     return market;
   }
 
@@ -1284,10 +1201,10 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     if (desiredFillPrice) {
       acceptablePrice = desiredFillPrice;
     } else {
-      const updatedMaxPriceImpact = maxPriceImpact ?? 1; // @todo Replace with config value
-      const marketSummary = await this.getMarketSummary(resolvedMarketId);
+      const updatedMaxPriceImpact = maxPriceImpact ?? this.sdk.maxPriceImpact;
+      const market = await this.getMarket(resolvedMarketId);
       const priceImpact = 1 + (isShort * updatedMaxPriceImpact) / 100;
-      acceptablePrice = (marketSummary.indexPrice ?? 0) * priceImpact;
+      acceptablePrice = (market.indexPrice ?? 0) * priceImpact;
     }
 
     const txArgs = [

@@ -25,6 +25,7 @@ export interface RpcConfig {
 
 export interface DefaultConfig {
   resolveMarketName?: boolean;
+  maxPriceImpact?: number;
 }
 
 export interface SdkConfigParams {
