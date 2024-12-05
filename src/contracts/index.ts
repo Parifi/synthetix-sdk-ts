@@ -208,15 +208,11 @@ export class Contracts {
 
   public async getCollateralInstance(symbol: string) {
     try {
-      symbol = symbol.toUpperCase();
       const meta = await dynamicImportMeta(this.sdk.rpcConfig.chainId, this.sdk.rpcConfig.preset);
 
       const contracts = Object.keys(meta.contracts);
-      const contract = contracts.find(
-        (contract) => contract.toLowerCase() === `CollateralToken_${symbol}`.toLowerCase(),
-      );
-
-      console.log('=== contracts', contracts, contract);
+      const contract = contracts.find((contract) => contract.toLowerCase().includes(symbol.toLowerCase()));
+      console.log('=== contracts', contracts, symbol, contract);
 
       // @ts-expect-error correct type
       const address = meta.contracts[contract as string] as Hex;

@@ -110,6 +110,7 @@ export interface CollateralData {
 }
 
 export interface OpenPositionData {
+  accountId: bigint;
   marketId: number;
   marketName: string;
   totalPnl: number;
