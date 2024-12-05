@@ -14,7 +14,7 @@ describe('Perps', () => {
     const accountIds = await sdk.perps.getAccountIds(defaultAddress as Address);
     console.log('Account ids for default account: ', accountIds);
 
-    await sdk.perps.getMarkets();
+    // await sdk.perps.getMarkets();
   });
 
   it('should return market data', async () => {
@@ -343,5 +343,62 @@ describe('Perps', () => {
       console.log('Time required to process in seconds when resolveMarketNames is true::::::', timeNormal);
     }
     expect(timeOptimized).toBeLessThan(timeNormal);
+  });
+
+  it('should return market data by name and id', async () => {
+    let timeOptimized = 0,
+      timeNormal = 0;
+
+    const sdkConfig: SdkConfigParams = {
+      accountConfig: sdk.accountConfig,
+      rpcConfig: sdk.rpcConfig,
+      pythConfig: {
+        pythEndpoint: process.env.PYTH_ENDPOINT,
+        username: process.env.PYTH_USERNAME,
+        password: process.env.PYTH_PASSWORD,
+        cacheTtl: Number(process.env.PYTH_CACHE_TTL),
+      },
+      defaultConfig: {},
+    };
+
+    {
+      // SDK build order when resolve market name is set to false
+      const defaultConfig: DefaultConfig = { resolveMarketName: false };
+      const start = Date.now();
+
+      const sdkWithoutResolvedMarkets = new SynthetixSdk({ ...sdkConfig, defaultConfig });
+      await sdkWithoutResolvedMarkets.init();
+
+      const ethMarket = await sdkWithoutResolvedMarkets.perps.getMarketOptimized('Ethereum');
+      console.log('ETH Market details using market name: ', ethMarket);
+
+      const btcMarket = await sdkWithoutResolvedMarkets.perps.getMarketOptimized(200);
+      console.log('BTC Market details using market id: ', btcMarket);
+
+      const end = Date.now();
+      timeOptimized = (end - start) / 1000;
+
+      console.log('Time required to process in seconds when optimized::::::', timeOptimized);
+    }
+
+    {
+      // SDK build order when resolve market name is set to false
+      const defaultConfig: DefaultConfig = { resolveMarketName: false };
+      const start = Date.now();
+
+      const sdkWithResolvedMarkets = new SynthetixSdk({ ...sdkConfig, defaultConfig });
+      await sdkWithResolvedMarkets.init();
+
+      const ethMarket = await sdkWithResolvedMarkets.perps.getMarket('Ethereum');
+      console.log('ETH Market details using market name: ', ethMarket);
+
+      const btcMarket = await sdkWithResolvedMarkets.perps.getMarket(200);
+      console.log('BTC Market details using market id: ', btcMarket);
+
+      const end = Date.now();
+      timeNormal = (end - start) / 1000;
+
+      console.log('Time required to process in seconds with existing logic::::::', timeNormal);
+    }
   });
 });
