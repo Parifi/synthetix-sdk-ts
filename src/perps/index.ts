@@ -1165,6 +1165,50 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     return liquidationPrice;
   }
 
+  /**
+   * Calculate the health factor for an account
+   * @param {bigint} accountId The id of the account to calculate health factor.
+   * If not provided, the default account is used.
+   * @returns healthFactor percentage;
+   * healthFactor = (available margin * 100) / maintenance margin
+   */
+  public async getHealthFactor(accountId = this.defaultAccountId, override?: OverrideParamsRead): Promise<bigint> {
+    if (!accountId) throw new Error('Account ID is required');
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+
+    const functionNames: string[] = [];
+    const argsList: unknown[] = [];
+
+    // 0. Get available margin
+    functionNames.push('getAvailableMargin');
+    argsList.push([accountId]);
+
+    // 1. Get required margins
+    functionNames.push('getRequiredMargins');
+    argsList.push([accountId]);
+
+    const multicallResponse: unknown[] = await this.sdk.utils.multicallMultifunctionErc7412(
+      {
+        contractAddress: marketProxy.address,
+        abi: marketProxy.abi,
+        functionNames,
+        args: argsList,
+      },
+      override,
+    );
+
+    // 0. Available Margin
+    const availableMargin = multicallResponse.at(0) as bigint;
+
+    // 1. Required margin
+    // returns (uint256 requiredInitialMargin,uint256 requiredMaintenanceMargin,uint256 maxLiquidationReward)
+    const requiredMarginsResponse = multicallResponse.at(1) as bigint[];
+    const requiredMaintenanceMargin = requiredMarginsResponse.at(1) as bigint;
+
+    const healthFactor = (availableMargin * 100n) / (requiredMaintenanceMargin + 1n);
+    return healthFactor;
+  }
+
   // === WRITE CALLS ===
 
   /**

@@ -160,6 +160,13 @@ describe('Perps', () => {
     expect(pythData).not.toBe(undefined);
   });
 
+  it('should health factor for an account', async () => {
+    const accountIdWithOpenPositions = 170141183460469231731687303715884105763n;
+    const healthFactor = await sdk.perps.getHealthFactor(accountIdWithOpenPositions);
+    console.log('Health factor: ', healthFactor);
+    expect(healthFactor).toBeGreaterThan(100);
+  });
+
   it('should create an isolated account order', async () => {
     const initialSusdBalance = await sdk.getSusdBalance();
     const collateralAmount = 70; // 70 usdc.Min 62.5 USD collateral is required
