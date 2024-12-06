@@ -1103,14 +1103,14 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * Provide either a ``marketId`` or a ``marketName``
    * @param {string | number} marketIdOrName - The identifier or name of the market for which the collateral is being modified
    * @param {bigint} accountId The id of the account to fetch the position for. If not provided, the default account is used.
-   * @returns
+   * @returns {healthFactor: bigint, liquidationPrice: bigint}
    * liquidation price = ((maintenance margin -  available margin) / position size) + index price
    */
   public async getApproxLiquidationPrice(
     marketIdOrName: MarketIdOrName,
     accountId = this.defaultAccountId,
     override?: OverrideParamsRead,
-  ): Promise<bigint> {
+  ): Promise<{ healthFactor: bigint; liquidationPrice: bigint }> {
     if (!accountId) throw new Error('Account ID is required');
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
     const { resolvedMarketId } = await this.resolveMarket(marketIdOrName);
@@ -1152,17 +1152,19 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const requiredMarginsResponse = multicallResponse.at(1) as bigint[];
     const requiredMaintenanceMargin = requiredMarginsResponse.at(1) as bigint;
 
+    const healthFactor = (availableMargin * 100n) / (requiredMaintenanceMargin + 1n);
+
     // 2. Position size
     const positionSize = multicallResponse.at(2) as bigint;
     if (positionSize == 0n) {
-      return 0n;
+      return { healthFactor, liquidationPrice: 0n };
     }
 
     // 3. Market index price
     const indexPrice = multicallResponse.at(3) as bigint;
 
     const liquidationPrice = (requiredMaintenanceMargin - availableMargin) / positionSize + indexPrice;
-    return liquidationPrice;
+    return { healthFactor, liquidationPrice };
   }
 
   /**

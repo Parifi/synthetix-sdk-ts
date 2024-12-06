@@ -223,9 +223,12 @@ describe('Perps', () => {
       return;
     }
     const marketId = sdk.perps.marketsBySymbol.get('Ethereum')?.marketId ?? 100;
-    const liquidationPrice = await sdk.perps.getApproxLiquidationPrice(marketId, accountId);
+    const { healthFactor, liquidationPrice } = await sdk.perps.getApproxLiquidationPrice(marketId, accountId);
     console.log('liquidationPrice', liquidationPrice);
+    console.log('healthFactor', healthFactor);
+
     expect(liquidationPrice).not.toBe(0);
+    expect(healthFactor).toBeGreaterThan(0);
   });
 
   it('should build an isolated account order', async () => {
