@@ -110,6 +110,7 @@ export interface CollateralData {
 }
 
 export interface OpenPositionData {
+  accountId: bigint;
   marketId: number;
   marketName: string;
   totalPnl: number;
@@ -125,4 +126,26 @@ export interface OrderQuote {
   settlementRewardCost: number;
   fillPrice: number;
   requiredMargin?: number;
+}
+
+// Interface to store temporary result (unformatted values) from smart contract calls
+// i.e intermediate interface to map the values from smart contract types to sdk types
+export interface SettlementStrategyResponse {
+  strategyType?: number;
+  settlementDelay?: bigint;
+  settlementWindowDuration?: bigint;
+  priceVerificationContract?: string;
+  feedId?: string
+  settlementReward?: bigint;
+  disabled?: boolean;
+  commitmentPriceDelay?: bigint;
+}
+
+export interface MarketSummaryResponse {
+  skew: bigint;
+  size: bigint;
+  maxOpenInterest: bigint;
+  currentFundingRate: bigint;
+  currentFundingVelocity: bigint;
+  indexPrice: bigint;
 }

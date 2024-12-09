@@ -46,9 +46,8 @@ export interface PerpsRepository {
 
   // === Methods
   initPerps(): Promise<void>;
-  resolveMarket(marketIdOrName: MarketIdOrName): { resolvedMarketId: number; resolvedMarketName: string };
+  resolveMarket(marketIdOrName: MarketIdOrName): Promise<{ resolvedMarketId: number; resolvedMarketName: string }>;
   getAccountIds(address?: string, defaultAccountId?: bigint): Promise<bigint[]>;
-  getMarkets(): Promise<{ marketsById: MarketById; marketsByName: MarketByName }>;
   getMarketSummaries(marketIds: number[]): Promise<MarketSummary[]>;
   getMarketSummary(marketIdOrName: MarketIdOrName): Promise<MarketSummary>;
   getSettlementStrategy(settlementId: number, marketIdOrName: MarketIdOrName): Promise<SettlementStrategy>;
@@ -63,6 +62,10 @@ export interface PerpsRepository {
   getCanLiquidates(accountIds: bigint[]): Promise<{ accountId: bigint; canLiquidate: boolean }[]>;
   getOpenPosition(marketIdOrName: MarketIdOrName, accountId?: bigint): Promise<OpenPositionData>;
   getOpenPositions(marketIdsOrNames: MarketIdOrName[], accountIds?: bigint): Promise<OpenPositionData[]>;
+  getOpenPositionsMulticall(
+    positions: { accountId: bigint; marketIdOrName: MarketIdOrName }[],
+  ): Promise<OpenPositionData[]>;
+
   getQuote(data: GetPerpsQuote): Promise<OrderQuote>;
   getDebt(accountId?: bigint): Promise<number>;
 

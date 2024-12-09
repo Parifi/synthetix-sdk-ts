@@ -1,5 +1,4 @@
 import { SynthetixSdk } from '..';
-import { logger } from '../utils/logger/logger';
 import { ZAP_BY_CHAIN } from './addreses/zap';
 import { dynamicImportAbi, dynamicImportMeta } from './helpers';
 import { erc20Abi, getContract, Hex } from 'viem';
@@ -30,7 +29,7 @@ export class Contracts {
       });
       return multicallInstance;
     } catch (error) {
-      logger.error(`Error: while getMulticallInstance ${error}`);
+      this.sdk.logger.error(`Error: while getMulticallInstance ${error}`);
       throw new Error(
         `Unsupported chain ${this.sdk.rpcConfig.chainId} or preset ${this.sdk.rpcConfig.preset} for MulticallInstance`,
       );
@@ -52,7 +51,7 @@ export class Contracts {
       });
       return coreProxyInstance;
     } catch (error) {
-      logger.error(`Error: while getCoreProxyInstance ${error}`);
+      this.sdk.logger.error(`Error: while getCoreProxyInstance ${error}`);
       throw new Error(
         `Unsupported chain ${this.sdk.rpcConfig.chainId} or preset ${this.sdk.rpcConfig.preset} for CoreProxy`,
       );
@@ -74,7 +73,7 @@ export class Contracts {
       });
       return accountProxyInstance;
     } catch (error) {
-      logger.error(`Error: while getAccountProxyInstance ${error}`);
+      this.sdk.logger.error(`Error: while getAccountProxyInstance ${error}`);
       throw new Error(
         `Unsupported chain ${this.sdk.rpcConfig.chainId} or preset ${this.sdk.rpcConfig.preset} for AccountProxy`,
       );
@@ -96,7 +95,7 @@ export class Contracts {
       });
       return perpsMarketProxyInstance;
     } catch (error) {
-            logger.error(`Error: while getPerpsMarketProxyInstance ${error}`);
+      this.sdk.logger.error(`Error: while getPerpsMarketProxyInstance ${error}`);
       throw new Error(
         `Unsupported chain ${this.sdk.rpcConfig.chainId} or preset ${this.sdk.rpcConfig.preset} for PerpsMarketProxy`,
       );
@@ -118,7 +117,7 @@ export class Contracts {
       });
       return perpsAccountProxyInstance;
     } catch (error) {
-            logger.error(`Error: while getPerpsAccountProxyInstance ${error}`);
+      this.sdk.logger.error(`Error: while getPerpsAccountProxyInstance ${error}`);
       throw new Error(
         `Unsupported chain ${this.sdk.rpcConfig.chainId} or preset ${this.sdk.rpcConfig.preset} for PerpsAccountProxy`,
       );
@@ -140,7 +139,7 @@ export class Contracts {
       });
       return pythERC7412WrapperInstance;
     } catch (error) {
-            logger.error(`Error: while getPythErc7412WrapperInstance ${error}`);
+      this.sdk.logger.error(`Error: while getPythErc7412WrapperInstance ${error}`);
       throw new Error(
         `Unsupported chain ${this.sdk.rpcConfig.chainId} or preset ${this.sdk.rpcConfig.preset} for PythERC7412Wrapper`,
       );
@@ -162,7 +161,7 @@ export class Contracts {
       });
       return spotMarketProxyInstance;
     } catch (error) {
-            logger.error(`Error: while getSpotMarketProxyInstance ${error}`);
+      this.sdk.logger.error(`Error: while getSpotMarketProxyInstance ${error}`);
       throw new Error(
         `Unsupported chain ${this.sdk.rpcConfig.chainId} or preset ${this.sdk.rpcConfig.preset} for SpotMarketProxy`,
       );
@@ -184,7 +183,7 @@ export class Contracts {
       });
       return usdProxyInstance;
     } catch (error) {
-            logger.error(`Error: while getUSDProxyInstance ${error}`);
+      this.sdk.logger.error(`Error: while getUSDProxyInstance ${error}`);
       throw new Error(
         `Unsupported chain ${this.sdk.rpcConfig.chainId} or preset ${this.sdk.rpcConfig.preset} for USDProxy`,
       );
@@ -202,17 +201,22 @@ export class Contracts {
       });
       return zapInstance;
     } catch (error) {
-            logger.error(`Error: while getZapInstance ${error}`);
+      this.sdk.logger.error(`Error: while getZapInstance ${error}`);
       throw new Error(`Unsupported chain ${this.sdk.rpcConfig.chainId} or preset ${this.sdk.rpcConfig.preset} for Zap`);
     }
   }
 
   public async getCollateralInstance(symbol: string) {
     try {
-      symbol = symbol.toUpperCase();
       const meta = await dynamicImportMeta(this.sdk.rpcConfig.chainId, this.sdk.rpcConfig.preset);
-      // @ts-expect-error - TS doesn't know that the key exists
-      const address = meta.contracts[`CollateralToken_${symbol}`];
+
+      const contracts = Object.keys(meta.contracts);
+      const contract = contracts.find((contract) => contract.toLowerCase().includes(symbol.toLowerCase()));
+      console.log('=== contracts', contracts, symbol, contract);
+
+      // @ts-expect-error correct type
+      const address = meta.contracts[contract as string] as Hex;
+
       if (!address) {
         throw new Error(`CollateralToken_${symbol} not found in meta`);
       }
@@ -224,7 +228,7 @@ export class Contracts {
       });
       return collateralInstance;
     } catch (error) {
-            logger.error(`Error: while getAccountProxyInstance ${error}`);
+      this.sdk.logger.error(`Error: while getAccountProxyInstance ${error}`);
       throw new Error(
         `Unsupported chain ${this.sdk.rpcConfig.chainId} or preset ${this.sdk.rpcConfig.preset} for CollateralToken_${symbol}`,
       );

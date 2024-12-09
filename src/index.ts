@@ -17,15 +17,15 @@ import {
   PublicClient,
   webSocket,
 } from 'viem';
-import { ZERO_ADDRESS } from './constants/common';
+import { DEFAULT_LOGGER_LEVEL, ZERO_ADDRESS } from './constants/common';
 import { Contracts } from './contracts';
 import { Pyth } from './pyth';
 import { Perps } from './perps';
 import { privateKeyToAccount } from 'viem/accounts';
 import { Spot } from './spot';
 import { DEFAULT_REFERRER, DEFAULT_TRACKING_CODE } from './constants';
-import  { initializeLogger, logger } from './utils/logger/logger';
 export { generateRandomAccountId } from './utils';
+import {  ILogObj, Logger } from 'tslog';
 
 /**
  * The main class for interacting with the Synthetix protocol. The class
@@ -55,15 +55,21 @@ export class SynthetixSdk {
   trackingCode: string;
   referrer: string;
 
+  // Default SDK configs
+  resolveMarketNames: boolean;
+  maxPriceImpact: number;
+  logger: Logger<ILogObj>;
+
   core: Core;
   contracts: Contracts;
   utils: Utils;
   pyth: Pyth;
   perps: Perps;
   spot: Spot;
+
   public initialized: boolean = false;
 
-  constructor({ accountConfig, partnerConfig, pythConfig, logLevel,rpcConfig,loggerMessageType }: SdkConfigParams) {
+  constructor({ accountConfig, partnerConfig, pythConfig, rpcConfig, defaultConfig }: SdkConfigParams) {
     this.accountConfig = accountConfig;
     this.rpcConfig = rpcConfig;
     this.core = new Core(this);
@@ -72,14 +78,14 @@ export class SynthetixSdk {
     this.pyth = new Pyth(this, pythConfig);
     this.perps = new Perps(this);
     this.spot = new Spot(this);
-    if(logLevel && loggerMessageType)initializeLogger(logLevel,loggerMessageType);
-    if (partnerConfig != undefined) {
-      this.trackingCode = partnerConfig.trackingCode ?? DEFAULT_TRACKING_CODE;
-      this.referrer = partnerConfig.referrer ?? DEFAULT_REFERRER;
-    } else {
-      this.trackingCode = DEFAULT_TRACKING_CODE;
-      this.referrer = DEFAULT_REFERRER;
-    }
+
+    this.trackingCode = partnerConfig?.trackingCode ?? DEFAULT_TRACKING_CODE;
+    this.referrer = partnerConfig?.referrer ?? DEFAULT_REFERRER;
+
+    // Default sdk configs
+    this.resolveMarketNames = defaultConfig?.resolveMarketName ?? true;
+    this.maxPriceImpact = defaultConfig?.maxPriceImpact ?? 1;
+    this.logger = new Logger({ minLevel: defaultConfig?.logLevel ?? DEFAULT_LOGGER_LEVEL });
 
     /**
      * Initialize Public client to RPC chain rpc
@@ -145,17 +151,12 @@ export class SynthetixSdk {
       }
       this.accountAddress = this.accountConfig.address as Hex;
     } catch (error) {
-      logger.error(`Error: while init ${error}`);
+      this.logger.error(`Error: while init ${error}`);
       throw error;
     }
 
-    // Initialize Pyth
-    await this.pyth.initPyth();
-
-    // Initialize Perps & Spot & Core
-    await this.perps.initPerps();
-    await this.spot.initSpot();
-    await this.core.initCore();
+    // Run all initialization functions concurrently
+    await Promise.all([this.pyth.initPyth(), this.perps.initPerps(), this.spot.initSpot(), this.core.initCore()]);
 
     this.initialized = true;
   }

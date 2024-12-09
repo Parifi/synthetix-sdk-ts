@@ -4,7 +4,6 @@ import { DISABLED_MARKETS } from '../constants';
 import { MarketIdOrName } from '../interface/commonTypes';
 import { MarketData, SpotMarketData } from '../perps/interface';
 import { Call3Value } from '../interface/contractTypes';
-import { logger } from './logger/logger';
 
 export abstract class Market<T extends MarketData | SpotMarketData> {
   sdk: SynthetixSdk;
@@ -33,19 +32,20 @@ export abstract class Market<T extends MarketData | SpotMarketData> {
    * the other is resolved. If both are provided, they are checked for consistency.
    * @param marketIdOrName Id or name of the market to resolve
    */
-  public resolveMarket(marketIdOrName: MarketIdOrName): { resolvedMarketId: number; resolvedMarketName: string } {
-    const isMarketId = typeof marketIdOrName === 'number';
-
-    if (!isMarketId) {
-      if (!this.marketsByName.has(marketIdOrName)) throw new Error('Invalid market name');
-      const resolvedMarketId = this.marketsByName.get(marketIdOrName)!.marketId;
-      return { resolvedMarketId: resolvedMarketId!, resolvedMarketName: marketIdOrName };
+  public async resolveMarket(
+    marketIdOrName: MarketIdOrName,
+  ): Promise<{ resolvedMarketId: number; resolvedMarketName: string }> {
+    // Do not resolve markets if flag is not set or if market name is passed as
+    // an argument
+    if (!this.sdk.resolveMarketNames && typeof marketIdOrName === 'number') {
+      console.log('Resolve markets set to false. Returning market id without validating...');
+      return { resolvedMarketName: 'Unresolved Market', resolvedMarketId: Number(marketIdOrName) };
     }
 
-    if (!this.marketsById.has(marketIdOrName)) throw new Error('Invalid market id');
-    const resolvedMarketName = this.marketsById.get(marketIdOrName)!.marketName;
+    const market = await this.getMarket(marketIdOrName);
+    if (!market?.marketName || !market?.marketId) throw new Error(`Market not found for ${marketIdOrName}`);
 
-    return { resolvedMarketName: resolvedMarketName!, resolvedMarketId: marketIdOrName };
+    return { resolvedMarketName: market.marketName, resolvedMarketId: market.marketId };
   }
 
   /**
@@ -56,22 +56,11 @@ export abstract class Market<T extends MarketData | SpotMarketData> {
    * @param marketId The id of the market.
    * @returns The formatted size in wei. (e.g. 100 = 100000000000000000000)
    */
-  public formatSize(size: number, marketId: number): bigint {
-    const { resolvedMarketName } = this.resolveMarket(marketId);
-    let sizeInWei: bigint;
+  public async formatSize(size: number, marketId: MarketIdOrName) {
+    // TODO: think in a better solution maybe get the collateral and query the decimals from the contract
+    if (marketId === 'USDC') return parseUnits(size.toString(), 6);
 
-    const chainIds = [8453, 84532, 42161, 421614];
-    const marketNames = ['sUSDC', 'sStataUSDC'];
-
-    // Hard-coding a catch for USDC with 6 decimals
-    if (chainIds.includes(this.sdk.rpcConfig.chainId) && marketNames.includes(resolvedMarketName)) {
-      sizeInWei = parseUnits(size.toString(), 6);
-    } else {
-      sizeInWei = parseUnits(size.toString(), 18);
-    }
-    logger.info(`Size ${size} in wei for market ${resolvedMarketName}: ${sizeInWei}`);
-
-    return sizeInWei;
+    return parseUnits(size.toString(), 18);
   }
 
   /**
@@ -129,5 +118,9 @@ export abstract class Market<T extends MarketData | SpotMarketData> {
     // @note A better approach would be to fetch the priceUpdateFee for tx dynamically
     // from the Pyth contract instead of using arbitrary values for pyth price update fees
     return [{ ...dataVerificationTx, value: 500n, requireSuccess: false }];
+  }
+
+  public async getMarket(_marketIdOrName: MarketIdOrName): Promise<T> {
+    throw new Error('Method not implemented.');
   }
 }

@@ -1,5 +1,4 @@
 import { PrivateKeyAccount } from 'viem';
-import { MessageType } from '../utils/constants';
 
 export interface AccountConfig {
   address?: string;
@@ -24,11 +23,16 @@ export interface RpcConfig {
   preset?: string;
 }
 
+export interface DefaultConfig {
+  resolveMarketName?: boolean;
+  maxPriceImpact?: number;
+  logLevel?: number;
+}
+
 export interface SdkConfigParams {
   accountConfig: AccountConfig;
   partnerConfig?: PartnerConfig;
   pythConfig?: PythConfig;
   rpcConfig: RpcConfig;
-  logLevel?:number
-  loggerMessageType?:MessageType
+  defaultConfig?: DefaultConfig;
 }

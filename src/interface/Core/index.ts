@@ -2,7 +2,7 @@ import { Address, Hex } from 'viem';
 import { OverrideParamsRead, OverrideParamsWrite, WriteReturnType } from '../commonTypes';
 
 export interface CoreRepository {
-  getAccountOwner(accountId: number, override?: OverrideParamsRead): Promise<Hex>;
+  getAccountOwner(accountId: bigint, override?: OverrideParamsRead): Promise<Hex>;
   getUsdToken(override?: OverrideParamsRead): Promise<Hex>;
   getAccountIds(data: { address?: string; accountId?: bigint }, override?: OverrideParamsRead): Promise<bigint[]>;
 

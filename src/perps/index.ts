@@ -1,4 +1,4 @@
-import { encodeFunctionData, formatEther, getAbiItem, Hex, parseEther, parseUnits } from 'viem';
+import { Address, encodeFunctionData, formatEther, getAbiItem, Hex } from 'viem';
 import { SynthetixSdk } from '..';
 import {
   CollateralData,
@@ -6,6 +6,7 @@ import {
   MarketData,
   MarketMetadata,
   MarketSummary,
+  MarketSummaryResponse,
   MaxMarketValue,
   OpenPositionData,
   OrderData,
@@ -13,6 +14,7 @@ import {
   OrderQuote,
   PayDebtAndWithdraw,
   SettlementStrategy,
+  SettlementStrategyResponse,
 } from './interface';
 import { convertEtherToWei, convertWeiToEther, generateRandomAccountId, sleep } from '../utils';
 import { Call3Value } from '../interface/contractTypes';
@@ -30,8 +32,7 @@ import {
 import { PerpsRepository } from '../interface/Perps/repositories';
 import { Market } from '../utils/market';
 import { PERPS_PERMISSIONS } from '../constants/perpsPermissions';
-import { logger } from '../utils/logger/logger';
-
+import { MetadataResponse, PythPriceId } from '../interface/Markets';
 
 /**
  * Class for interacting with Synthetix Perps V3 contracts
@@ -79,7 +80,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
   async initPerps() {
     if (this.isInitialized) return;
-    await this.getMarkets();
     await this.getAccountIds();
 
     // Check if the Multicollateral is enabled
@@ -96,22 +96,9 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
     if (debtFunctionData != undefined && payDebtFunctionData != undefined) {
       this.isMulticollateralEnabled = true;
-      logger.info('Multicollateral perps is enabled')
+      this.sdk.logger.info('Multicollateral perps is enabled');
     }
     this.isInitialized = true;
-  }
-
-  formatSize(size: number, collateralId: number) {
-    const { resolvedMarketName } = this.sdk.spot.resolveMarket(collateralId);
-
-    const chainIds = [8453, 84532, 42161, 421614];
-    const marketNames = ['sUSDC', 'sStataUSDC'];
-
-    // Hard-coding a catch for USDC with 6 decimals
-    if (chainIds.includes(this.sdk.rpcConfig.chainId) && marketNames.includes(resolvedMarketName))
-      return parseUnits(size.toString(), 6);
-
-    return parseUnits(size.toString(), 18);
   }
 
   /**
@@ -128,7 +115,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
     const accountProxy = await this.sdk.contracts.getPerpsAccountProxyInstance();
     const balance = await accountProxy.read.balanceOf([accountAddress]);
-    logger.info('balance',balance)
+    this.sdk.logger.info('balance', balance);
     const argsList = [];
 
     for (let index = 0; index < Number(balance); index++) {
@@ -144,63 +131,54 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     if (accountIds == undefined) return [];
     // Set Perps account ids
     this.accountIds = accountIds as bigint[];
-    logger.info('accountIds', accountIds)
+    this.sdk.logger.info('accountIds', accountIds);
     if (defaultAccountId) {
       this.defaultAccountId = defaultAccountId;
     } else if (this.accountIds.length > 0) {
       this.defaultAccountId = this.accountIds[0] as bigint;
-      logger.info('Using default account id as ', this.defaultAccountId);
+      this.sdk.logger.info('Using default account id as ', this.defaultAccountId);
     }
     return accountIds as bigint[];
   }
 
-  /**
-   * Fetch the ids and summaries for all perps markets. Market summaries include
-   * information about the market's price, open interest, funding rate, and skew
-   * @returns {Promise<{ marketsById: Map<number, MarketData>; marketsByName: Map<string, MarketData> }>} - A map of market data objects indexed by market id and market name
-   */
-  public async getMarkets(): Promise<{ marketsById: Map<number, MarketData>; marketsByName: Map<string, MarketData> }> {
+  public async getMarkets(): Promise<MarketData[]> {
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-    const marketIdsResponse: bigint[] = (await perpsMarketProxy.read.getMarkets([])) as bigint[];
+    const marketIdResponse: bigint[] = (await perpsMarketProxy.read.getMarkets()) as bigint[];
 
-    const marketIds = marketIdsResponse.map((id) => {
-      return Number(id);
-    });
+    const marketMetadataResponse = (await this.sdk.utils.multicallErc7412({
+      contractAddress: perpsMarketProxy.address,
+      abi: perpsMarketProxy.abi,
+      functionName: 'metadata',
+      args: marketIdResponse as unknown[],
+    })) as MetadataResponse[];
 
-    // Response type from metadata smart contract call - [MarketName, MarketSymbol]
-    type MetadataResponse = [string, string];
+    const marketIds = marketIdResponse.map((id) => Number(id));
 
-    const [marketMetadataResponse, settlementStrategies] = await Promise.all([
-      this.sdk.utils.multicallErc7412({
-        contractAddress: perpsMarketProxy.address,
-        abi: perpsMarketProxy.abi,
-        functionName: 'metadata',
-        args: marketIds as unknown[],
-      }) as Promise<MetadataResponse[]>,
-      this.getSettlementStrategies(marketIds),
-    ]);
+    const settlementStrategies = await this.getSettlementStrategies(marketIds);
+    const { marketMetadatas, pythPriceIds } = marketMetadataResponse.reduce(
+      (acc, market, index) => {
+        const [name, symbol] = market;
+        const strategy = settlementStrategies.find((strategy) => strategy.marketId == marketIds[index]);
 
-    const pythPriceIds: { symbol: string; feedId: string }[] = [];
+        acc.pythPriceIds.push({
+          symbol,
+          feedId: strategy?.feedId ?? '0x',
+        });
 
-    // Set market metadata for all markets and populate Pyth price ids
-    marketMetadataResponse.forEach((market, index) => {
-      const marketName = market[0];
-      const marketSymbol = market[1];
-      const settlementStrategy = settlementStrategies.find((strategy) => strategy.marketId == marketIds[index]);
+        acc.marketMetadatas.push({
+          marketName: name,
+          symbol,
+          feedId: strategy?.feedId ?? '0x',
+        });
 
-      this.marketMetadata.set(marketIds[index], {
-        marketName: marketName,
-        symbol: marketSymbol,
-        feedId: settlementStrategy?.feedId ?? '0x',
-      });
+        return acc;
+      },
+      {
+        pythPriceIds: [],
+        marketMetadatas: [],
+      } as { pythPriceIds: PythPriceId[]; marketMetadatas: MarketMetadata[] },
+    );
 
-      pythPriceIds.push({
-        symbol: marketSymbol,
-        feedId: settlementStrategy?.feedId ?? '0x',
-      });
-    });
-
-    // Update Pyth price feeds
     this.sdk.pyth.updatePriceFeedIds(pythPriceIds);
 
     const [marketSummaries, fundingParameters, orderFees, maxMarketValues] = await Promise.all([
@@ -210,43 +188,170 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       this.getMaxMarketValues(marketIds),
     ]);
 
-    marketIds.forEach((marketId) => {
-      // Skip disabled markets
-      if (!this.disabledMarkets.includes(marketId)) {
-        const marketSummary = marketSummaries.find((summary) => summary.marketId == marketId);
-        const fundingParam = fundingParameters.find((fundingParam) => fundingParam.marketId == marketId);
-        const orderFee = orderFees.find((orderFee) => orderFee.marketId == marketId);
-        const maxMarketValue = maxMarketValues.find((maxMarketValue) => maxMarketValue.marketId == marketId);
+    const marketId = Number(marketIds.at(0) || 0);
+    const marketSummary = marketSummaries.find((summary) => summary.marketId == marketId);
+    const fundingParam = fundingParameters.find((fundingParam) => fundingParam.marketId == marketId);
+    const orderFee = orderFees.find((orderFee) => orderFee.marketId == marketId);
+    const maxMarketValue = maxMarketValues.find((maxMarketValue) => maxMarketValue.marketId == marketId);
 
-        const marketName = this.marketMetadata.get(marketId)?.marketName ?? '0x';
-        const marketSymbol = this.marketMetadata.get(marketId)?.symbol ?? 'INVALID';
+    const datas = marketMetadatas.map((marketMetadata) => {
+      const result = {
+        marketId,
+        marketName: marketMetadata.marketName,
+        symbol: marketMetadata.symbol,
+        feedId: marketMetadata.feedId,
+        skew: marketSummary?.skew,
+        size: marketSummary?.size,
+        maxOpenInterest: marketSummary?.maxOpenInterest,
+        interestRate: marketSummary?.interestRate,
+        currentFundingRate: marketSummary?.currentFundingRate,
+        currentFundingVelocity: marketSummary?.currentFundingVelocity,
+        indexPrice: marketSummary?.indexPrice,
+        skewScale: fundingParam?.skewScale,
+        maxFundingVelocity: fundingParam?.maxFundingVelocity,
+        makerFee: orderFee?.makerFeeRatio,
+        takerFee: orderFee?.takerFeeRatio,
+        maxMarketValue: maxMarketValue?.maxMarketValue,
+      };
 
-        const marketData = {
-          marketId: marketId,
-          marketName: marketName,
-          symbol: marketSymbol,
-          feedId: this.marketMetadata.get(marketId)?.feedId,
-          skew: marketSummary?.skew,
-          size: marketSummary?.size,
-          maxOpenInterest: marketSummary?.maxOpenInterest,
-          interestRate: marketSummary?.interestRate,
-          currentFundingRate: marketSummary?.currentFundingRate,
-          currentFundingVelocity: marketSummary?.currentFundingVelocity,
-          indexPrice: marketSummary?.indexPrice,
-          skewScale: fundingParam?.skewScale,
-          maxFundingVelocity: fundingParam?.maxFundingVelocity,
-          makerFee: orderFee?.makerFeeRatio,
-          takerFee: orderFee?.takerFeeRatio,
-          maxMarketValue: maxMarketValue?.maxMarketValue,
-        };
+      this.marketMetadata.set(marketId, marketMetadata);
+      this.marketsById.set(marketId, result);
+      this.marketsByName.set(marketMetadata.marketName, result);
+      this.marketsBySymbol.set(marketMetadata.symbol, result);
 
-        this.marketsById.set(marketId, marketData);
-        this.marketsByName.set(marketName, marketData);
-        this.marketsBySymbol.set(marketSymbol, marketData);
-      }
+      return result;
     });
 
-    return { marketsById: this.marketsById, marketsByName: this.marketsByName };
+    return datas;
+  }
+
+  public async getMarket(marketIdOrName: MarketIdOrName): Promise<MarketData> {
+    // Smart contract calls to populate MarketData
+    // 0. Fetch all marketIds - Only if marketName is provided, else use the market id
+    // 1. metadata - To get market name and symbol
+    // 2. getSettlementStrategy - To get feedId
+    // 3. getMarketSummary - To get skew, size, maxOi, currentFundingRate, currentFundingVelocity, indexPrice
+    // 4. interestRate - To get interestRate
+    // 5. getFundingParameters - To get skewScale and maxFundingVelocity
+    // 6. getOrderFees - To get maker and taker fee
+    // 7. getMaxMarketValue - To get maxMarketValue
+
+    let market =
+      (this.marketsById.get(Number(marketIdOrName)) ?? this.marketsByName.get(marketIdOrName as string)) || {};
+    if (market.marketId) {
+      return market;
+    }
+
+    let marketId, marketName, marketSymbol;
+    const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+
+    // If the market id is known, avoid fetching fetching all the markets and their metadata
+    if (typeof marketIdOrName === 'number' || typeof marketIdOrName === 'bigint') {
+      const marketMetadataResponse = (await this.sdk.utils.callErc7412({
+        contractAddress: perpsMarketProxy.address,
+        abi: perpsMarketProxy.abi,
+
+        functionName: 'metadata',
+        args: [marketIdOrName],
+      })) as MetadataResponse;
+
+      marketId = Number(marketIdOrName);
+      marketName = marketMetadataResponse[0];
+      marketSymbol = marketMetadataResponse[1];
+    } else {
+      const marketIdResponse: bigint[] = (await perpsMarketProxy.read.getMarkets()) as bigint[];
+      const marketMetadataResponse = (await this.sdk.utils.multicallErc7412({
+        contractAddress: perpsMarketProxy.address,
+        abi: perpsMarketProxy.abi,
+        functionName: 'metadata',
+        args: marketIdResponse as unknown[],
+      })) as MetadataResponse[];
+
+      marketMetadataResponse.forEach((metadata, idx) => {
+        if (metadata[0] == marketIdOrName) {
+          marketId = marketIdResponse[idx];
+          marketName = metadata[0];
+          marketSymbol = metadata[1];
+        }
+      });
+    }
+
+    const functionNames: string[] = [];
+    const argsList: unknown[] = [];
+
+    // 0. Get settlement strategy
+    functionNames.push('getSettlementStrategy');
+    argsList.push([marketId, 0]);
+
+    // 1. Get market Summary
+    functionNames.push('getMarketSummary');
+    argsList.push([marketId]);
+
+    // 2. Get interest rate
+    functionNames.push('interestRate');
+    argsList.push([]);
+
+    // 3. Get funding values
+    functionNames.push('getFundingParameters');
+    argsList.push([marketId]);
+
+    // 4. Get maker and taker fees
+    functionNames.push('getOrderFees');
+    argsList.push([marketId]);
+
+    // 5. Get max market value
+    functionNames.push('getMaxMarketValue');
+    argsList.push([marketId]);
+
+    const multicallResponse: unknown[] = await this.sdk.utils.multicallMultifunctionErc7412({
+      contractAddress: perpsMarketProxy.address,
+      abi: perpsMarketProxy.abi,
+      functionNames,
+      args: argsList,
+    });
+
+    const settlementStrategy = multicallResponse.at(0) as SettlementStrategyResponse;
+    const marketSummary = multicallResponse.at(1) as MarketSummaryResponse;
+    const interestRate = multicallResponse.at(2) as bigint;
+    const fundingParams = multicallResponse.at(3) as bigint[];
+    const orderFees = multicallResponse.at(4) as bigint[];
+    const maxMarketValue = multicallResponse.at(5) as bigint;
+
+    market.marketId = marketId || 0;
+    market.marketName = marketName || 'INVALID MARKET';
+    market.symbol = marketSymbol || 'INVALID';
+
+    // From settlementStrategy data
+    market.feedId = settlementStrategy.feedId;
+
+    // From marketSummary data
+    market.skew = Number(formatEther(marketSummary.skew));
+    (market.size = Number(formatEther(marketSummary.size))),
+      (market.maxOpenInterest = Number(formatEther(marketSummary.maxOpenInterest))),
+      (market.interestRate = Number(formatEther(interestRate))),
+      (market.currentFundingRate = Number(formatEther(marketSummary.currentFundingRate))),
+      (market.currentFundingVelocity = Number(formatEther(marketSummary.currentFundingVelocity))),
+      (market.indexPrice = Number(formatEther(marketSummary.indexPrice))),
+      // From fundingParams data
+      (market.skewScale = Number(formatEther(fundingParams.at(0) || 0n)));
+    market.maxFundingVelocity = Number(formatEther(fundingParams.at(1) || 0n));
+
+    // From orderFees data
+    market.makerFee = Number(formatEther(orderFees.at(0) || 0n));
+    market.takerFee = Number(formatEther(orderFees.at(1) || 0n));
+
+    market.maxMarketValue = Number(formatEther(maxMarketValue));
+
+    this.marketMetadata.set(market.marketId || 0, {
+      marketName: market.marketName,
+      symbol: market.symbol,
+      feedId: market.feedId,
+    });
+
+    this.marketsById.set(market.marketId, market);
+    this.marketsByName.set(market.marketName, market);
+    this.marketsBySymbol.set(market.symbol, market);
+    return market;
   }
 
   /**
@@ -255,17 +360,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * @returns Summary of market ids data fetched from the contract
    */
   public async getMarketSummaries(marketIds: number[]): Promise<MarketSummary[]> {
-    // Intermediate interface to map the values from smart contract types to sdk types
-    // i.e to convert bigint values to formatted values in sdk
-    interface MarketSummaryResponse {
-      skew: bigint;
-      size: bigint;
-      maxOpenInterest: bigint;
-      currentFundingRate: bigint;
-      currentFundingVelocity: bigint;
-      indexPrice: bigint;
-    }
-
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     const interestRate = await this.sdk.utils.callErc7412({
@@ -284,7 +378,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     })) as MarketSummaryResponse[];
 
     if (marketIds.length !== marketSummariesResponse.length) {
-     logger.info('Inconsistent data');
+      this.sdk.logger.info('Inconsistent data');
     }
 
     const marketSummaries: MarketSummary[] = [];
@@ -315,16 +409,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    */
 
   public async getMarketSummary(marketIdOrName: MarketIdOrName): Promise<MarketSummary> {
-    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketIdOrName);
-
-    interface MarketSummaryResponse {
-      skew: bigint;
-      size: bigint;
-      maxOpenInterest: bigint;
-      currentFundingRate: bigint;
-      currentFundingVelocity: bigint;
-      indexPrice: bigint;
-    }
+    const { resolvedMarketId, resolvedMarketName } = await this.resolveMarket(marketIdOrName);
 
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
@@ -342,7 +427,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       functionName: 'getMarketSummary',
       args: [resolvedMarketId],
     })) as MarketSummaryResponse;
-    logger.info('marketSummaryResponse', marketSummaryResponse);
+    this.sdk.logger.info('marketSummaryResponse', marketSummaryResponse);
     return {
       marketId: resolvedMarketId,
       marketName: resolvedMarketName,
@@ -368,19 +453,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     settlementStrategyId: number,
     marketIdOrName: MarketIdOrName,
   ): Promise<SettlementStrategy> {
-    const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
+    const { resolvedMarketId } = await this.resolveMarket(marketIdOrName);
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-
-    interface SettlementStrategyResponse {
-      strategyType?: number;
-      settlementDelay?: bigint;
-      settlementWindowDuration?: bigint;
-      priceVerificationContract?: string;
-      feedId?: string;
-      settlementReward?: bigint;
-      disabled?: boolean;
-      commitmentPriceDelay?: bigint;
-    }
 
     const settlementStrategy: SettlementStrategyResponse = (await this.sdk.utils.callErc7412({
       contractAddress: perpsMarketProxy.address,
@@ -411,18 +485,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    */
   public async getSettlementStrategies(marketIds: number[]): Promise<SettlementStrategy[]> {
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-
-    interface SettlementStrategyResponse {
-      strategyType?: number;
-      settlementDelay?: bigint;
-      settlementWindowDuration?: bigint;
-      priceVerificationContract?: string;
-      feedId?: string;
-      settlementReward?: bigint;
-      disabled?: boolean;
-      commitmentPriceDelay?: bigint;
-    }
-
     const settlementStrategies: SettlementStrategy[] = [];
 
     const argsList: [number, number][] = marketIds.map((marketId) => [marketId, 0]);
@@ -540,9 +602,11 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * @returns {OrderData} The order data for the account
    */
   public async getOrder(
-    accountId: bigint | undefined = undefined,
+    accountId = this.defaultAccountId,
     fetchSettlementStrategy: boolean = true,
   ): Promise<OrderData> {
+    if (!accountId) throw new Error('Invalid account id');
+
     interface OrderCommitmentRequestRes {
       marketId: bigint;
       accountId: bigint;
@@ -559,10 +623,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     }
 
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-
-    if (accountId == undefined) {
-      accountId = this.defaultAccountId;
-    }
     const orderResponse = (await this.sdk.utils.callErc7412({
       contractAddress: perpsMarketProxy.address,
       abi: perpsMarketProxy.abi,
@@ -600,10 +660,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * @param {bigint} accountId  The id of the account to fetch the margin info for. If not provided, the default account is used
    * @returns {CollateralData} The margin information for the account
    */
-  public async getMarginInfo(accountId: bigint | undefined = undefined): Promise<CollateralData> {
-    if (accountId == undefined) {
-      accountId = this.defaultAccountId;
-    }
+  public async getMarginInfo(accountId = this.defaultAccountId): Promise<CollateralData> {
+    if (!accountId) throw new Error('Invalid account ID');
 
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
@@ -673,7 +731,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
         const inputs = collateralIds.map((id) => {
           return [accountId, id];
         });
-        logger.info('inputs', inputs);
+        this.sdk.logger.info('inputs', inputs);
         const collateralAmounts = (await this.sdk.utils.multicallErc7412({
           contractAddress: marketProxy.address,
           abi: marketProxy.abi,
@@ -699,7 +757,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       maintenanceMarginRequirement: convertWeiToEther(requiredMaintenanceMargin),
       maxLiquidationReward: convertWeiToEther(maxLiquidationReward),
     };
-   logger.info(`${marginInfo}marginInfo` )
+    this.sdk.logger.info(`${marginInfo}marginInfo`);
     return marginInfo;
   }
 
@@ -719,15 +777,16 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   }: ModifyCollateral): Promise<Call3Value> {
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
-    const { resolvedMarketId: collateralMarketId,resolvedMarketName: collateralMarketName } =
-      this.sdk.spot.resolveMarket(collateralMarketIdOrName);
-      logger.info(`Building ${amount} ${collateralMarketName} for account ${accountId}`);
+    const { resolvedMarketId: collateralMarketId, resolvedMarketName: collateralMarketName } =
+      await this.sdk.spot.resolveMarket(collateralMarketIdOrName);
+
+    this.sdk.logger.info(`Building ${amount} ${collateralMarketName} for account ${accountId}`);
     return {
       target: marketProxy.address,
       callData: encodeFunctionData({
         abi: marketProxy.abi,
         functionName: 'modifyCollateral',
-        args: [accountId, collateralMarketId, this.formatSize(amount, collateralMarketId)],
+        args: [accountId, collateralMarketId, await this.formatSize(amount, collateralMarketId)],
       }),
       value: 0n,
       requireSuccess: true,
@@ -753,10 +812,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * @param accountId The id of the account to check. If not provided, the default account is used.
    * @returns {Promise<boolean>} A boolean indicating whether the account can be liquidated.
    */
-  public async getCanLiquidate(accountId: bigint | undefined = undefined): Promise<boolean> {
-    if (accountId == undefined) {
-      accountId = this.defaultAccountId;
-    }
+  public async getCanLiquidate(accountId = this.defaultAccountId): Promise<boolean> {
+    if (!accountId) throw new Error('Invalid account ID');
 
     const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
@@ -766,7 +823,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       functionName: 'canLiquidate',
       args: [accountId],
     })) as boolean;
-    logger.info('canBeLiquidated', canBeLiquidated);
+    this.sdk.logger.info('canBeLiquidated', canBeLiquidated);
     return canBeLiquidated;
   }
 
@@ -803,7 +860,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
         canLiquidate: response,
       };
     });
-    logger.info('canLiquidates', canLiquidates);
+    this.sdk.logger.info('canLiquidates', canLiquidates);
     return canLiquidates;
   }
 
@@ -821,7 +878,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   ): Promise<OpenPositionData> {
     if (!accountId) throw new Error('Account ID is required');
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-    const { resolvedMarketId, resolvedMarketName } = this.resolveMarket(marketIdOrName);
+    const { resolvedMarketId, resolvedMarketName } = await this.resolveMarket(marketIdOrName);
 
     // Smart contract response:
     // returns (int256 totalPnl, int256 accruedFunding, int128 positionSize, uint256 owedInterest);
@@ -833,6 +890,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     })) as bigint[];
 
     const openPositionData: OpenPositionData = {
+      accountId: accountId,
       marketId: resolvedMarketId,
       marketName: resolvedMarketName,
       totalPnl: convertWeiToEther(response.at(0)),
@@ -840,7 +898,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       positionSize: convertWeiToEther(response.at(2)),
       owedInterest: convertWeiToEther(response.at(3)),
     };
-    logger.info('openPositionData', openPositionData);
+    this.sdk.logger.info('openPositionData', openPositionData);
     return openPositionData;
   }
 
@@ -862,7 +920,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
     const marketIds: number[] = !marketIdsOrNames
       ? Array.from(this.marketsById.keys())
-      : marketIdsOrNames.map((market) => this.resolveMarket(market).resolvedMarketId);
+      : await Promise.all(marketIdsOrNames.map(async (market) => (await this.resolveMarket(market)).resolvedMarketId));
 
     const inputs = marketIds?.map((marketId) => {
       return [accountId, marketId];
@@ -883,6 +941,55 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       const positionSize = convertWeiToEther(positionData.at(2));
       if (Math.abs(positionSize) > 0) {
         openPositionsData.push({
+          accountId: accountId,
+          marketId: marketId,
+          marketName: this.marketsById.get(marketId)?.marketName ?? 'Unresolved market',
+          totalPnl: convertWeiToEther(positionData.at(0)),
+          accruedFunding: convertWeiToEther(positionData.at(1)),
+          positionSize: positionSize,
+          owedInterest: convertWeiToEther(positionData.at(3)),
+        });
+      }
+    });
+    return openPositionsData;
+  }
+
+  /**
+   * Retrieves open positions for multiple accounts and markets using a multicall.
+   * @param positions - An array of objects representing the positions,
+   * where each object contains:
+   * - accountId: {bigint} The id of the account to fetch the position for .
+   * - marketIdOrName: {MarketIdOrName} The market ID or name.
+   * @returns An array of OpenPositionData objects. */
+  public async getOpenPositionsMulticall(
+    positions: { accountId: bigint; marketIdOrName: MarketIdOrName }[],
+  ): Promise<OpenPositionData[]> {
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+
+    const marketIds: number[] = await Promise.all(
+      positions.map(async (position) => (await this.resolveMarket(position.marketIdOrName)).resolvedMarketId),
+    );
+
+    const inputs = positions.map((position, idx) => {
+      return [position.accountId, marketIds.at(idx)];
+    }) as unknown[];
+
+    // Smart contract response:
+    // returns (int256 totalPnl, int256 accruedFunding, int128 positionSize, uint256 owedInterest);
+    const response = (await this.sdk.utils.multicallErc7412({
+      contractAddress: marketProxy.address,
+      abi: marketProxy.abi,
+      functionName: 'getOpenPosition',
+      args: inputs,
+    })) as bigint[][];
+
+    const openPositionsData: OpenPositionData[] = [];
+    response.forEach((positionData, idx) => {
+      const marketId = marketIds?.at(idx) ?? 0;
+      const positionSize = convertWeiToEther(positionData.at(2));
+      if (Math.abs(positionSize) > 0) {
+        openPositionsData.push({
+          accountId: positions.at(idx)?.accountId ?? 0n,
           marketId: marketId,
           marketName: this.marketsById.get(marketId)?.marketName ?? 'Unresolved market',
           totalPnl: convertWeiToEther(positionData.at(0)),
@@ -917,16 +1024,15 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     if (!accountId) throw new Error('No account Id!');
 
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-    const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
+    const { resolvedMarketId } = await this.resolveMarket(marketIdOrName);
 
     const feedId = this.marketsById.get(resolvedMarketId)?.feedId;
     if (!feedId) throw new Error('Invalid feed id received from market data');
 
     if (!price) {
       price = await this.sdk.pyth.getFormattedPrice(feedId as Hex);
-      logger.info('Formatted price:', price);
+      this.sdk.logger.info('Formatted price:', price);
     }
-    logger.info('=== recursivee');
     const [orderFeesWithPriceResponse, settlementRewardCost, requiredMargin] = await Promise.all([
       this.sdk.utils.callErc7412({
         contractAddress: marketProxy.address,
@@ -949,7 +1055,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
           }) as Promise<bigint>)
         : 0n,
     ]);
-    logger.info('=== recursivee end');
     const orderQuote: OrderQuote = {
       orderSize: size,
       indexPrice: price,
@@ -969,7 +1074,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * @param accountId The id of the account to get the debt for. If not provided, the default account is used.
    * @returns debt Account debt in ether
    */
-  public async getDebt(accountId: bigint | undefined = this.defaultAccountId): Promise<number> {
+  public async getDebt(accountId = this.defaultAccountId): Promise<number> {
     if (!accountId) throw new Error('No account id selected');
     if (!this.isMulticollateralEnabled)
       throw new Error(`Multicollateral is not enabled for chainId ${this.sdk.rpcConfig.chainId}`);
@@ -982,7 +1087,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       functionName: 'debt',
       args: [accountId],
     })) as bigint;
-    logger.info('Account Debt: ', debt);
+    this.sdk.logger.info('Account Debt: ', debt);
     return convertWeiToEther(debt);
   }
 
@@ -991,17 +1096,17 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * Provide either a ``marketId`` or a ``marketName``
    * @param {string | number} marketIdOrName - The identifier or name of the market for which the collateral is being modified
    * @param {bigint} accountId The id of the account to fetch the position for. If not provided, the default account is used.
-   * @returns
+   * @returns {healthFactor: bigint, liquidationPrice: bigint}
    * liquidation price = ((maintenance margin -  available margin) / position size) + index price
    */
   public async getApproxLiquidationPrice(
     marketIdOrName: MarketIdOrName,
     accountId = this.defaultAccountId,
-    override: OverrideParamsRead,
-  ): Promise<bigint> {
+    override?: OverrideParamsRead,
+  ): Promise<{ healthFactor: bigint; liquidationPrice: bigint }> {
     if (!accountId) throw new Error('Account ID is required');
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-    const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
+    const { resolvedMarketId } = await this.resolveMarket(marketIdOrName);
 
     const functionNames: string[] = [];
     const argsList: unknown[] = [];
@@ -1040,17 +1145,63 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const requiredMarginsResponse = multicallResponse.at(1) as bigint[];
     const requiredMaintenanceMargin = requiredMarginsResponse.at(1) as bigint;
 
+    const healthFactor = (availableMargin * 100n) / (requiredMaintenanceMargin + 1n);
+
     // 2. Position size
     const positionSize = multicallResponse.at(2) as bigint;
     if (positionSize == 0n) {
-      return 0n;
+      return { healthFactor, liquidationPrice: 0n };
     }
 
     // 3. Market index price
     const indexPrice = multicallResponse.at(3) as bigint;
 
     const liquidationPrice = (requiredMaintenanceMargin - availableMargin) / positionSize + indexPrice;
-    return liquidationPrice;
+    return { healthFactor, liquidationPrice };
+  }
+
+  /**
+   * Calculate the health factor for an account
+   * @param {bigint} accountId The id of the account to calculate health factor.
+   * If not provided, the default account is used.
+   * @returns healthFactor percentage;
+   * healthFactor = (available margin * 100) / maintenance margin
+   */
+  public async getHealthFactor(accountId = this.defaultAccountId, override?: OverrideParamsRead): Promise<bigint> {
+    if (!accountId) throw new Error('Account ID is required');
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+
+    const functionNames: string[] = [];
+    const argsList: unknown[] = [];
+
+    // 0. Get available margin
+    functionNames.push('getAvailableMargin');
+    argsList.push([accountId]);
+
+    // 1. Get required margins
+    functionNames.push('getRequiredMargins');
+    argsList.push([accountId]);
+
+    const multicallResponse: unknown[] = await this.sdk.utils.multicallMultifunctionErc7412(
+      {
+        contractAddress: marketProxy.address,
+        abi: marketProxy.abi,
+        functionNames,
+        args: argsList,
+      },
+      override,
+    );
+
+    // 0. Available Margin
+    const availableMargin = multicallResponse.at(0) as bigint;
+
+    // 1. Required margin
+    // returns (uint256 requiredInitialMargin,uint256 requiredMaintenanceMargin,uint256 maxLiquidationReward)
+    const requiredMarginsResponse = multicallResponse.at(1) as bigint[];
+    const requiredMaintenanceMargin = requiredMarginsResponse.at(1) as bigint;
+
+    const healthFactor = (availableMargin * 100n) / (requiredMaintenanceMargin + 1n);
+    return healthFactor;
   }
 
   // === WRITE CALLS ===
@@ -1074,26 +1225,27 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     desiredFillPrice,
     maxPriceImpact,
   }: CommitOrder): Promise<Call3Value> {
-    const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    if (!accountId) throw new Error('Account ID is required');
 
-    const { resolvedMarketId, resolvedMarketName: marketName } = this.resolveMarket(marketIdOrName);
+    const perpsMarketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+    const { resolvedMarketId, resolvedMarketName: marketName } = await this.resolveMarket(marketIdOrName);
     if (desiredFillPrice != undefined && maxPriceImpact != undefined) {
       throw new Error('Cannot set both desiredFillPrice and maxPriceImpact');
     }
     const isShort = size < 0 ? -1 : 1;
-    const sizeInWei = parseEther(Math.abs(size).toString()) * BigInt(isShort);
+    const sizeInWei = (await this.sdk.perps.formatSize(Math.abs(size), resolvedMarketId)) * BigInt(isShort);
     let acceptablePrice: number;
-   logger.info(
+    this.sdk.logger.info(
       `Building order size ${sizeInWei} (${size}) to ${marketName} (id: ${resolvedMarketId}) for account ${accountId}`,
     );
     // If desired price is provided, use the provided price, else fetch price
     if (desiredFillPrice) {
       acceptablePrice = desiredFillPrice;
     } else {
-      const updatedMaxPriceImpact = maxPriceImpact ?? 1; // @todo Replace with config value
-      const marketSummary = await this.getMarketSummary(resolvedMarketId);
+      const updatedMaxPriceImpact = maxPriceImpact ?? this.sdk.maxPriceImpact;
+      const market = await this.getMarket(resolvedMarketId);
       const priceImpact = 1 + (isShort * updatedMaxPriceImpact) / 100;
-      acceptablePrice = (marketSummary.indexPrice ?? 0) * priceImpact;
+      acceptablePrice = (market.indexPrice ?? 0) * priceImpact;
     }
 
     const txArgs = [
@@ -1105,7 +1257,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       this.sdk.trackingCode,
       this.sdk.referrer,
     ];
-
 
     return {
       target: perpsMarketProxy.address,
@@ -1141,6 +1292,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     { amount, collateralMarketIdOrName, accountId = this.defaultAccountId }: ModifyCollateral,
     override: OverrideParamsWrite = {},
   ): Promise<WriteReturnType> {
+    if (!accountId) throw new Error('Account ID is required');
+
     const processedTx = await this._buildModifyCollateral({
       amount,
       collateralMarketIdOrName,
@@ -1161,6 +1314,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     { amount = 0, accountId = this.defaultAccountId }: PayDebt = { amount: 0 },
     override: OverrideParamsWrite = {},
   ): Promise<WriteReturnType> {
+    if (!accountId) throw new Error('Account ID is required');
+
     if (!this.isMulticollateralEnabled) {
       throw new Error(`Multicollateral is not enabled for chainId ${this.sdk.rpcConfig.chainId}`);
     }
@@ -1199,6 +1354,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     accountId = this.defaultAccountId,
     override: OverrideParamsWrite = {},
   ): Promise<WriteReturnType> {
+    if (!accountId) throw new Error('Account ID is required');
+
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     // if (override.staticCall) {
@@ -1226,7 +1383,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     return this.sdk.utils.processTransactions(txs, { ...override });
   }
   /**
-   * @name settleOrder
+   * @name settleOrderperps
    * @description Settles an open order by executing the 'settleOrder' function on Perps Market Proxy contract.
    * @param {bigint} accountId - The ID of the account associated with the order. Defaults to `this.defaultAccountId`.
    * @param {OverrideParamsWrite} override - Optional override parameters for writing transactions (defaults to default values).
@@ -1236,6 +1393,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     accountId = this.defaultAccountId,
     override: OverrideParamsWrite = {},
   ): Promise<WriteReturnType> {
+    if (!accountId) throw new Error('Account ID is required');
+
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     const order = await this.getOrder(accountId);
@@ -1248,12 +1407,12 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       throw new Error(`Order is already settled for account ${accountId}`);
     } else if (settlementTime > currentTimestamp) {
       const duration = settlementTime - currentTimestamp;
-      logger.info(`Waiting ${duration} seconds to settle order`);
+      this.sdk.logger.info(`Waiting ${duration} seconds to settle order`);
       await sleep(duration);
     } else if (expirationTime < currentTimestamp) {
       throw new Error(`Order has expired for account ${accountId}`);
     } else {
-      logger.info('Order is ready to be settled')
+      this.sdk.logger.info('Order is ready to be settled');
     }
 
     const settleTx: Call3Value = {
@@ -1332,7 +1491,30 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     }: CreateIsolateOrder,
     override: OverrideParamsWrite = {},
   ): Promise<WriteReturnType> {
-    const { resolvedMarketId } = this.resolveMarket(marketIdOrName);
+    const spotInstance = await this.sdk.contracts.getSpotMarketProxyInstance();
+    const perpsInstance = await this.sdk.contracts.getPerpsMarketProxyInstance();
+
+    const { resolvedMarketId: spotCollateralId } = await this.sdk.spot.resolveMarket(collateralMarketId);
+
+    const synthCollateral = await this.sdk.spot.getMarket(spotCollateralId);
+
+    // Remove Synthetix asset's `s` from market name.
+    // For example, remove `s` from `sUSDe` to get `USDe`
+    const collateral = await this.sdk.contracts.getCollateralInstance(
+      (synthCollateral.marketName ?? 'Unresolved Market').replace('s', ''),
+    );
+
+    const approveCollateral = await this.sdk.spot._buildApprove({
+      spender: spotInstance.address,
+      amount: collateralAmount,
+      token: collateral.address,
+    });
+
+    const approveSyntCollateral = await this.sdk.spot._buildApprove({
+      spender: perpsInstance.address,
+      amount: collateralAmount,
+      token: synthCollateral.contractAddress as Address,
+    });
 
     // 1. Create Account
     const createAccountCall = await this._buildCreateAccount(accountId);
@@ -1352,15 +1534,29 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const commitOrderCall = await this._buildCommitOrder({
       size: size,
       settlementStrategyId,
-      marketIdOrName: resolvedMarketId,
+      marketIdOrName,
       accountId,
       desiredFillPrice,
       maxPriceImpact,
     });
 
-    const rawTxs = [createAccountCall, wrapTxs, modifyCollateralCall, commitOrderCall].flat();
+    const rawTxs = [
+      // approveCollateral,
+      // approveSyntCollateral,
+      createAccountCall,
+      wrapTxs,
+      modifyCollateralCall,
+      commitOrderCall,
+    ].flat();
 
-    return this.sdk.utils.processTransactions(rawTxs, override);
+    return this.sdk.utils.processTransactions(rawTxs, {
+      ...override,
+      prepend: [
+        this.sdk.utils._fromCall3ToTransactionData(approveCollateral),
+        this.sdk.utils._fromCall3ToTransactionData(approveSyntCollateral),
+        ...(override?.prepend ? override.prepend : []),
+      ],
+    });
   }
 
   async _buildGrantPermission({ accountId, permission, user }: GrantPermission): Promise<Call3Value> {
@@ -1392,6 +1588,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     { accountId = this.defaultAccountId, permission, user }: GrantPermission,
     override: Omit<OverrideParamsWrite, 'useOracleCalls'> = {},
   ) {
+    if (!accountId) throw new Error('Account ID is required');
+
     const grantPermissionTx = await this._buildGrantPermission({ accountId, permission, user });
 
     const txs = [grantPermissionTx];
@@ -1411,6 +1609,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     { accountId = this.defaultAccountId, permission, user }: GrantPermission,
     override: Omit<OverrideParamsWrite, 'useOracleCalls'> = {},
   ) {
+    if (!accountId) throw new Error('Account ID is required');
+
     const coreProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     const grantPermissionTx: Call3Value = {
@@ -1445,7 +1645,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   public async payDebtAndWithdraw(params: PayDebtAndWithdraw, override: OverrideParamsWrite) {
     const zapInstance = await this.sdk.contracts.getZapInstance();
     const modifyPerpsPermission = PERPS_PERMISSIONS.PERPS_MODIFY_COLLATERAL;
-    const { resolvedMarketId } = this.sdk.spot.resolveMarket(params.collateralIdOrName);
+    const { resolvedMarketId } = await this.sdk.spot.resolveMarket(params.collateralIdOrName);
 
     const grantPermissionTx = await this._buildGrantPermission({
       accountId: params.accountId,
@@ -1453,11 +1653,11 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       user: zapInstance.address,
     });
 
-    const amount = this.formatSize(params.collateralAmount, resolvedMarketId);
+    const amount = await this.formatSize(params.collateralAmount, resolvedMarketId);
 
     const swapMaxAmountIn = amount;
 
-    const minAmount = this.formatSize(params.minToReceive, resolvedMarketId);
+    const minAmount = await this.formatSize(params.minToReceive, resolvedMarketId);
 
     const unwindTx = {
       target: zapInstance.address,

@@ -4,7 +4,6 @@ import { ZERO_ADDRESS } from '../constants/common';
 import { CoreRepository } from '../interface/Core';
 import { OverrideParamsWrite, WriteReturnType } from '../interface/commonTypes';
 import { Call3Value } from '../interface/contractTypes';
-import { logger } from '../utils/logger/logger';
 
 /**
  * Class for interacting with Synthetix V3 core contracts
@@ -24,12 +23,13 @@ export class Core implements CoreRepository {
   async initCore() {
     await this.getAccountIds();
   }
+
   /**
    * Returns the Owner wallet address for an account ID
    * @param accountId - Account ID
    * @returns string - Address of the account owning the accountId
    */
-  public async getAccountOwner(accountId: number): Promise<Hex> {
+  public async getAccountOwner(accountId: bigint): Promise<Hex> {
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
     const response = await this.sdk.utils.callErc7412({
       contractAddress: coreProxy.address,
@@ -38,7 +38,7 @@ export class Core implements CoreRepository {
       args: [accountId],
     });
 
-   logger.info(`Core account Owner for id ${accountId} is ${response}`);
+    this.sdk.logger.info(`Core account Owner for id ${accountId} is ${response}`);
 
     return response as Hex;
   }
@@ -57,7 +57,7 @@ export class Core implements CoreRepository {
       args: [],
     });
 
-    logger.info('USD Token address: ', response);
+    this.sdk.logger.info('USD Token address: ', response);
     return response as Hex;
   }
 
@@ -84,7 +84,7 @@ export class Core implements CoreRepository {
 
     const accountProxy = await this.sdk.contracts.getAccountProxyInstance();
     const balance = await accountProxy.read.balanceOf([accountAddress]);
-    logger.info('balance',balance)
+    this.sdk.logger.info('balance', balance);
 
     const argsList = [];
 
@@ -100,12 +100,12 @@ export class Core implements CoreRepository {
 
     // Set Core account ids
     this.accountIds = accountIds;
-    logger.info('accountIds', accountIds);
+    this.sdk.logger.info('accountIds', accountIds);
     if (defaultAccountId) {
       this.defaultAccountId = defaultAccountId;
     } else if (this.accountIds.length > 0) {
       this.defaultAccountId = this.accountIds[0];
-      logger.info('Using default account id as ', this.defaultAccountId);
+      this.sdk.logger.info('Using default account id as ', this.defaultAccountId);
     }
     return accountIds;
   }
@@ -126,6 +126,8 @@ export class Core implements CoreRepository {
     tokenAddress: Address;
     accountId?: bigint;
   }): Promise<string> {
+    if (!accountId) throw new Error('Invalid account ID');
+
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
 
     const availableCollateral = await this.sdk.utils.callErc7412({
@@ -151,7 +153,7 @@ export class Core implements CoreRepository {
       functionName: 'getPreferredPool',
       args: [],
     });
-    logger.info(preferredPool)
+    this.sdk.logger.info(preferredPool);
     return preferredPool as bigint;
   }
 
@@ -193,6 +195,8 @@ export class Core implements CoreRepository {
     },
     override: OverrideParamsWrite = { shouldRevertOnTxFailure: false },
   ): Promise<WriteReturnType> {
+    if (!accountId) throw new Error('Invalid account ID');
+
     const amountInWei = parseUnits(amount.toString(), decimals);
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
 
@@ -261,6 +265,8 @@ export class Core implements CoreRepository {
     },
     override: OverrideParamsWrite = { shouldRevertOnTxFailure: false },
   ): Promise<WriteReturnType> {
+    if (!accountId) throw new Error('Invalid account ID');
+
     const amountInWei = parseUnits(amount.toString(), 18);
     const leverageInWei = parseUnits(leverage.toString(), 18);
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
@@ -294,6 +300,8 @@ export class Core implements CoreRepository {
     },
     override: OverrideParamsWrite = { shouldRevertOnTxFailure: false },
   ): Promise<WriteReturnType> {
+    if (!accountId) throw new Error('Invalid account ID');
+
     const amountInWei = parseUnits(amount.toString(), 18);
     const coreProxy = await this.sdk.contracts.getCoreProxyInstance();
 
