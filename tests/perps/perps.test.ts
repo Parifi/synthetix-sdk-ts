@@ -160,6 +160,13 @@ describe('Perps', () => {
     expect(pythData).not.toBe(undefined);
   });
 
+  it('should health factor for an account', async () => {
+    const accountIdWithOpenPositions = 170141183460469231731687303715884105763n;
+    const healthFactor = await sdk.perps.getHealthFactor(accountIdWithOpenPositions);
+    console.log('Health factor: ', healthFactor);
+    expect(healthFactor).toBeGreaterThan(100);
+  });
+
   it('should create an isolated account order', async () => {
     const initialSusdBalance = await sdk.getSusdBalance();
     const collateralAmount = 70; // 70 usdc.Min 62.5 USD collateral is required
@@ -216,9 +223,12 @@ describe('Perps', () => {
       return;
     }
     const marketId = sdk.perps.marketsBySymbol.get('Ethereum')?.marketId ?? 100;
-    const liquidationPrice = await sdk.perps.getApproxLiquidationPrice(marketId, accountId);
+    const { healthFactor, liquidationPrice } = await sdk.perps.getApproxLiquidationPrice(marketId, accountId);
     console.log('liquidationPrice', liquidationPrice);
+    console.log('healthFactor', healthFactor);
+
     expect(liquidationPrice).not.toBe(0);
+    expect(healthFactor).toBeGreaterThan(0);
   });
 
   it('should build an isolated account order', async () => {
