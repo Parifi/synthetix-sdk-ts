@@ -8,8 +8,6 @@ import { getPublicRpcEndpoint } from '../src/utils';
 import { DEFAULT_REFERRER, DEFAULT_TRACKING_CODE } from '../src/constants';
 
 export const getSdkInstanceForTesting = async (): Promise<SynthetixSdk> => {
-  console.log('Default address: ', process.env.DEFAULT_ADDRESS);
-
   // initialize RPC config
   const chainId = Number(process.env.CHAIN_ID || '421614');
   const rpcConfig: RpcConfig = {

@@ -38,7 +38,8 @@ export class Core implements CoreRepository {
       args: [accountId],
     });
 
-    console.log(`Core account Owner for id ${accountId} is ${response}`);
+    this.sdk.logger.info(`Core account Owner for id ${accountId} is ${response}`);
+
     return response as Hex;
   }
 
@@ -56,7 +57,7 @@ export class Core implements CoreRepository {
       args: [],
     });
 
-    console.log('USD Token address: ', response);
+    this.sdk.logger.info('USD Token address: ', response);
     return response as Hex;
   }
 
@@ -83,7 +84,7 @@ export class Core implements CoreRepository {
 
     const accountProxy = await this.sdk.contracts.getAccountProxyInstance();
     const balance = await accountProxy.read.balanceOf([accountAddress]);
-    console.log('balance', balance);
+    this.sdk.logger.info('balance', balance);
 
     const argsList = [];
 
@@ -99,13 +100,12 @@ export class Core implements CoreRepository {
 
     // Set Core account ids
     this.accountIds = accountIds;
-
-    console.log('accountIds', accountIds);
+    this.sdk.logger.info('accountIds', accountIds);
     if (defaultAccountId) {
       this.defaultAccountId = defaultAccountId;
     } else if (this.accountIds.length > 0) {
       this.defaultAccountId = this.accountIds[0];
-      console.log('Using default account id as ', this.defaultAccountId);
+      this.sdk.logger.info('Using default account id as ', this.defaultAccountId);
     }
     return accountIds;
   }
@@ -153,8 +153,7 @@ export class Core implements CoreRepository {
       functionName: 'getPreferredPool',
       args: [],
     });
-
-    console.log(preferredPool);
+    this.sdk.logger.info(preferredPool);
     return preferredPool as bigint;
   }
 

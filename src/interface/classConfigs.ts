@@ -1,4 +1,4 @@
-import { PrivateKeyAccount, WalletClient } from 'viem';
+import { PrivateKeyAccount } from 'viem';
 
 export interface AccountConfig {
   address?: string;
@@ -26,6 +26,7 @@ export interface RpcConfig {
 export interface DefaultConfig {
   resolveMarketName?: boolean;
   maxPriceImpact?: number;
+  logLevel?: number;
 }
 
 export interface SdkConfigParams {
