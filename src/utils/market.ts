@@ -43,7 +43,8 @@ export abstract class Market<T extends MarketData | SpotMarketData> {
     }
 
     const market = await this.getMarket(marketIdOrName);
-    if (!market?.marketName || !market?.marketId) throw new Error(`Market not found for ${marketIdOrName}`);
+    if (!market?.marketName || market?.marketId === undefined)
+      throw new Error(`Market not found for ${marketIdOrName}`);
 
     return { resolvedMarketName: market.marketName, resolvedMarketId: market.marketId };
   }
