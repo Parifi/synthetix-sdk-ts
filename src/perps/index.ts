@@ -1553,7 +1553,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       // approveCollateral,
       // approveSyntCollateral,
       createAccountCall,
-      wrapTxs,
+      collateralMarketId === 0 ? [] : wrapTxs,
       modifyCollateralCall,
       commitOrderCall,
     ].flat();
