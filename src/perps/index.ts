@@ -15,6 +15,7 @@ import {
   PayDebtAndWithdraw,
   SettlementStrategy,
   SettlementStrategyResponse,
+  SpotMarketData,
 } from './interface';
 import { convertEtherToWei, convertWeiToEther, generateRandomAccountId, sleep } from '../utils';
 import { Call3Value } from '../interface/contractTypes';
@@ -1215,11 +1216,19 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * Returns an array of supported collaterals for perps
    * @returns Array of supported collateral ids;
    */
-  public async getSupportedCollaterals(): Promise<bigint[]> {
+  public async getSupportedCollaterals(): Promise<SpotMarketData[]> {
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
-    const supportedCollaterals = await marketProxy.read.getSupportedCollaterals();
-    return supportedCollaterals as bigint[];
+    const response = (await marketProxy.read.getSupportedCollaterals()) as bigint[];
+    const supportedCollaterals: SpotMarketData[] = [];
+
+    response.forEach((collateralId) => {
+      const spotMarket = this.sdk.spot.marketsById.get(Number(collateralId));
+      if (spotMarket) {
+        supportedCollaterals.push(spotMarket);
+      }
+    });
+    return supportedCollaterals;
   }
 
   // === WRITE CALLS ===
