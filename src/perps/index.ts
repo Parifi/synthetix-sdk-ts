@@ -1211,6 +1211,17 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     return healthFactor;
   }
 
+  /**
+   * Returns an array of supported collaterals for perps
+   * @returns Array of supported collateral ids;
+   */
+  public async getSupportedCollaterals(): Promise<bigint[]> {
+    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
+
+    const supportedCollaterals = await marketProxy.read.getSupportedCollaterals();
+    return supportedCollaterals as bigint[];
+  }
+
   // === WRITE CALLS ===
 
   /**
