@@ -264,7 +264,6 @@ describe('Perps', () => {
       },
       { useMultiCall: true, useOracleCalls: true, shouldRevertOnTxFailure: false },
     );
-    // logger.log('=== response', response);
     console.log('=== response', response);
 
     // if (submit) {
@@ -373,5 +372,10 @@ describe('Perps', () => {
 
     const btcMarket = await sdkWithoutResolvedMarkets.perps.getMarket(200);
     console.log('BTC Market details using market id: ', btcMarket);
+  });
+
+  it('should return supported collaterals', async () => {
+    const supportedCollaterals = await sdk.perps.getSupportedCollaterals();
+    console.log('Supported collaterals :', supportedCollaterals);
   });
 });

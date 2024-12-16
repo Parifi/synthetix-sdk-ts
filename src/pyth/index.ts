@@ -118,7 +118,7 @@ export class Pyth {
         throw new Error('Error fetching data from Pyth');
       }
     } catch (error) {
-      console.log('Error fetching data from Pyth', error);
+      this.sdk.logger.error('Error fetching data from Pyth', error);
       throw error;
     }
     const updateData = priceUpdateData.map((vaa) => '0x' + vaa);

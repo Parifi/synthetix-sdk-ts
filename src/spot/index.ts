@@ -55,7 +55,10 @@ export class Spot extends Market<SpotMarketData> {
 
   public async getMarket(marketIdOrName: MarketIdOrName): Promise<SpotMarketData> {
     const market = this.marketsById.get(Number(marketIdOrName)) ?? this.marketsByName.get(marketIdOrName as string);
-    if (!market) throw new Error(`Invalid market id or name: ${marketIdOrName}`);
+    if (!market) {
+      this.sdk.logger.warn(`Spot market ${marketIdOrName} not available. Available markets: ${this.marketsById}`);
+      throw new Error(`Invalid market id or name: ${marketIdOrName}`);
+    }
 
     return market;
   }
@@ -146,7 +149,7 @@ export class Spot extends Market<SpotMarketData> {
       // Get settlement strategies
       // settlementStrategies = await this.getSettlementStrategies(0, marketIds);
     } else {
-      console.log('Async orders not enabled on network ', this.sdk.rpcConfig.chainId);
+      this.sdk.logger.info('Async orders not enabled on network ', this.sdk.rpcConfig.chainId);
     }
 
     // Query ERC20 contract for market details for each synth
@@ -259,7 +262,7 @@ export class Spot extends Market<SpotMarketData> {
     const spotProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
 
     const order = (await spotProxy.read.getAsyncOrderClaim([resolvedMarketId, asyncOrderId])) as unknown as SpotOrder;
-    console.log('order', order);
+    this.sdk.logger.info('order', order);
 
     if (fetchSettlementStrategy) {
       const settlementStrategy = await this.getSettlementStrategy({
@@ -355,7 +358,7 @@ export class Spot extends Market<SpotMarketData> {
       settlementStrategiesResponse = response as unknown[] as SettlementStrategyResponse[];
     }
 
-    console.log('settlementStrategiesResponse', settlementStrategiesResponse);
+    this.sdk.logger.info('settlementStrategiesResponse', settlementStrategiesResponse);
 
     settlementStrategiesResponse.forEach((strategy, index) => {
       settlementStrategies.push({
@@ -406,7 +409,7 @@ export class Spot extends Market<SpotMarketData> {
         '0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a';
 
       const price = await this.sdk.pyth.getFormattedPrice(feedId as Hex);
-      console.log('Formatted price:', price);
+      this.sdk.logger.info('Formatted price:', price);
 
       let tradeSize;
       if (side == Side.BUY) {
@@ -532,7 +535,7 @@ export class Spot extends Market<SpotMarketData> {
         '0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a';
 
       const price = await this.sdk.pyth.getFormattedPrice(feedId as Hex);
-      console.log('Formatted price:', price);
+      this.sdk.logger.info('Formatted price:', price);
 
       let tradeSize = size * price;
       if (side == Side.BUY) {
@@ -634,11 +637,11 @@ export class Spot extends Market<SpotMarketData> {
 
     if (settlementTime > currentTimestamp) {
       const duration = settlementTime - currentTimestamp;
-      console.log(`Waiting ${duration} seconds to settle order`);
+      this.sdk.logger.info(`Waiting ${duration} seconds to settle order`);
       await sleep(duration);
     }
 
-    console.log(`Order ${asyncOrderId} on market ${resolvedMarketId} is ready to be settled`);
+    this.sdk.logger.info(`Order ${asyncOrderId} on market ${resolvedMarketId} is ready to be settled`);
     const settleTx: Call3Value = {
       target: spotMarketProxy.address,
       callData: encodeFunctionData({

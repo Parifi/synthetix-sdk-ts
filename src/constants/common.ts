@@ -21,3 +21,9 @@ export const publicRpcEndpoints: { [key: number]: string } = {
   42161: 'https://arbitrum.llamarpc.com',
   421614: 'https://sepolia-rollup.arbitrum.io/rpc',
 };
+
+// Logger constants
+export type LOGGER_MESSAGE_TYPE = 'json' | 'pretty' | 'hidden';
+
+// 0: silly, 1: trace, 2: debug, 3: info, 4: warn, 5: error, 6: fatal
+export const DEFAULT_LOGGER_LEVEL = 4; // https://tslog.js.org/#/?id=highlights to see more levels
