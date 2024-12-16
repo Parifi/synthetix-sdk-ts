@@ -64,6 +64,34 @@ export abstract class Market<T extends MarketData | SpotMarketData> {
     return parseUnits(size.toString(), 18);
   }
 
+  async prepareOracleCallsWithPriceId(priceFeedIds: string[]): Promise<Call3Value[]> {
+    if (!priceFeedIds.length) {
+      return [];
+    }
+    const stalenessTolerance = 30n; // 30 seconds
+    const updateData = await this.sdk.pyth.getPriceFeedsUpdateData(priceFeedIds as Hex[]);
+
+    const signedRequiredData = encodeAbiParameters(
+      [
+        { type: 'uint8', name: 'updateType' },
+        { type: 'uint64', name: 'stalenessTolerance' },
+        { type: 'bytes32[]', name: 'priceIds' },
+        { type: 'bytes[]', name: 'updateData' },
+      ],
+      [1, stalenessTolerance, priceFeedIds as Hex[], updateData],
+    );
+
+    const pythWrapper = await this.sdk.contracts.getPythErc7412WrapperInstance();
+    const dataVerificationTx = this.sdk.utils.generateDataVerificationTx(pythWrapper.address, signedRequiredData);
+
+    // set `requireSuccess` to false in this case, since sometimes
+    // the wrapper will return an error if the price has already been updated
+
+    // @note A better approach would be to fetch the priceUpdateFee for tx dynamically
+    // from the Pyth contract instead of using arbitrary values for pyth price update fees
+    return [{ ...dataVerificationTx, value: 0n, requireSuccess: false }];
+  }
+
   /**
    *   Prepare a call to the external node with oracle updates for the specified market names.
    * The result can be passed as the first argument to a multicall function to improve performance
@@ -93,32 +121,7 @@ export abstract class Market<T extends MarketData | SpotMarketData> {
       priceFeedIds = Array.from(this.sdk.pyth.priceFeedIds.values());
     }
 
-    if (!priceFeedIds.length) {
-      return [];
-    }
-
-    const stalenessTolerance = 30n; // 30 seconds
-    const updateData = await this.sdk.pyth.getPriceFeedsUpdateData(priceFeedIds as Hex[]);
-
-    const signedRequiredData = encodeAbiParameters(
-      [
-        { type: 'uint8', name: 'updateType' },
-        { type: 'uint64', name: 'stalenessTolerance' },
-        { type: 'bytes32[]', name: 'priceIds' },
-        { type: 'bytes[]', name: 'updateData' },
-      ],
-      [1, stalenessTolerance, priceFeedIds as Hex[], updateData],
-    );
-
-    const pythWrapper = await this.sdk.contracts.getPythErc7412WrapperInstance();
-    const dataVerificationTx = this.sdk.utils.generateDataVerificationTx(pythWrapper.address, signedRequiredData);
-
-    // set `requireSuccess` to false in this case, since sometimes
-    // the wrapper will return an error if the price has already been updated
-
-    // @note A better approach would be to fetch the priceUpdateFee for tx dynamically
-    // from the Pyth contract instead of using arbitrary values for pyth price update fees
-    return [{ ...dataVerificationTx, value: 500n, requireSuccess: false }];
+    return this.prepareOracleCallsWithPriceId(priceFeedIds);
   }
 
   public async getMarket(_marketIdOrName: MarketIdOrName): Promise<T> {
