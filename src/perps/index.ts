@@ -237,7 +237,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     // 6. getOrderFees - To get maker and taker fee
     // 7. getMaxMarketValue - To get maxMarketValue
 
-    let market =
+    const market =
       (this.marketsById.get(Number(marketIdOrName)) ?? this.marketsByName.get(marketIdOrName as string)) || {};
     if (market.marketId) {
       return market;
@@ -327,14 +327,14 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
     // From marketSummary data
     market.skew = Number(formatEther(marketSummary.skew));
-    (market.size = Number(formatEther(marketSummary.size))),
-      (market.maxOpenInterest = Number(formatEther(marketSummary.maxOpenInterest))),
-      (market.interestRate = Number(formatEther(interestRate))),
-      (market.currentFundingRate = Number(formatEther(marketSummary.currentFundingRate))),
-      (market.currentFundingVelocity = Number(formatEther(marketSummary.currentFundingVelocity))),
-      (market.indexPrice = Number(formatEther(marketSummary.indexPrice))),
-      // From fundingParams data
-      (market.skewScale = Number(formatEther(fundingParams.at(0) || 0n)));
+    market.size = Number(formatEther(marketSummary.size));
+    market.maxOpenInterest = Number(formatEther(marketSummary.maxOpenInterest));
+    market.interestRate = Number(formatEther(interestRate));
+    market.currentFundingRate = Number(formatEther(marketSummary.currentFundingRate));
+    market.currentFundingVelocity = Number(formatEther(marketSummary.currentFundingVelocity));
+    market.indexPrice = Number(formatEther(marketSummary.indexPrice));
+    // From fundingParams data
+    market.skewScale = Number(formatEther(fundingParams.at(0) || 0n));
     market.maxFundingVelocity = Number(formatEther(fundingParams.at(1) || 0n));
 
     // From orderFees data
@@ -1092,19 +1092,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     return convertWeiToEther(debt);
   }
 
-  /**
-   * Calculate the approximate liquidation price for an account with single position
-   * Provide either a ``marketId`` or a ``marketName``
-   * @param {string | number} marketIdOrName - The identifier or name of the market for which the collateral is being modified
-   * @param {bigint} accountId The id of the account to fetch the position for. If not provided, the default account is used.
-   * @returns {healthFactor: bigint, liquidationPrice: bigint}
-   * liquidation price = ((maintenance margin -  available margin) / position size) + index price
-   */
-  public async getApproxLiquidationPrice(
-    marketIdOrName: MarketIdOrName,
-    accountId = this.defaultAccountId,
-    override?: OverrideParamsRead,
-  ): Promise<{ healthFactor: bigint; liquidationPrice: bigint }> {
+  protected async _getPositionData(accountId: bigint, marketIdOrName: MarketIdOrName, override?: OverrideParamsRead) {
     if (!accountId) throw new Error('Account ID is required');
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
     const { resolvedMarketId } = await this.resolveMarket(marketIdOrName);
@@ -1138,24 +1126,65 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       override,
     );
 
-    // 0. Available Margin
-    const availableMargin = multicallResponse.at(0) as bigint;
+    return {
+      availableMargin: multicallResponse.at(0) as bigint,
+      requiredMaintenanceMargin: (multicallResponse.at(1) as bigint[]).at(1) as bigint,
+      requiredInitialMargin: (multicallResponse.at(1) as bigint[]).at(0) as bigint,
+      positionSize: multicallResponse.at(2) as bigint,
+      indexPrice: multicallResponse.at(3) as bigint,
+    };
+  }
 
-    // 1. Required margin
-    // returns (uint256 requiredInitialMargin,uint256 requiredMaintenanceMargin,uint256 maxLiquidationReward)
-    const requiredMarginsResponse = multicallResponse.at(1) as bigint[];
-    const requiredMaintenanceMargin = requiredMarginsResponse.at(1) as bigint;
+  public async calculateApproxLiquidationPrice({
+    collateralAmount,
+    marketIdOrName,
+    sizeAmount,
+    accountId,
+    collateralIdOrName,
+  }: {
+    collateralAmount: number;
+    marketIdOrName: MarketIdOrName;
+    sizeAmount: number;
+    accountId: bigint;
+    collateralIdOrName: MarketIdOrName;
+  }) {
+    const { requiredMaintenanceMargin, indexPrice } = await this._getPositionData(accountId, marketIdOrName);
+
+    const amount = await this.formatSize(collateralAmount, marketIdOrName);
+    const size = await this.sdk.spot.formatSize(sizeAmount, collateralIdOrName);
+
+    const healthFactor = (amount * 100n) / size;
+    const liquidationPrice = requiredMaintenanceMargin - amount / size + indexPrice;
+
+    return { healthFactor, liquidationPrice };
+  }
+
+  /**
+   * Calculate the approximate liquidation price for an account with single position
+   * Provide either a ``marketId`` or a ``marketName``
+   * @param {string | number} marketIdOrName - The identifier or name of the market for which the collateral is being modified
+   * @param {bigint} accountId The id of the account to fetch the position for. If not provided, the default account is used.
+   * @returns {healthFactor: bigint, liquidationPrice: bigint}
+   * liquidation price = ((maintenance margin -  available margin) / position size) + index price
+   */
+  public async getApproxLiquidationPrice(
+    marketIdOrName: MarketIdOrName,
+    accountId = this.defaultAccountId,
+    override?: OverrideParamsRead,
+  ): Promise<{ healthFactor: bigint; liquidationPrice: bigint }> {
+    if (!accountId) throw new Error('Account ID is required');
+
+    const { availableMargin, requiredMaintenanceMargin, positionSize, indexPrice } = await this._getPositionData(
+      accountId,
+      marketIdOrName,
+      override,
+    );
 
     const healthFactor = (availableMargin * 100n) / (requiredMaintenanceMargin + 1n);
 
-    // 2. Position size
-    const positionSize = multicallResponse.at(2) as bigint;
     if (positionSize == 0n) {
       return { healthFactor, liquidationPrice: 0n };
     }
-
-    // 3. Market index price
-    const indexPrice = multicallResponse.at(3) as bigint;
 
     const liquidationPrice = (requiredMaintenanceMargin - availableMargin) / positionSize + indexPrice;
     return { healthFactor, liquidationPrice };
