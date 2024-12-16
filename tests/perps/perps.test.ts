@@ -264,7 +264,6 @@ describe('Perps', () => {
       },
       { useMultiCall: true, useOracleCalls: true, shouldRevertOnTxFailure: false },
     );
-    // logger.log('=== response', response);
     console.log('=== response', response);
 
     // if (submit) {

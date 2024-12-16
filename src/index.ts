@@ -17,7 +17,7 @@ import {
   PublicClient,
   webSocket,
 } from 'viem';
-import { ZERO_ADDRESS } from './constants/common';
+import { DEFAULT_LOGGER_LEVEL, ZERO_ADDRESS } from './constants/common';
 import { Contracts } from './contracts';
 import { Pyth } from './pyth';
 import { Perps } from './perps';
@@ -25,6 +25,7 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { Spot } from './spot';
 import { DEFAULT_REFERRER, DEFAULT_TRACKING_CODE } from './constants';
 export { generateRandomAccountId } from './utils';
+import {  ILogObj, Logger } from 'tslog';
 
 /**
  * The main class for interacting with the Synthetix protocol. The class
@@ -57,6 +58,7 @@ export class SynthetixSdk {
   // Default SDK configs
   resolveMarketNames: boolean;
   maxPriceImpact: number;
+  logger: Logger<ILogObj>;
 
   core: Core;
   contracts: Contracts;
@@ -64,6 +66,7 @@ export class SynthetixSdk {
   pyth: Pyth;
   perps: Perps;
   spot: Spot;
+
   public initialized: boolean = false;
 
   constructor({ accountConfig, partnerConfig, pythConfig, rpcConfig, defaultConfig }: SdkConfigParams) {
@@ -82,6 +85,7 @@ export class SynthetixSdk {
     // Default sdk configs
     this.resolveMarketNames = defaultConfig?.resolveMarketName ?? true;
     this.maxPriceImpact = defaultConfig?.maxPriceImpact ?? 1;
+    this.logger = new Logger({ minLevel: defaultConfig?.logLevel ?? DEFAULT_LOGGER_LEVEL });
 
     /**
      * Initialize Public client to RPC chain rpc
@@ -147,7 +151,7 @@ export class SynthetixSdk {
       }
       this.accountAddress = this.accountConfig.address as Hex;
     } catch (error) {
-      console.log('Error:', error);
+      this.logger.error(`Error: while init ${error}`);
       throw error;
     }
 
@@ -264,7 +268,6 @@ export class SynthetixSdk {
 
     if (submit) {
       const txHash = await this.executeTransaction(tx);
-      console.log('Transaction hash: ', txHash);
       return txHash;
     } else {
       return tx;
