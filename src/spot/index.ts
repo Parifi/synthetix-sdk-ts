@@ -55,10 +55,12 @@ export class Spot extends Market<SpotMarketData> {
 
   public async getMarket(marketIdOrName: MarketIdOrName): Promise<SpotMarketData> {
     const market = this.marketsById.get(Number(marketIdOrName)) ?? this.marketsByName.get(marketIdOrName as string);
-    if (market) return market;
+    if (!market) {
+      this.sdk.logger.warn(`Spot market ${marketIdOrName} not available. Available markets: ${this.marketsById}`);
+      throw new Error(`Invalid market id or name: ${marketIdOrName}`);
+    }
 
-    this.sdk.logger.warn(`Spot market ${marketIdOrName} not available. Available markets: ${this.marketsById}`);
-    throw new Error(`Invalid market id or name: ${marketIdOrName}`);
+    return market;
   }
 
   /**
