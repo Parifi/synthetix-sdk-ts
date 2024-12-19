@@ -4,6 +4,7 @@ import { DEFAULT_PYTH_TIMEOUT, PUBLIC_PYTH_ENDPOINT } from '../constants';
 import { EvmPriceServiceConnection, PriceFeed } from '@pythnetwork/pyth-evm-js';
 import { PythConfig } from '../interface/classConfigs';
 import { formatUnits, Hex } from 'viem';
+import { SYMBOL_TO_PYTH_FEED } from '../constants';
 
 /**
  * Pyth class for interacting with the Pyth price service. The price service is
@@ -218,5 +219,13 @@ export class Pyth {
     } else {
       throw new Error('Invalid token symbol');
     }
+  }
+
+  /**
+   * Returns a mapping of token symbol to price ids from constants
+   * @returns A map of Token symbol to price id
+   */
+  public getPriceIdsFromConstants(): Map<string, string> {
+    return SYMBOL_TO_PYTH_FEED;
   }
 }
