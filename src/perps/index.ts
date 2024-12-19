@@ -383,11 +383,19 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     }
 
     const marketSummaries: MarketSummary[] = [];
-    const batchedResponse = batchArray(marketSummariesResponse, 10);
+    const batchedResponse = batchArray(
+      marketSummariesResponse.map((market, index) => {
+        return {
+          ...market,
+          marketId: marketIds[index],
+        };
+      }),
+      10,
+    );
 
     for (const batch of batchedResponse) {
-      const promises = batch.map(async (market, index) => {
-        const marketId = marketIds[index];
+      const promises = batch.map(async (market) => {
+        const marketId = market.marketId;
 
         marketSummaries.push({
           marketId: marketId,
@@ -996,10 +1004,14 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     })) as bigint[][];
 
     const openPositionsData: OpenPositionData[] = [];
-    const batchedResponse = batchArray(response, 5);
+    const batchedResponse = batchArray(
+      response.map((market, index) => {
+        return { data: market, marketId: marketIds.at(index)! };
+      }),
+      10,
+    );
     for (const batch of batchedResponse) {
-      const promises = batch.map(async (positionData, idx) => {
-        const marketId = marketIds?.at(idx) ?? 0;
+      const promises = batch.map(async ({ data: positionData, marketId }, idx) => {
         const positionSize = convertWeiToEther(positionData.at(2));
         if (Math.abs(positionSize) > 0) {
           openPositionsData.push({
