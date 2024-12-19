@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { getSdkInstanceForTesting } from '..';
 import { SynthetixSdk } from '../../src';
+
 import { Address, formatEther } from 'viem';
 import { DefaultConfig, SdkConfigParams } from '../../src/interface/classConfigs';
 import { MarketSummary, MarketSummaryResponse } from '../../src/perps/interface';
@@ -454,5 +455,12 @@ describe('Perps', () => {
         startDatemarketSummaries.getTime() - endDatemarketSummaries.getTime(),
       );
     });
+  });
+  it('should return pyth price ids from constants', async () => {
+    const ETH_PRICE_ID = '0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace';
+
+    const priceIds = sdk.pyth.getPriceIdsFromConstants();
+    const ethPriceId = priceIds.get('ETH');
+    expect(ethPriceId).toBe(ETH_PRICE_ID);
   });
 });
