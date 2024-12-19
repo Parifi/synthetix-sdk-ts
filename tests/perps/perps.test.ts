@@ -19,10 +19,8 @@ describe('Perps', () => {
   });
 
   it('should return market data', async () => {
-    // const { marketsById, marketsByName } =
-    await sdk.perps.getMarkets();
-    // expect(marketsById.size).toBeGreaterThan(0);
-    // expect(marketsByName.size).toBeGreaterThan(0);
+    const response = await sdk.perps.getMarkets();
+    console.log('=== response', response);
   });
 
   it('should return settlement strategies data', async () => {
@@ -447,6 +445,7 @@ describe('Perps', () => {
       const marketSummaries = await sdk.perps.getMarketSummaries(marketIds);
       const endDatemarketSummaries = new Date();
       console.log('Time taken by new logic:', endDatemarketSummaries.getTime() - startDatemarketSummaries.getTime());
+      console.log('=== normalizeMartSumaryResponse(marketSummaries)', normalizeMartSumaryResponse(marketSummaries));
 
       expect(JSON.stringify(normalizeMartSumaryResponse(marketSummaries))).toEqual(
         JSON.stringify(normalizeMartSumaryResponse(marketSummariesOldLogic)),

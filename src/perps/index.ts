@@ -189,15 +189,14 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       this.getMaxMarketValues(marketIds),
     ]);
 
-    const marketId = Number(marketIds.at(0) || 0);
-    const marketSummary = marketSummaries.find((summary) => summary.marketId == marketId);
-    const fundingParam = fundingParameters.find((fundingParam) => fundingParam.marketId == marketId);
-    const orderFee = orderFees.find((orderFee) => orderFee.marketId == marketId);
-    const maxMarketValue = maxMarketValues.find((maxMarketValue) => maxMarketValue.marketId == marketId);
-
-    const datas = marketMetadatas.map((marketMetadata) => {
+    const datas = marketMetadatas.map((marketMetadata, index) => {
+      const marketId = Number(marketIds.at(index) || 0);
+      const marketSummary = marketSummaries.find((summary) => summary.marketId == marketId);
+      const fundingParam = fundingParameters.find((fundingParam) => fundingParam.marketId == marketId);
+      const orderFee = orderFees.find((orderFee) => orderFee.marketId == marketId);
+      const maxMarketValue = maxMarketValues.find((maxMarketValue) => maxMarketValue.marketId == marketId);
       const result = {
-        marketId,
+        marketId: marketIds[index],
         marketName: marketMetadata.marketName,
         symbol: marketMetadata.symbol,
         feedId: marketMetadata.feedId,
