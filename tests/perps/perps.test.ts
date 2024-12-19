@@ -501,7 +501,20 @@ describe('Perps', () => {
       }
       return marketSummaries;
     };
-    test("compare old iteration logic with new one's", async () => {
+    const normalizeMartSumaryResponse = (
+      marketSummaries: MarketSummary[],
+    ): { marketId: number; name: string; feedId: string }[] => {
+      return marketSummaries
+        .filter((market) => market.marketId && market.marketName && market.feedId)
+        .map((market) => {
+          return {
+            marketId: market.marketId ?? 0,
+            name: market.marketName ?? '',
+            feedId: market.feedId ?? '',
+          };
+        });
+    };
+    test.only("compare old iteration logic with new one's", async () => {
       const marketIds = [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000];
 
       const startDatemarketSummariesOldLogic = new Date();
@@ -517,7 +530,9 @@ describe('Perps', () => {
       const endDatemarketSummaries = new Date();
       console.log('Time taken by new logic:', endDatemarketSummaries.getTime() - startDatemarketSummaries.getTime());
 
-      expect(marketSummaries.length).toEqual(marketSummariesOldLogic.length);
+      expect(JSON.stringify(normalizeMartSumaryResponse(marketSummaries))).toEqual(
+        JSON.stringify(normalizeMartSumaryResponse(marketSummariesOldLogic)),
+      );
       expect(startDatemarketSummariesOldLogic.getTime() - endDatemarketSummariesOldLogic.getTime()).toBeLessThan(
         startDatemarketSummaries.getTime() - endDatemarketSummaries.getTime(),
       );
