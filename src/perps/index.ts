@@ -17,7 +17,7 @@ import {
   SettlementStrategyResponse,
   SpotMarketData,
 } from './interface';
-import { convertEtherToWei, convertWeiToEther, generateRandomAccountId, sleep } from '../utils';
+import { batchArray, convertEtherToWei, convertWeiToEther, generateRandomAccountId, sleep } from '../utils';
 import { Call3Value } from '../interface/contractTypes';
 import { MarketIdOrName, OverrideParamsRead, OverrideParamsWrite, WriteReturnType } from '../interface/commonTypes';
 import {
@@ -383,22 +383,27 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     }
 
     const marketSummaries: MarketSummary[] = [];
-    marketSummariesResponse.forEach((market, index) => {
-      const marketId = marketIds[index];
+    const batchedResponse = batchArray(marketSummariesResponse, 10);
 
-      marketSummaries.push({
-        marketId: marketId,
-        marketName: this.marketsById.get(marketId)?.marketName,
-        feedId: this.marketsById.get(marketId)?.feedId,
-        indexPrice: Number(formatEther(market.indexPrice)),
-        skew: Number(formatEther(market.skew)),
-        size: Number(formatEther(market.size)),
-        maxOpenInterest: Number(formatEther(market.maxOpenInterest)),
-        interestRate: Number(formatEther(interestRate as bigint)),
-        currentFundingRate: Number(formatEther(market.currentFundingRate)),
-        currentFundingVelocity: Number(formatEther(market.currentFundingVelocity)),
+    for (const batch of batchedResponse) {
+      const promises = batch.map(async (market, index) => {
+        const marketId = marketIds[index];
+
+        marketSummaries.push({
+          marketId: marketId,
+          marketName: (await this.getMarket(marketId)).marketName,
+          feedId: (await this.getMarket(marketId)).feedId,
+          indexPrice: Number(formatEther(market.indexPrice)),
+          skew: Number(formatEther(market.skew)),
+          size: Number(formatEther(market.size)),
+          maxOpenInterest: Number(formatEther(market.maxOpenInterest)),
+          interestRate: Number(formatEther(interestRate as bigint)),
+          currentFundingRate: Number(formatEther(market.currentFundingRate)),
+          currentFundingVelocity: Number(formatEther(market.currentFundingVelocity)),
+        });
       });
-    });
+      await Promise.allSettled(promises);
+    }
     return marketSummaries;
   }
 
@@ -937,21 +942,27 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     })) as bigint[][];
 
     const openPositionsData: OpenPositionData[] = [];
-    response.forEach((positionData, idx) => {
-      const marketId = marketIds?.at(idx) ?? 0;
-      const positionSize = convertWeiToEther(positionData.at(2));
-      if (Math.abs(positionSize) > 0) {
-        openPositionsData.push({
-          accountId: accountId,
-          marketId: marketId,
-          marketName: this.marketsById.get(marketId)?.marketName ?? 'Unresolved market',
-          totalPnl: convertWeiToEther(positionData.at(0)),
-          accruedFunding: convertWeiToEther(positionData.at(1)),
-          positionSize: positionSize,
-          owedInterest: convertWeiToEther(positionData.at(3)),
-        });
-      }
-    });
+    const batchedResponse = batchArray(response, 10);
+
+    for (const batch of batchedResponse) {
+      const promises = batch.map(async (positionData, index) => {
+        const marketId = marketIds?.at(index) ?? 0;
+        const positionSize = convertWeiToEther(positionData.at(2));
+        if (Math.abs(positionSize) > 0) {
+          openPositionsData.push({
+            accountId: accountId,
+            marketId: marketId,
+            marketName: (await this.getMarket(marketId)).marketName ?? 'Unresolved market',
+            totalPnl: convertWeiToEther(positionData.at(0)),
+            accruedFunding: convertWeiToEther(positionData.at(1)),
+            positionSize: positionSize,
+            owedInterest: convertWeiToEther(positionData.at(3)),
+          });
+        }
+      });
+      await Promise.allSettled(promises);
+    }
+
     return openPositionsData;
   }
 
@@ -985,21 +996,25 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     })) as bigint[][];
 
     const openPositionsData: OpenPositionData[] = [];
-    response.forEach((positionData, idx) => {
-      const marketId = marketIds?.at(idx) ?? 0;
-      const positionSize = convertWeiToEther(positionData.at(2));
-      if (Math.abs(positionSize) > 0) {
-        openPositionsData.push({
-          accountId: positions.at(idx)?.accountId ?? 0n,
-          marketId: marketId,
-          marketName: this.marketsById.get(marketId)?.marketName ?? 'Unresolved market',
-          totalPnl: convertWeiToEther(positionData.at(0)),
-          accruedFunding: convertWeiToEther(positionData.at(1)),
-          positionSize: positionSize,
-          owedInterest: convertWeiToEther(positionData.at(3)),
-        });
-      }
-    });
+    const batchedResponse = batchArray(response, 5);
+    for (const batch of batchedResponse) {
+      const promises = batch.map(async (positionData, idx) => {
+        const marketId = marketIds?.at(idx) ?? 0;
+        const positionSize = convertWeiToEther(positionData.at(2));
+        if (Math.abs(positionSize) > 0) {
+          openPositionsData.push({
+            accountId: positions.at(idx)?.accountId ?? 0n,
+            marketId: marketId,
+            marketName: (await this.getMarket(marketId)).marketName ?? 'Unresolved market',
+            totalPnl: convertWeiToEther(positionData.at(0)),
+            accruedFunding: convertWeiToEther(positionData.at(1)),
+            positionSize: positionSize,
+            owedInterest: convertWeiToEther(positionData.at(3)),
+          });
+        }
+      });
+      await Promise.allSettled(promises);
+    }
     return openPositionsData;
   }
 
@@ -1543,51 +1558,42 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const spotInstance = await this.sdk.contracts.getSpotMarketProxyInstance();
     const perpsInstance = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
-    this.sdk.logger.info('*** entry');
     const { resolvedMarketId: spotCollateralId } = await this.sdk.spot.resolveMarket(collateralMarketId);
-    this.sdk.logger.info('*** resolved');
 
     const synthCollateral = await this.sdk.spot.getMarket(spotCollateralId);
-    this.sdk.logger.info('*** sToken', synthCollateral);
 
     // Remove Synthetix asset's `s` from market name.
     // For example, remove `s` from `sUSDe` to get `USDe`
     const collateral = await this.sdk.contracts.getCollateralInstance(
       (synthCollateral.marketName ?? 'Unresolved Market').replace('s', ''),
     );
-    this.sdk.logger.info('*** token', collateral);
 
     const approveCollateral = await this.sdk.spot._buildApprove({
       spender: spotInstance.address,
       amount: collateralAmount,
       token: collateral.address,
     });
-    this.sdk.logger.info('*** approveCollateral', approveCollateral);
 
     const approveSyntCollateral = await this.sdk.spot._buildApprove({
       spender: perpsInstance.address,
       amount: collateralAmount,
       token: synthCollateral.contractAddress as Address,
     });
-    this.sdk.logger.info('*** approveSyntCollateral', approveSyntCollateral);
 
     // 1. Create Account
     const createAccountCall = await this._buildCreateAccount(accountId);
-    this.sdk.logger.info('*** createAccountCall', createAccountCall);
 
     // 2. Add Collateral
     const wrapTxs = await this.sdk.spot._buildWrap({
       size: collateralAmount,
       marketIdOrName: collateralMarketId,
     });
-    this.sdk.logger.info('*** wrapTxs', wrapTxs);
 
     const modifyCollateralCall = await this._buildModifyCollateral({
       amount: collateralAmount,
       collateralMarketIdOrName: collateralMarketId,
       accountId,
     });
-    this.sdk.logger.info('*** modifyCollateralCall', modifyCollateralCall);
 
     const commitOrderCall = await this._buildCommitOrder({
       size: size,
@@ -1597,7 +1603,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       desiredFillPrice,
       maxPriceImpact,
     });
-    this.sdk.logger.info('*** commitOrderCall', commitOrderCall);
 
     const rawTxs = [
       approveCollateral,
@@ -1607,7 +1612,6 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       modifyCollateralCall,
       commitOrderCall,
     ].flat();
-    this.sdk.logger.info('*** rawTxs', rawTxs);
 
     return this.sdk.utils.processTransactions(rawTxs, {
       ...override,
