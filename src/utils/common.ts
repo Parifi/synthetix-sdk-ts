@@ -63,6 +63,13 @@ export function generateRandomAccountId(): bigint {
   return randomAccountId;
 }
 
+/**
+ * @name batchArray
+ * @description This function batches an array into smaller subarrays based on a given size. It uses the reduce method to iterate over the array and push each batch into an accumulator array.
+ * @param {any[]} arr - The array that needs to be batched.
+ * @param {number} batchSize - The number of elements to include in each subarray.
+ * @returns {any[][]} - An array of arrays, where each inner array contains the batched subarrays.
+ */
 export const batchArray = <T>(arr: T[], batchSize: number): T[][] => {
   return arr.reduce((acc, _, i) => (i % batchSize ? acc : [...acc, arr.slice(i, i + batchSize)]), [] as T[][]);
 };
