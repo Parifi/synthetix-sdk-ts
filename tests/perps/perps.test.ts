@@ -3,7 +3,6 @@ import { getSdkInstanceForTesting } from '..';
 import { MarketSummary, MarketSummaryResponse } from '../../src/perps/interface';
 import { Address, formatEther } from 'viem';
 import { SynthetixSdk } from '../../src';
-import { SdkConfigParams, DefaultConfig } from '../../src/interface/classConfigs';
 
 describe('Perps', () => {
   let sdk: SynthetixSdk;
@@ -378,83 +377,6 @@ describe('Perps', () => {
     console.log('Supported collaterals :', supportedCollaterals);
   });
 
-  describe('comparation test', () => {
-    const getMarketsummariesOldLogic = async (marketIds: number[]): Promise<MarketSummary[]> => {
-      const perpsMarketProxy = await sdk.contracts.getPerpsMarketProxyInstance();
-
-      const interestRate = await sdk.utils.callErc7412({
-        contractAddress: perpsMarketProxy.address,
-        abi: perpsMarketProxy.abi,
-        functionName: 'interestRate',
-        args: [],
-      });
-
-      const marketSummariesInput = marketIds.map((marketId) => [marketId]);
-      const marketSummariesResponse: MarketSummaryResponse[] = (await sdk.utils.multicallErc7412({
-        contractAddress: perpsMarketProxy.address,
-        abi: perpsMarketProxy.abi,
-        functionName: 'getMarketSummary',
-        args: marketSummariesInput,
-      })) as MarketSummaryResponse[];
-
-      const marketSummaries: MarketSummary[] = [];
-
-      for (const [index, market] of marketSummariesResponse.entries()) {
-        const marketId = marketIds.at(index) ?? 100;
-
-        marketSummaries.push({
-          marketId: marketId,
-          marketName: (await sdk.perps.getMarket(marketId)).marketName,
-          feedId: (await sdk.perps.getMarket(marketId)).feedId,
-          indexPrice: Number(formatEther(market.indexPrice)),
-          skew: Number(formatEther(market.skew)),
-          size: Number(formatEther(market.size)),
-          maxOpenInterest: Number(formatEther(market.maxOpenInterest)),
-          interestRate: Number(formatEther(interestRate as bigint)),
-          currentFundingRate: Number(formatEther(market.currentFundingRate)),
-          currentFundingVelocity: Number(formatEther(market.currentFundingVelocity)),
-        });
-      }
-      return marketSummaries;
-    };
-    const normalizeMartSumaryResponse = (
-      marketSummaries: MarketSummary[],
-    ): { marketId: number; name: string; feedId: string }[] => {
-      return marketSummaries
-        .filter((market) => market.marketId && market.marketName && market.feedId)
-        .map((market) => {
-          return {
-            marketId: market.marketId ?? 0,
-            name: market.marketName ?? '',
-            feedId: market.feedId ?? '',
-          };
-        });
-    };
-    test("compare old iteration logic with new one's", async () => {
-      const marketIds = [100, 1000, 1100, 1200, 1300, 1600, 1700, 1800, 1900];
-
-      const startDatemarketSummariesOldLogic = new Date();
-      const marketSummariesOldLogic = await getMarketsummariesOldLogic(marketIds);
-      const endDatemarketSummariesOldLogic = new Date();
-      console.log(
-        'Time taken by old logic:',
-        endDatemarketSummariesOldLogic.getTime() - startDatemarketSummariesOldLogic.getTime(),
-      );
-
-      const startDatemarketSummaries = new Date();
-      const marketSummaries = await sdk.perps.getMarketSummaries(marketIds);
-      const endDatemarketSummaries = new Date();
-      console.log('Time taken by new logic:', endDatemarketSummaries.getTime() - startDatemarketSummaries.getTime());
-      console.log('=== normalizeMartSumaryResponse(marketSummaries)', normalizeMartSumaryResponse(marketSummaries));
-
-      expect(JSON.stringify(normalizeMartSumaryResponse(marketSummaries))).toEqual(
-        JSON.stringify(normalizeMartSumaryResponse(marketSummariesOldLogic)),
-      );
-      expect(startDatemarketSummariesOldLogic.getTime() - endDatemarketSummariesOldLogic.getTime()).toBeLessThan(
-        startDatemarketSummaries.getTime() - endDatemarketSummaries.getTime(),
-      );
-    });
-  });
   it('should return pyth price ids from constants', async () => {
     const ETH_PRICE_ID = '0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace';
 
@@ -462,6 +384,7 @@ describe('Perps', () => {
     const ethPriceId = priceIds.get('ETH');
     expect(ethPriceId).toBe(ETH_PRICE_ID);
   });
+  
   describe('comparation test', () => {
     const getMarketsummariesOldLogic = async (marketIds: number[]): Promise<MarketSummary[]> => {
       const perpsMarketProxy = await sdk.contracts.getPerpsMarketProxyInstance();
