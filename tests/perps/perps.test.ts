@@ -353,7 +353,7 @@ describe('Perps', () => {
     expect(timeOptimized).toBeLessThan(timeNormal);
   });
 
-  it('should return market data by name and id when resolveMarketName is set to false', async () => {
+  it.only('should return market data by name and id when resolveMarketName is set to false', async () => {
     const sdkConfig: SdkConfigParams = {
       accountConfig: sdk.accountConfig,
       rpcConfig: sdk.rpcConfig,
@@ -400,7 +400,7 @@ describe('Perps', () => {
       const marketSummaries: MarketSummary[] = [];
 
       for (const [index, market] of marketSummariesResponse.entries()) {
-        const marketId = marketIds[index];
+        const marketId = marketIds.at(index) ?? 100;
 
         marketSummaries.push({
           marketId: marketId,
@@ -430,8 +430,8 @@ describe('Perps', () => {
           };
         });
     };
-    test.only("compare old iteration logic with new one's", async () => {
-      const marketIds = [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000];
+    test("compare old iteration logic with new one's", async () => {
+      const marketIds = [100, 1000, 1100, 1200, 1300, 1600, 1700, 1800, 1900];
 
       const startDatemarketSummariesOldLogic = new Date();
       const marketSummariesOldLogic = await getMarketsummariesOldLogic(marketIds);
