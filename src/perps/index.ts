@@ -1027,7 +1027,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
     const { resolvedMarketId } = await this.resolveMarket(marketIdOrName);
 
-    const feedId = this.marketsById.get(resolvedMarketId)?.feedId;
+    const feedId = (await this.getMarket(resolvedMarketId)).feedId;
     if (!feedId) throw new Error('Invalid feed id received from market data');
 
     if (!price) {
@@ -1543,42 +1543,51 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const spotInstance = await this.sdk.contracts.getSpotMarketProxyInstance();
     const perpsInstance = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
+    this.sdk.logger.info('*** entry');
     const { resolvedMarketId: spotCollateralId } = await this.sdk.spot.resolveMarket(collateralMarketId);
+    this.sdk.logger.info('*** resolved');
 
     const synthCollateral = await this.sdk.spot.getMarket(spotCollateralId);
+    this.sdk.logger.info('*** sToken', synthCollateral);
 
     // Remove Synthetix asset's `s` from market name.
     // For example, remove `s` from `sUSDe` to get `USDe`
     const collateral = await this.sdk.contracts.getCollateralInstance(
       (synthCollateral.marketName ?? 'Unresolved Market').replace('s', ''),
     );
+    this.sdk.logger.info('*** token', collateral);
 
     const approveCollateral = await this.sdk.spot._buildApprove({
       spender: spotInstance.address,
       amount: collateralAmount,
       token: collateral.address,
     });
+    this.sdk.logger.info('*** approveCollateral', approveCollateral);
 
     const approveSyntCollateral = await this.sdk.spot._buildApprove({
       spender: perpsInstance.address,
       amount: collateralAmount,
       token: synthCollateral.contractAddress as Address,
     });
+    this.sdk.logger.info('*** approveSyntCollateral', approveSyntCollateral);
 
     // 1. Create Account
     const createAccountCall = await this._buildCreateAccount(accountId);
+    this.sdk.logger.info('*** createAccountCall', createAccountCall);
 
     // 2. Add Collateral
     const wrapTxs = await this.sdk.spot._buildWrap({
       size: collateralAmount,
       marketIdOrName: collateralMarketId,
     });
+    this.sdk.logger.info('*** wrapTxs', wrapTxs);
 
     const modifyCollateralCall = await this._buildModifyCollateral({
       amount: collateralAmount,
       collateralMarketIdOrName: collateralMarketId,
       accountId,
     });
+    this.sdk.logger.info('*** modifyCollateralCall', modifyCollateralCall);
 
     const commitOrderCall = await this._buildCommitOrder({
       size: size,
@@ -1588,6 +1597,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       desiredFillPrice,
       maxPriceImpact,
     });
+    this.sdk.logger.info('*** commitOrderCall', commitOrderCall);
 
     const rawTxs = [
       approveCollateral,
@@ -1597,6 +1607,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       modifyCollateralCall,
       commitOrderCall,
     ].flat();
+    this.sdk.logger.info('*** rawTxs', rawTxs);
 
     return this.sdk.utils.processTransactions(rawTxs, {
       ...override,
