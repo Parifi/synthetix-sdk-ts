@@ -950,11 +950,18 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     })) as bigint[][];
 
     const openPositionsData: OpenPositionData[] = [];
-    const batchedResponse = batchArray(response, 10);
+    const batchedResponse = batchArray(
+      response.map((data, index) => {
+        return {
+          data,
+          marketId: marketIds?.at(index) ?? 0,
+        };
+      }),
+      10,
+    );
 
     for (const batch of batchedResponse) {
-      const promises = batch.map(async (positionData, index) => {
-        const marketId = marketIds?.at(index) ?? 0;
+      const promises = batch.map(async ({ data: positionData, marketId }) => {
         const positionSize = convertWeiToEther(positionData.at(2));
         if (Math.abs(positionSize) > 0) {
           openPositionsData.push({
