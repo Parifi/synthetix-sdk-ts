@@ -3,6 +3,7 @@ import { getSdkInstanceForTesting } from '..';
 import { MarketSummary, MarketSummaryResponse } from '../../src/perps/interface';
 import { Address, formatEther } from 'viem';
 import { SynthetixSdk } from '../../src';
+import { SdkConfigParams, DefaultConfig } from '../../src/interface/classConfigs';
 
 describe('Perps', () => {
   let sdk: SynthetixSdk;
@@ -328,7 +329,7 @@ describe('Perps', () => {
       const collateralMarketName = 'sUSDe';
       const marketName = 'Ethereum';
 
-      const { resolvedMarketId: collateralMarketId, resolvedMarketName } =
+      const { resolvedMarketId: collateralMarketId } =
         await sdkWithResolvedMarkets.spot.resolveMarket(collateralMarketName);
 
       const response = await sdkWithResolvedMarkets.perps.createIsolatedAccountOrder(
@@ -384,7 +385,7 @@ describe('Perps', () => {
     const ethPriceId = priceIds.get('ETH');
     expect(ethPriceId).toBe(ETH_PRICE_ID);
   });
-  
+
   describe('comparation test', () => {
     const getMarketsummariesOldLogic = async (marketIds: number[]): Promise<MarketSummary[]> => {
       const perpsMarketProxy = await sdk.contracts.getPerpsMarketProxyInstance();
