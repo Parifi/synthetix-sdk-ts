@@ -17,7 +17,7 @@ import {
   SettlementStrategyResponse,
   SpotMarketData,
 } from './interface';
-import { convertEtherToWei, convertWeiToEther, generateRandomAccountId, sleep } from '../utils';
+import { batchArray, convertEtherToWei, convertWeiToEther, generateRandomAccountId, sleep } from '../utils';
 import { Call3Value } from '../interface/contractTypes';
 import { MarketIdOrName, OverrideParamsRead, OverrideParamsWrite, WriteReturnType } from '../interface/commonTypes';
 import {
@@ -189,15 +189,14 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       this.getMaxMarketValues(marketIds),
     ]);
 
-    const marketId = Number(marketIds.at(0) || 0);
-    const marketSummary = marketSummaries.find((summary) => summary.marketId == marketId);
-    const fundingParam = fundingParameters.find((fundingParam) => fundingParam.marketId == marketId);
-    const orderFee = orderFees.find((orderFee) => orderFee.marketId == marketId);
-    const maxMarketValue = maxMarketValues.find((maxMarketValue) => maxMarketValue.marketId == marketId);
-
-    const datas = marketMetadatas.map((marketMetadata) => {
+    const datas = marketMetadatas.map((marketMetadata, index) => {
+      const marketId = Number(marketIds.at(index) || 0);
+      const marketSummary = marketSummaries.find((summary) => summary.marketId == marketId);
+      const fundingParam = fundingParameters.find((fundingParam) => fundingParam.marketId == marketId);
+      const orderFee = orderFees.find((orderFee) => orderFee.marketId == marketId);
+      const maxMarketValue = maxMarketValues.find((maxMarketValue) => maxMarketValue.marketId == marketId);
       const result = {
-        marketId,
+        marketId: marketIds[index],
         marketName: marketMetadata.marketName,
         symbol: marketMetadata.symbol,
         feedId: marketMetadata.feedId,
@@ -383,22 +382,35 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     }
 
     const marketSummaries: MarketSummary[] = [];
-    marketSummariesResponse.forEach((market, index) => {
-      const marketId = marketIds[index];
+    const batchedResponse = batchArray(
+      marketSummariesResponse.map((market, index) => {
+        return {
+          ...market,
+          marketId: marketIds[index],
+        };
+      }),
+      10,
+    );
 
-      marketSummaries.push({
-        marketId: marketId,
-        marketName: this.marketsById.get(marketId)?.marketName,
-        feedId: this.marketsById.get(marketId)?.feedId,
-        indexPrice: Number(formatEther(market.indexPrice)),
-        skew: Number(formatEther(market.skew)),
-        size: Number(formatEther(market.size)),
-        maxOpenInterest: Number(formatEther(market.maxOpenInterest)),
-        interestRate: Number(formatEther(interestRate as bigint)),
-        currentFundingRate: Number(formatEther(market.currentFundingRate)),
-        currentFundingVelocity: Number(formatEther(market.currentFundingVelocity)),
+    for (const batch of batchedResponse) {
+      const promises = batch.map(async (market) => {
+        const marketId = market.marketId;
+
+        marketSummaries.push({
+          marketId: marketId,
+          marketName: (await this.getMarket(marketId)).marketName,
+          feedId: (await this.getMarket(marketId)).feedId,
+          indexPrice: Number(formatEther(market.indexPrice)),
+          skew: Number(formatEther(market.skew)),
+          size: Number(formatEther(market.size)),
+          maxOpenInterest: Number(formatEther(market.maxOpenInterest)),
+          interestRate: Number(formatEther(interestRate as bigint)),
+          currentFundingRate: Number(formatEther(market.currentFundingRate)),
+          currentFundingVelocity: Number(formatEther(market.currentFundingVelocity)),
+        });
       });
-    });
+      await Promise.allSettled(promises);
+    }
     return marketSummaries;
   }
 
@@ -937,21 +949,34 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     })) as bigint[][];
 
     const openPositionsData: OpenPositionData[] = [];
-    response.forEach((positionData, idx) => {
-      const marketId = marketIds?.at(idx) ?? 0;
-      const positionSize = convertWeiToEther(positionData.at(2));
-      if (Math.abs(positionSize) > 0) {
-        openPositionsData.push({
-          accountId: accountId,
-          marketId: marketId,
-          marketName: this.marketsById.get(marketId)?.marketName ?? 'Unresolved market',
-          totalPnl: convertWeiToEther(positionData.at(0)),
-          accruedFunding: convertWeiToEther(positionData.at(1)),
-          positionSize: positionSize,
-          owedInterest: convertWeiToEther(positionData.at(3)),
-        });
-      }
-    });
+    const batchedResponse = batchArray(
+      response.map((data, index) => {
+        return {
+          data,
+          marketId: marketIds?.at(index) ?? 0,
+        };
+      }),
+      10,
+    );
+
+    for (const batch of batchedResponse) {
+      const promises = batch.map(async ({ data: positionData, marketId }) => {
+        const positionSize = convertWeiToEther(positionData.at(2));
+        if (Math.abs(positionSize) > 0) {
+          openPositionsData.push({
+            accountId: accountId,
+            marketId: marketId,
+            marketName: (await this.getMarket(marketId)).marketName ?? 'Unresolved market',
+            totalPnl: convertWeiToEther(positionData.at(0)),
+            accruedFunding: convertWeiToEther(positionData.at(1)),
+            positionSize: positionSize,
+            owedInterest: convertWeiToEther(positionData.at(3)),
+          });
+        }
+      });
+      await Promise.allSettled(promises);
+    }
+
     return openPositionsData;
   }
 
@@ -985,21 +1010,29 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     })) as bigint[][];
 
     const openPositionsData: OpenPositionData[] = [];
-    response.forEach((positionData, idx) => {
-      const marketId = marketIds?.at(idx) ?? 0;
-      const positionSize = convertWeiToEther(positionData.at(2));
-      if (Math.abs(positionSize) > 0) {
-        openPositionsData.push({
-          accountId: positions.at(idx)?.accountId ?? 0n,
-          marketId: marketId,
-          marketName: this.marketsById.get(marketId)?.marketName ?? 'Unresolved market',
-          totalPnl: convertWeiToEther(positionData.at(0)),
-          accruedFunding: convertWeiToEther(positionData.at(1)),
-          positionSize: positionSize,
-          owedInterest: convertWeiToEther(positionData.at(3)),
-        });
-      }
-    });
+    const batchedResponse = batchArray(
+      response.map((market, index) => {
+        return { data: market, marketId: marketIds.at(index)! };
+      }),
+      10,
+    );
+    for (const batch of batchedResponse) {
+      const promises = batch.map(async ({ data: positionData, marketId }, idx) => {
+        const positionSize = convertWeiToEther(positionData.at(2));
+        if (Math.abs(positionSize) > 0) {
+          openPositionsData.push({
+            accountId: positions.at(idx)?.accountId ?? 0n,
+            marketId: marketId,
+            marketName: (await this.getMarket(marketId)).marketName ?? 'Unresolved market',
+            totalPnl: convertWeiToEther(positionData.at(0)),
+            accruedFunding: convertWeiToEther(positionData.at(1)),
+            positionSize: positionSize,
+            owedInterest: convertWeiToEther(positionData.at(3)),
+          });
+        }
+      });
+      await Promise.allSettled(promises);
+    }
     return openPositionsData;
   }
 
@@ -1027,7 +1060,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
     const { resolvedMarketId } = await this.resolveMarket(marketIdOrName);
 
-    const feedId = this.marketsById.get(resolvedMarketId)?.feedId;
+    const feedId = (await this.getMarket(resolvedMarketId)).feedId;
     if (!feedId) throw new Error('Invalid feed id received from market data');
 
     if (!price) {
