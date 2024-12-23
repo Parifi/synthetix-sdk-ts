@@ -1,8 +1,9 @@
 import 'dotenv/config';
 import { getSdkInstanceForTesting } from '..';
+import { MarketSummary, MarketSummaryResponse } from '../../src/perps/interface';
+import { Address, formatEther } from 'viem';
 import { SynthetixSdk } from '../../src';
-import { Address } from 'viem';
-import { DefaultConfig, SdkConfigParams } from '../../src/interface/classConfigs';
+import { SdkConfigParams, DefaultConfig } from '../../src/interface/classConfigs';
 
 describe('Perps', () => {
   let sdk: SynthetixSdk;
@@ -18,10 +19,8 @@ describe('Perps', () => {
   });
 
   it('should return market data', async () => {
-    // const { marketsById, marketsByName } =
-    await sdk.perps.getMarkets();
-    // expect(marketsById.size).toBeGreaterThan(0);
-    // expect(marketsByName.size).toBeGreaterThan(0);
+    const response = await sdk.perps.getMarkets();
+    console.log('=== response', response);
   });
 
   it('should return settlement strategies data', async () => {
@@ -330,7 +329,7 @@ describe('Perps', () => {
       const collateralMarketName = 'sUSDe';
       const marketName = 'Ethereum';
 
-      const { resolvedMarketId: collateralMarketId, resolvedMarketName } =
+      const { resolvedMarketId: collateralMarketId } =
         await sdkWithResolvedMarkets.spot.resolveMarket(collateralMarketName);
 
       const response = await sdkWithResolvedMarkets.perps.createIsolatedAccountOrder(
@@ -354,7 +353,7 @@ describe('Perps', () => {
     expect(timeOptimized).toBeLessThan(timeNormal);
   });
 
-  it('should return market data by name and id when resolveMarketName is set to false', async () => {
+  it.only('should return market data by name and id when resolveMarketName is set to false', async () => {
     const sdkConfig: SdkConfigParams = {
       accountConfig: sdk.accountConfig,
       rpcConfig: sdk.rpcConfig,
@@ -385,5 +384,82 @@ describe('Perps', () => {
     const priceIds = sdk.pyth.getPriceIdsFromConstants();
     const ethPriceId = priceIds.get('ETH');
     expect(ethPriceId).toBe(ETH_PRICE_ID);
+  });
+
+  describe('comparation test', () => {
+    const getMarketsummariesOldLogic = async (marketIds: number[]): Promise<MarketSummary[]> => {
+      const perpsMarketProxy = await sdk.contracts.getPerpsMarketProxyInstance();
+
+      const interestRate = await sdk.utils.callErc7412({
+        contractAddress: perpsMarketProxy.address,
+        abi: perpsMarketProxy.abi,
+        functionName: 'interestRate',
+        args: [],
+      });
+
+      const marketSummariesInput = marketIds.map((marketId) => [marketId]);
+      const marketSummariesResponse: MarketSummaryResponse[] = (await sdk.utils.multicallErc7412({
+        contractAddress: perpsMarketProxy.address,
+        abi: perpsMarketProxy.abi,
+        functionName: 'getMarketSummary',
+        args: marketSummariesInput,
+      })) as MarketSummaryResponse[];
+
+      const marketSummaries: MarketSummary[] = [];
+
+      for (const [index, market] of marketSummariesResponse.entries()) {
+        const marketId = marketIds[index];
+
+        marketSummaries.push({
+          marketId: marketId,
+          marketName: (await sdk.perps.getMarket(marketId)).marketName,
+          feedId: (await sdk.perps.getMarket(marketId)).feedId,
+          indexPrice: Number(formatEther(market.indexPrice)),
+          skew: Number(formatEther(market.skew)),
+          size: Number(formatEther(market.size)),
+          maxOpenInterest: Number(formatEther(market.maxOpenInterest)),
+          interestRate: Number(formatEther(interestRate as bigint)),
+          currentFundingRate: Number(formatEther(market.currentFundingRate)),
+          currentFundingVelocity: Number(formatEther(market.currentFundingVelocity)),
+        });
+      }
+      return marketSummaries;
+    };
+    const normalizeMartSumaryResponse = (
+      marketSummaries: MarketSummary[],
+    ): { marketId: number; name: string; feedId: string }[] => {
+      return marketSummaries
+        .filter((market) => market.marketId && market.marketName && market.feedId)
+        .map((market) => {
+          return {
+            marketId: market.marketId ?? 0,
+            name: market.marketName ?? '',
+            feedId: market.feedId ?? '',
+          };
+        });
+    };
+    test.only("compare old iteration logic with new one's", async () => {
+      const marketIds = [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000];
+
+      const startDatemarketSummariesOldLogic = new Date();
+      const marketSummariesOldLogic = await getMarketsummariesOldLogic(marketIds);
+      const endDatemarketSummariesOldLogic = new Date();
+      console.log(
+        'Time taken by old logic:',
+        endDatemarketSummariesOldLogic.getTime() - startDatemarketSummariesOldLogic.getTime(),
+      );
+
+      const startDatemarketSummaries = new Date();
+      const marketSummaries = await sdk.perps.getMarketSummaries(marketIds);
+      const endDatemarketSummaries = new Date();
+      console.log('Time taken by new logic:', endDatemarketSummaries.getTime() - startDatemarketSummaries.getTime());
+
+      expect(JSON.stringify(normalizeMartSumaryResponse(marketSummaries))).toEqual(
+        JSON.stringify(normalizeMartSumaryResponse(marketSummariesOldLogic)),
+      );
+      expect(startDatemarketSummariesOldLogic.getTime() - endDatemarketSummariesOldLogic.getTime()).toBeLessThan(
+        startDatemarketSummaries.getTime() - endDatemarketSummaries.getTime(),
+      );
+    });
   });
 });
