@@ -475,7 +475,7 @@ export class Spot extends Market<SpotMarketData> {
   public async _buildWrap({ size, marketIdOrName }: Wrap): Promise<Call3Value> {
     const { resolvedMarketId } = await this.resolveMarket(marketIdOrName);
     const spotMarketProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
-    const tokenToWrap = resolvedMarketId == 2 ? 'USDC' : resolvedMarketId;
+    const tokenToWrap = resolvedMarketId == 1 ? 'USDC' : resolvedMarketId;
 
     const sizeInWei = await this.formatSize(Math.abs(size), tokenToWrap);
     const functionName = size > 0 ? 'wrap' : 'unwrap';
