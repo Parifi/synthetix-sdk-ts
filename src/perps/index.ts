@@ -1602,10 +1602,13 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const createAccountCall = await this._buildCreateAccount(accountId);
 
     // 2. Add Collateral
-    const wrapTxs = await this.sdk.spot._buildWrap({
-      size: collateralAmount,
-      marketIdOrName: collateralMarketId,
-    });
+    const wrapTxs =
+      collateralMarketId === 0
+        ? await this.sdk.spot._buildWrap({
+            size: collateralAmount,
+            marketIdOrName: collateralMarketId,
+          })
+        : [];
 
     const modifyCollateralCall = await this._buildModifyCollateral({
       amount: collateralAmount,
