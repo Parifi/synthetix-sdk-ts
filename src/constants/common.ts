@@ -1,5 +1,6 @@
 import { Hex, zeroAddress } from 'viem';
 import { MarketIdOrName } from '../interface/commonTypes';
+import { SUPPORTED_CHAINS } from './chains';
 
 export const ZERO_ADDRESS: Hex = zeroAddress;
 
@@ -29,19 +30,19 @@ export type LOGGER_MESSAGE_TYPE = 'json' | 'pretty' | 'hidden';
 // 0: silly, 1: trace, 2: debug, 3: info, 4: warn, 5: error, 6: fatal
 export const DEFAULT_LOGGER_LEVEL = 4; // https://tslog.js.org/#/?id=highlights to see more levels
 export const CUSTOM_DECIMALS: Record<number, Record<MarketIdOrName, number>> = {
-  [421614]: {
+  [SUPPORTED_CHAINS.ARBITUM_SEPOLIA]: {
     2: 6,
     USDC: 6,
   },
-  [42161]: {
+  [SUPPORTED_CHAINS.ARBITRUM]: {
     2: 6,
     USDC: 6,
   },
-  [84532]: {
+  [SUPPORTED_CHAINS.BASE_SEPOLIA]: {
     1: 6,
     USDC: 6,
   },
-  [8453]: {
+  [SUPPORTED_CHAINS.BASE]: {
     1: 6,
     USDC: 6,
   },
