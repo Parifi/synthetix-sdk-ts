@@ -1,6 +1,6 @@
 import { encodeAbiParameters, Hex, parseUnits } from 'viem';
 import { SynthetixSdk } from '..';
-import { DISABLED_MARKETS } from '../constants';
+import { CUSTOM_DECIMALS, DISABLED_MARKETS } from '../constants';
 import { MarketIdOrName } from '../interface/commonTypes';
 import { MarketData, SpotMarketData } from '../perps/interface';
 import { Call3Value } from '../interface/contractTypes';
@@ -59,9 +59,8 @@ export abstract class Market<T extends MarketData | SpotMarketData> {
    */
   public async formatSize(size: number, marketId: MarketIdOrName) {
     // TODO: think in a better solution maybe get the collateral and query the decimals from the contract
-    if (marketId === 'USDC') return parseUnits(size.toString(), 6);
 
-    return parseUnits(size.toString(), 18);
+    return parseUnits(size.toString(), CUSTOM_DECIMALS[this.sdk.rpcConfig.chainId][marketId] || 18);
   }
 
   async prepareOracleCallsWithPriceId(priceFeedIds: string[]): Promise<Call3Value[]> {
@@ -124,7 +123,7 @@ export abstract class Market<T extends MarketData | SpotMarketData> {
     return this.prepareOracleCallsWithPriceId(priceFeedIds);
   }
 
-  public async getMarket(_marketIdOrName: MarketIdOrName): Promise<T> {
-    throw new Error('Method not implemented.');
+  public async getMarket(marketIdOrName: MarketIdOrName): Promise<T> {
+    throw new Error('Method not implemented. ' + marketIdOrName);
   }
 }

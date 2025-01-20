@@ -25,13 +25,15 @@ import * as SynthTokensAndromeda from '@synthetixio/v3-contracts/8453-andromeda/
 import * as SystemTokenAndromeda from '@synthetixio/v3-contracts/8453-andromeda/systemToken.json';
 import * as CollateralToken_sStataUSDCAndromeda from '@synthetixio/v3-contracts/8453-andromeda/CollateralToken_sStataUSDC.json';
 import * as CollateralToken_stataBasUSDCAndromeda from '@synthetixio/v3-contracts/8453-andromeda/CollateralToken_stataBasUSDC.json';
-import * as CollateralToken_sUSDCAndromeda from '@synthetixio/v3-contracts/8453-andromeda/CollateralToken_sUSDC.json';
 import * as RewardsDistributor_1_sUSDC_SNXAndromeda from '@synthetixio/v3-contracts/8453-andromeda/RewardsDistributor_1_sUSDC_SNX.json';
 import * as RewardsDistributor_1_sUSDC_USDCAndromeda from '@synthetixio/v3-contracts/8453-andromeda/RewardsDistributor_1_sUSDC_USDC.json';
 import * as RewardsDistributorForSpartanCouncilPoolSNXAndromeda from '@synthetixio/v3-contracts/8453-andromeda/RewardsDistributorForSpartanCouncilPoolSNX.json';
 import * as RewardsDistributorForSpartanCouncilPoolUSDCAndromeda from '@synthetixio/v3-contracts/8453-andromeda/RewardsDistributorForSpartanCouncilPoolUSDC.json';
 import * as SNXTokenAndromeda from '@synthetixio/v3-contracts/8453-andromeda/SNXToken.json';
 import * as SynthToken_sStataUSDCAndromeda from '@synthetixio/v3-contracts/8453-andromeda/SynthToken_sStataUSDC.json';
+import { erc20Abi } from 'viem';
+
+export type ABI = Record<string, any>[];
 
 export const metaMappingBase = {
   andromeda: (MetaAndromeda as any).default, // Access the default export for JSON data
@@ -59,10 +61,20 @@ export const abiMappingBase = {
     rewardsDistributors: (RewardsDistributorsAndromeda as any).default,
     synthTokens: (SynthTokensAndromeda as any).default,
     systemToken: (SystemTokenAndromeda as any).default,
+
     CollateralToken_USDC: (CollateralToken_USDCAndromeda as any).default,
     CollateralToken_sStataUSDC: (CollateralToken_sStataUSDCAndromeda as any).default,
     CollateralToken_stataBasUSDC: (CollateralToken_stataBasUSDCAndromeda as any).default,
-    CollateralToken_sUSDC: (CollateralToken_sUSDCAndromeda as any).default,
+    CollateralToken_sUSDC: erc20Abi,
+    CollateralToken_cbBTC: erc20Abi,
+    CollateralToken_cbETH: erc20Abi,
+    CollateralToken_WETH: erc20Abi,
+    CollateralToken_wstETH: erc20Abi,
+    CollateralToken_scbBTC: erc20Abi,
+    CollateralToken_scbETH: erc20Abi,
+    CollateralToken_sWETH: erc20Abi,
+    CollateralToken_swstETH: erc20Abi,
+
     RewardsDistributor_1_sUSDC_SNX: (RewardsDistributor_1_sUSDC_SNXAndromeda as any).default,
     RewardsDistributor_1_sUSDC_USDC: (RewardsDistributor_1_sUSDC_USDCAndromeda as any).default,
     RewardsDistributorForSpartanCouncilPoolSNX: (RewardsDistributorForSpartanCouncilPoolSNXAndromeda as any).default,

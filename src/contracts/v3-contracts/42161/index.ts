@@ -1,25 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-// 42161 - arbthetix import
-import * as arbthetixMeta from '@synthetixio/v3-contracts/42161-arbthetix/meta.json';
-import * as ARBToken from '@synthetixio/v3-contracts/42161-arbthetix/ARBToken.json';
-import * as AccountProxy from '@synthetixio/v3-contracts/42161-arbthetix/AccountProxy.json';
-import * as AllErrors from '@synthetixio/v3-contracts/42161-arbthetix/AllErrors.json';
-import * as CollateralToken_ARB from '@synthetixio/v3-contracts/42161-arbthetix/CollateralToken_ARB.json';
-import * as CollateralToken_WETH from '@synthetixio/v3-contracts/42161-arbthetix/CollateralToken_WETH.json';
-import * as CoreProxy from '@synthetixio/v3-contracts/42161-arbthetix/CoreProxy.json';
-import * as DAIToken from '@synthetixio/v3-contracts/42161-arbthetix/DAIToken.json';
-import * as OracleManagerProxy from '@synthetixio/v3-contracts/42161-arbthetix/OracleManagerProxy.json';
-import * as PerpsAccountProxy from '@synthetixio/v3-contracts/42161-arbthetix/PerpsAccountProxy.json';
-import * as PerpsMarketProxy from '@synthetixio/v3-contracts/42161-arbthetix/PerpsMarketProxy.json';
-import * as PythERC7412Wrapper from '@synthetixio/v3-contracts/42161-arbthetix/PythERC7412Wrapper.json';
-import * as SpotMarketProxy from '@synthetixio/v3-contracts/42161-arbthetix/SpotMarketProxy.json';
-import * as TrustedMulticallForwarder from '@synthetixio/v3-contracts/42161-arbthetix/TrustedMulticallForwarder.json';
-import * as USDCToken from '@synthetixio/v3-contracts/42161-arbthetix/USDCToken.json';
-import * as USDProxy from '@synthetixio/v3-contracts/42161-arbthetix/USDProxy.json';
-import * as WETHToken from '@synthetixio/v3-contracts/42161-arbthetix/WETHToken.json';
-import * as SystemToken from '@synthetixio/v3-contracts/42161-arbthetix/systemToken.json';
-
 // 42161-main immport
 import * as ARBTokenMain from '@synthetixio/v3-contracts/42161-main/ARBToken.json';
 import * as AccountProxyMain from '@synthetixio/v3-contracts/42161-main/AccountProxy.json';
@@ -62,30 +42,10 @@ import * as SystemTokenMain from '@synthetixio/v3-contracts/42161-main/systemTok
 import { ZAP_ABI } from '../../abis/zap';
 
 export const metaMappingArb = {
-  arbthetix: (arbthetixMeta as any).default, // Access the default export for JSON data
   main: (mainMeta as any).default, // Access the default export for JSON data
 };
 
 export const abiMappingArb = {
-  arbthetix: {
-    ARBToken: (ARBToken as any).default,
-    AccountProxy: (AccountProxy as any).default,
-    AllErrors: (AllErrors as any).default,
-    CollateralToken_ARB: (CollateralToken_ARB as any).default,
-    CollateralToken_WETH: (CollateralToken_WETH as any).default,
-    CoreProxy: (CoreProxy as any).default,
-    DAIToken: (DAIToken as any).default,
-    OracleManagerProxy: (OracleManagerProxy as any).default,
-    PerpsAccountProxy: (PerpsAccountProxy as any).default,
-    PerpsMarketProxy: (PerpsMarketProxy as any).default,
-    PythERC7412Wrapper: (PythERC7412Wrapper as any).default,
-    SpotMarketProxy: (SpotMarketProxy as any).default,
-    TrustedMulticallForwarder: (TrustedMulticallForwarder as any).default,
-    USDCToken: (USDCToken as any).default,
-    USDProxy: (USDProxy as any).default,
-    WETHToken: (WETHToken as any).default,
-    systemToken: (SystemToken as any).default,
-  },
   main: {
     ARBToken: (ARBTokenMain as any).default,
     AccountProxy: (AccountProxyMain as any).default,

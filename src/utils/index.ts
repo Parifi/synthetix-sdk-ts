@@ -39,6 +39,12 @@ export class Utils {
     this.sdk = synthetixSdk;
   }
 
+  public async isOracleCall(data: TransactionData | Address) {
+    return Object.values(ORACLE_PROXY_BY_CHAIN)
+      .map((a) => a.toLowerCase())
+      .includes(typeof data === 'string' ? data.toLowerCase() : data.to.toLowerCase());
+  }
+
   /**
    * Returns the Pyth price ids array
    * @param oracleQueryData
