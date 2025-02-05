@@ -1230,7 +1230,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * @returns healthFactor percentage;
    * healthFactor = (available margin * 100) / maintenance margin
    */
-  public async getHealthFactor(accountId = this.defaultAccountId, override?: OverrideParamsRead): Promise<bigint> {
+  public async getHealthFactor(accountId = this.defaultAccountId, override?: OverrideParamsRead): Promise<{ healthFactor: bigint; availableMargin: bigint; requiredMaintenanceMargin: bigint }  > {
     if (!accountId) throw new Error('Account ID is required');
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
@@ -1264,7 +1264,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const requiredMaintenanceMargin = requiredMarginsResponse.at(1) as bigint;
 
     const healthFactor = (availableMargin * 100n) / (requiredMaintenanceMargin + 1n);
-    return healthFactor;
+    return { healthFactor, availableMargin, requiredMaintenanceMargin };
   }
 
   /**
