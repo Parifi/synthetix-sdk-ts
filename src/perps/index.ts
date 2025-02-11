@@ -799,6 +799,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       callData: encodeFunctionData({
         abi: marketProxy.abi,
         functionName: 'modifyCollateral',
+        // all wrap versions have 18 decimals so setting collateralId default to 0
         args: [accountId, collateralMarketId, await this.formatSize(amount, 0)],
       }),
       value: 0n,
