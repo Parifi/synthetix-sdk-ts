@@ -775,7 +775,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   }
 
   /**
-   * @name _buildModifyCollateral
+   * @name buildModifyCollateral
    * @description This function builds the call to modify collateral in a perp market. It takes an amount, market ID or name, account ID, and collateral ID as parameters and returns an array of Call3Value objects.
    * @param {string | number} data.amount - The amount of the underlying asset to modify collateral for.
    * @param {string | number} data.marketIdOrName - The ID or name of the perp market where the collateral will be modified.
@@ -783,11 +783,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * @param {string} data.collateralId - The ID of the collateral being modified.
    * @returns {Call3Value[]} - An array of Call3Value objects containing the target contract address, call data, value, requireSuccess flag, and other relevant information for executing the 'modifyCollateral' function on the market proxy contract.
    */
-  protected async _buildModifyCollateral({
-    amount,
-    collateralMarketIdOrName,
-    accountId,
-  }: ModifyCollateral): Promise<Call3Value> {
+  async buildModifyCollateral({ amount, collateralMarketIdOrName, accountId }: ModifyCollateral): Promise<Call3Value> {
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     const { resolvedMarketId: collateralMarketId, resolvedMarketName: collateralMarketName } =
@@ -1293,7 +1289,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   // === WRITE CALLS ===
 
   /**
-   * @name _buildCommitOrder
+   * @name buildCommitOrder
    * @description Builds a commit order for a given size, settlement strategy ID, market ID or name, account ID (default to the defaultAccountId), desired fill price, and max price impact.
    * @param {number} size - The size of the order in the base asset unit.
    * @param {string|number} data.settlementStrategyId - The ID of the settlement strategy for the market.
@@ -1303,7 +1299,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * @param {number|undefined} data.maxPriceImpact - The maximum price impact for the order as a percentage of the market index price.
    * @returns {Call3Value[]} An array containing the details of the transaction to be executed on the contract, including the target contract address, call data, value, and requireSuccess flag.
    */
-  protected async _buildCommitOrder({
+  async buildCommitOrder({
     size,
     settlementStrategyId,
     marketIdOrName,
@@ -1360,7 +1356,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * @returns {WriteReturnType} - Returns either a transaction hash if `submit` is true, or the transaction object for later submission when `submit` is false.
    */
   public async commitOrder(data: CommitOrder, override: OverrideParamsWrite = {}): Promise<WriteReturnType> {
-    const builtTx = await this._buildCommitOrder(data);
+    const builtTx = await this.buildCommitOrder(data);
     const txs = [builtTx];
 
     return this.sdk.utils.processTransactions(txs, { ...override });
@@ -1380,7 +1376,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   ): Promise<WriteReturnType> {
     if (!accountId) throw new Error('Account ID is required');
 
-    const processedTx = await this._buildModifyCollateral({
+    const processedTx = await this.buildModifyCollateral({
       amount,
       collateralMarketIdOrName,
       accountId,
@@ -1517,12 +1513,12 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   }
 
   /**
-   * @name _buildCreateAccount
+   * @name buildCreateAccount
    * @description This function builds the data for creating an account in the PerpsMarketProxy contract using the given accountId.
    * @param {bigint} accountId - The optional accountId to be created. If not provided, a new account will be generated.
    * @returns {Call3Value[]} - An array of Call3Value objects representing the target contract, call data, value, requireSuccess flag and other necessary details for executing the function in the blockchain.
    */
-  protected async _buildCreateAccount(accountId?: bigint): Promise<Call3Value> {
+  async buildCreateAccount(accountId?: bigint): Promise<Call3Value> {
     const txArgs = [];
     if (accountId != undefined) {
       txArgs.push(accountId);
@@ -1551,7 +1547,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     accountId?: bigint,
     override: Omit<OverrideParamsWrite, 'useOracleCalls'> = {},
   ): Promise<WriteReturnType> {
-    const processedTx = await this._buildCreateAccount(accountId);
+    const processedTx = await this.buildCreateAccount(accountId);
     const txs = [processedTx];
 
     return this.sdk.utils.processTransactions(txs, { ...override });
@@ -1590,34 +1586,34 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       (synthCollateral.marketName ?? 'Unresolved Market').replace('s', ''),
     );
 
-    const approveCollateral = await this.sdk.spot._buildApprove({
+    const approveCollateral = await this.sdk.spot.buildApprove({
       spender: spotInstance.address,
       amount: collateralAmount,
       token: collateral.address,
     });
 
-    const approveSyntCollateral = await this.sdk.spot._buildApprove({
+    const approveSyntCollateral = await this.sdk.spot.buildApprove({
       spender: perpsInstance.address,
       amount: collateralAmount,
       token: synthCollateral.contractAddress as Address,
     });
 
     // 1. Create Account
-    const createAccountCall = await this._buildCreateAccount(accountId);
+    const createAccountCall = await this.buildCreateAccount(accountId);
 
     // 2. Add Collateral
-    const wrapTxs = await this.sdk.spot._buildWrap({
+    const wrapTxs = await this.sdk.spot.buildWrap({
       size: collateralAmount,
       marketIdOrName: collateralMarketId,
     });
 
-    const modifyCollateralCall = await this._buildModifyCollateral({
+    const modifyCollateralCall = await this.buildModifyCollateral({
       amount: collateralAmount,
       collateralMarketIdOrName: collateralMarketId,
       accountId,
     });
 
-    const commitOrderCall = await this._buildCommitOrder({
+    const commitOrderCall = await this.buildCommitOrder({
       size: size,
       settlementStrategyId,
       marketIdOrName,
@@ -1645,7 +1641,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     });
   }
 
-  async _buildGrantPermission({ accountId, permission, user }: GrantPermission): Promise<Call3Value> {
+  async buildGrantPermission({ accountId, permission, user }: GrantPermission): Promise<Call3Value> {
     const coreProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     const grantPermissionTx: Call3Value = {
@@ -1676,7 +1672,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   ) {
     if (!accountId) throw new Error('Account ID is required');
 
-    const grantPermissionTx = await this._buildGrantPermission({ accountId, permission, user });
+    const grantPermissionTx = await this.buildGrantPermission({ accountId, permission, user });
 
     const txs = [grantPermissionTx];
 
@@ -1733,7 +1729,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const modifyPerpsPermission = PERPS_PERMISSIONS.PERPS_MODIFY_COLLATERAL;
     const { resolvedMarketId } = await this.sdk.spot.resolveMarket(params.collateralIdOrName);
 
-    const grantPermissionTx = await this._buildGrantPermission({
+    const grantPermissionTx = await this.buildGrantPermission({
       accountId: params.accountId,
       permission: modifyPerpsPermission,
       user: zapInstance.address,
