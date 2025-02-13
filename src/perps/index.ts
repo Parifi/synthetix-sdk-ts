@@ -799,7 +799,8 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       callData: encodeFunctionData({
         abi: marketProxy.abi,
         functionName: 'modifyCollateral',
-        args: [accountId, collateralMarketId, await this.formatSize(amount, collateralMarketId)],
+        // all wrap versions have 18 decimals so setting collateralId default to 0
+        args: [accountId, collateralMarketId, await this.formatSize(amount, 0)],
       }),
       value: 0n,
       requireSuccess: true,
@@ -1230,7 +1231,10 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * @returns healthFactor percentage;
    * healthFactor = (available margin * 100) / maintenance margin
    */
-  public async getHealthFactor(accountId = this.defaultAccountId, override?: OverrideParamsRead): Promise<{ healthFactor: bigint; availableMargin: bigint; requiredMaintenanceMargin: bigint }  > {
+  public async getHealthFactor(
+    accountId = this.defaultAccountId,
+    override?: OverrideParamsRead,
+  ): Promise<{ healthFactor: bigint; availableMargin: bigint; requiredMaintenanceMargin: bigint }> {
     if (!accountId) throw new Error('Account ID is required');
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
