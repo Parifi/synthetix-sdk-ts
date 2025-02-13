@@ -380,7 +380,7 @@ export class Spot extends Market<SpotMarketData> {
   }
 
   // === WRITE CALLS ===
-  async _buildAtomicOrder({
+  async buildAtomicOrder({
     side,
     size,
     slippageTolerance = 0,
@@ -460,7 +460,7 @@ export class Spot extends Market<SpotMarketData> {
     { side, size, slippageTolerance = 0, minAmountReceived, marketIdOrName }: AtomicOrder,
     override: OverrideParamsWrite = {},
   ): Promise<WriteReturnType> {
-    const atomicOrderTx = await this._buildAtomicOrder({
+    const atomicOrderTx = await this.buildAtomicOrder({
       side,
       size,
       slippageTolerance,
@@ -472,7 +472,7 @@ export class Spot extends Market<SpotMarketData> {
 
     return this.sdk.utils.processTransactions(txs, { ...override });
   }
-  public async _buildWrap({ size, marketIdOrName }: Wrap): Promise<Call3Value> {
+  public async buildWrap({ size, marketIdOrName }: Wrap): Promise<Call3Value> {
     const { resolvedMarketId } = await this.resolveMarket(marketIdOrName);
     const spotMarketProxy = await this.sdk.contracts.getSpotMarketProxyInstance();
     const tokenToWrap = resolvedMarketId;
@@ -509,13 +509,13 @@ export class Spot extends Market<SpotMarketData> {
    * @returns {WriteReturnType} The transaction hash if ``submit`` is ``true``.
    */
   public async wrap({ size, marketIdOrName }: Wrap, override: OverrideParamsWrite = {}): Promise<WriteReturnType> {
-    const wrapTx = await this._buildWrap({ size, marketIdOrName });
+    const wrapTx = await this.buildWrap({ size, marketIdOrName });
 
     const txs = [wrapTx];
     return this.sdk.utils.processTransactions(txs, { ...override });
   }
 
-  async _buildCommitOrder({
+  async buildCommitOrder({
     side,
     size,
     slippageTolerance,
@@ -589,7 +589,7 @@ export class Spot extends Market<SpotMarketData> {
     { side, size, slippageTolerance, minAmountReceived, settlementStrategyId = 0, marketIdOrName }: CommitOrderSpot,
     override: OverrideParamsWrite = {},
   ): Promise<WriteReturnType> {
-    const commitTx = await this._buildCommitOrder({
+    const commitTx = await this.buildCommitOrder({
       side,
       size,
       slippageTolerance,
@@ -656,7 +656,7 @@ export class Spot extends Market<SpotMarketData> {
     return this.sdk.utils.processTransactions(txs, { ...override });
   }
 
-  public async _buildApprove({
+  public async buildApprove({
     spender,
     amount,
     token,
