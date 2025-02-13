@@ -656,7 +656,15 @@ export class Spot extends Market<SpotMarketData> {
     return this.sdk.utils.processTransactions(txs, { ...override });
   }
 
-  public async _buildApprove({ spender, amount, token }: { spender: Address; amount: number; token: Address }) {
+  public async _buildApprove({
+    spender,
+    amount,
+    token,
+  }: {
+    spender: Address;
+    amount: number;
+    token: Address;
+  }): Promise<Call3Value> {
     const amountInWei = convertEtherToWei(amount);
     const tx = {
       target: token,

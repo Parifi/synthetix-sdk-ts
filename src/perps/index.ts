@@ -783,11 +783,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * @param {string} data.collateralId - The ID of the collateral being modified.
    * @returns {Call3Value[]} - An array of Call3Value objects containing the target contract address, call data, value, requireSuccess flag, and other relevant information for executing the 'modifyCollateral' function on the market proxy contract.
    */
-  protected async _buildModifyCollateral({
-    amount,
-    collateralMarketIdOrName,
-    accountId,
-  }: ModifyCollateral): Promise<Call3Value> {
+  async _buildModifyCollateral({ amount, collateralMarketIdOrName, accountId }: ModifyCollateral): Promise<Call3Value> {
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
     const { resolvedMarketId: collateralMarketId, resolvedMarketName: collateralMarketName } =
@@ -1303,7 +1299,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * @param {number|undefined} data.maxPriceImpact - The maximum price impact for the order as a percentage of the market index price.
    * @returns {Call3Value[]} An array containing the details of the transaction to be executed on the contract, including the target contract address, call data, value, and requireSuccess flag.
    */
-  protected async _buildCommitOrder({
+  async _buildCommitOrder({
     size,
     settlementStrategyId,
     marketIdOrName,
@@ -1522,7 +1518,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * @param {bigint} accountId - The optional accountId to be created. If not provided, a new account will be generated.
    * @returns {Call3Value[]} - An array of Call3Value objects representing the target contract, call data, value, requireSuccess flag and other necessary details for executing the function in the blockchain.
    */
-  protected async _buildCreateAccount(accountId?: bigint): Promise<Call3Value> {
+  async _buildCreateAccount(accountId?: bigint): Promise<Call3Value> {
     const txArgs = [];
     if (accountId != undefined) {
       txArgs.push(accountId);
