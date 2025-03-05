@@ -13,6 +13,8 @@ import {
   Hash,
   Hex,
   parseAbiParameters,
+  StateMapping,
+  StateOverride,
 } from 'viem';
 import { SynthetixSdk } from '..';
 import { IERC7412Abi } from '../contracts/abis/IERC7412';
@@ -504,7 +506,11 @@ export class Utils {
   public async getMissingOracleCalls(
     calls: Call3Value[],
     oracleCalls: Call3Value[] = [],
-    { attemps = MAX_ERC7412_RETRIES, account }: { account?: Address; attemps?: number } = {},
+    {
+      attemps = MAX_ERC7412_RETRIES,
+      account,
+      stateOverride,
+    }: { account?: Address; attemps?: number; stateOverride?: StateOverride } = {},
   ): Promise<Call3Value[]> {
     const publicClient = this.sdk.getPublicClient();
     const totalValue = [...oracleCalls, ...calls].reduce((acc, tx) => {
@@ -523,6 +529,7 @@ export class Utils {
       to: multicallInstance.address,
       data: multicallData,
       value: totalValue,
+      stateOverride,
     };
 
     try {
@@ -532,12 +539,16 @@ export class Utils {
       const parsedError = parseError(error as CallExecutionError);
       this.sdk.logger.error('=== parsedError in getMissingOracleCalls', parsedError);
       const shouldRetry = this.shouldRetryLogic(error, attemps);
-      console.log('=== shouldRetry', shouldRetry);
+      console.log('=== shouldRetry', { shouldRetry, error, attemps, parsedError });
 
       if (!shouldRetry) return oracleCalls;
       const data = await this.handleErc7412Error(parsedError);
 
-      return await this.getMissingOracleCalls(calls, [...oracleCalls, ...data], { account, attemps: attemps - 1 });
+      return await this.getMissingOracleCalls(calls, [...oracleCalls, ...data], {
+        account,
+        attemps: attemps - 1,
+        stateOverride,
+      });
     }
   }
 
@@ -579,7 +590,26 @@ export class Utils {
     const useOracleCall = override.useOracleCalls ?? true;
 
     const oracleCalls = useOracleCall
-      ? await this.getMissingOracleCalls(data, undefined, { account: override.account })
+      ? ((await this.getMissingOracleCalls(data, undefined, {
+          account: override.account,
+          stateOverride: override?.stateOverride?.reduce(
+            (acc, state) => {
+              const includedIndex = acc.findIndex((s) => s.address === state.address);
+              const included = override?.stateOverride?.[includedIndex];
+
+              if (!included && state.stateDiff) acc.push(state);
+
+              if (included) {
+                acc[includedIndex] = {
+                  address: state.address,
+                  stateDiff: [...state.stateDiff, ...included.stateDiff],
+                };
+              }
+              return acc;
+            },
+            [] as { address: Address; stateDiff: StateMapping }[],
+          ),
+        })) ?? undefined)
       : [];
 
     const txs = [...oracleCalls, ...data];

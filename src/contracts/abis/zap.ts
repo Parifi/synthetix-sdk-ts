@@ -406,3 +406,28 @@ export const ZAP_ABI = [
     type: 'function',
   },
 ];
+
+export const SYNTHETIX_ZAP_ABI = [
+  {
+    type: 'constructor',
+    inputs: [
+      { name: 'perps', type: 'address', internalType: 'address' },
+      { name: 'spot', type: 'address', internalType: 'address' },
+      { name: 'account', type: 'address', internalType: 'address' },
+    ],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'createAccountAndDeposit',
+    inputs: [
+      { name: 'accountId', type: 'uint128', internalType: 'uint128' },
+      { name: 'token', type: 'address', internalType: 'contract IERC20' },
+      { name: 'sToken', type: 'address', internalType: 'contract IERC20' },
+      { name: 'amount', type: 'uint256', internalType: 'uint256' },
+      { name: 'collateralId', type: 'uint128', internalType: 'uint128' },
+    ],
+    outputs: [{ name: '', type: 'uint128', internalType: 'uint128' }],
+    stateMutability: 'nonpayable',
+  },
+];
