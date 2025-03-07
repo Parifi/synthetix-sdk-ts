@@ -59,3 +59,15 @@ export type PayDebt = {
   accountId?: bigint;
   amount: number;
 };
+
+export type CreateAccountAndDeposit = {
+  amount: number;
+  collateralMarketIdOrName: MarketIdOrName;
+  accountId?: bigint;
+};
+
+export type CreateAccountAndDepositMany = {
+  amounts: number[];
+  collateralMarketIdOrNames: MarketIdOrName[];
+  accountId?: bigint;
+};
