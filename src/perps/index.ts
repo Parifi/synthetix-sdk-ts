@@ -1784,6 +1784,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       sTokens: collaterals.map((collateral) => collateral.synthCollateral.contractAddress),
       amounts: formattedAmounts,
       collateralIds: data.collateralMarketIdOrNames,
+      accountId: data.accountId,
     });
 
     return this.sdk.utils.processTransactions(txs, {
