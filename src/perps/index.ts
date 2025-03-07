@@ -23,6 +23,8 @@ import { MarketIdOrName, OverrideParamsRead, OverrideParamsWrite, WriteReturnTyp
 import {
   AccountPermissions,
   CommitOrder,
+  CreateAccountAndDeposit,
+  CreateAccountAndDepositMany,
   CreateIsolateOrder,
   GetPermissions,
   GetPerpsQuote,
@@ -787,19 +789,40 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * @returns {Call3Value[]} - An array of Call3Value objects containing the target contract address, call data, value, requireSuccess flag, and other relevant information for executing the 'modifyCollateral' function on the market proxy contract.
    */
   async buildModifyCollateral({ amount, collateralMarketIdOrName, accountId }: ModifyCollateral): Promise<Call3Value> {
-    const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
-
     const { resolvedMarketId: collateralMarketId, resolvedMarketName: collateralMarketName } =
       await this.sdk.spot.resolveMarket(collateralMarketIdOrName);
 
     this.sdk.logger.info(`Building ${amount} ${collateralMarketName} for account ${accountId}`);
+
+    const synthCollateral = await this.sdk.spot.getMarket(collateralMarketId);
+
+    // Remove Synthetix asset's `s` from market name.
+    // For example, remove `s` from `sUSDe` to get `USDe`
+    const collateral = await this.sdk.contracts.getCollateralInstance(
+      (synthCollateral.marketName ?? 'Unresolved Market').replace('s', ''),
+    );
+    const zapContract = SYNTHETIX_ZAP[this.sdk.rpcConfig.chainId];
+    const formattedAmount = await this.formatSize(amount, amount > 0 ? collateralMarketId : 0);
+
+    if (amount > 0)
+      return {
+        target: zapContract,
+        callData: encodeFunctionData({
+          abi: SYNTHETIX_ZAP_ABI,
+          functionName: 'deposit',
+          // all wrap versions have 18 decimals so setting collateralId default to 0
+          args: [accountId, collateral.address, synthCollateral.contractAddress, formattedAmount, collateralMarketId],
+        }),
+        value: 0n,
+        requireSuccess: true,
+      };
+
     return {
-      target: marketProxy.address,
+      target: zapContract,
       callData: encodeFunctionData({
-        abi: marketProxy.abi,
-        functionName: 'modifyCollateral',
-        // all wrap versions have 18 decimals so setting collateralId default to 0
-        args: [accountId, collateralMarketId, await this.formatSize(amount, 0)],
+        abi: SYNTHETIX_ZAP_ABI,
+        functionName: 'withdraw',
+        args: [accountId, collateral.address, formattedAmount, collateralMarketId],
       }),
       value: 0n,
       requireSuccess: true,
@@ -1379,33 +1402,60 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
   ): Promise<WriteReturnType> {
     if (!accountId) throw new Error('Account ID is required');
 
-    const spotInstance = await this.sdk.contracts.getSpotMarketProxyInstance();
+    const modifyPerpsPermission = PERPS_PERMISSIONS.PERPS_MODIFY_COLLATERAL;
+    const zapContract = SYNTHETIX_ZAP[this.sdk.rpcConfig.chainId];
+    console.log('=== collateralMarketIdOrName', collateralMarketIdOrName);
 
     const { resolvedMarketId: spotCollateralId } = await this.sdk.spot.resolveMarket(collateralMarketIdOrName);
+    console.log('=== spotCollateralId', spotCollateralId);
+
+    const formattedAmount = amount > 0 ? await this.formatSize(amount, spotCollateralId) : 0n;
 
     const synthCollateral = await this.sdk.spot.getMarket(spotCollateralId);
-
-    // Remove Synthetix asset's `s` from market name.
-    // For example, remove `s` from `sUSDe` to get `USDe`
     const collateral = await this.sdk.contracts.getCollateralInstance(
       (synthCollateral.marketName ?? 'Unresolved Market').replace('s', ''),
     );
+
     const processedTx = await this.buildModifyCollateral({
       amount,
       collateralMarketIdOrName,
       accountId,
     });
 
-    const txs = [processedTx];
+    const grantPermissionTx = await this.buildGrantPermission({
+      accountId: accountId,
+      permission: modifyPerpsPermission,
+      user: zapContract,
+    });
+
+    const approveTx =
+      amount > 0
+        ? {
+            to: collateral.address,
+            data: encodeFunctionData({
+              abi: erc20Abi,
+              functionName: 'approve',
+              args: [zapContract, formattedAmount],
+            }),
+            value: '0',
+          }
+        : undefined;
+
+    const txs = [grantPermissionTx, processedTx];
     const stateOverrideSpot = erc20StateOverrideBalanceAndAllowance({
       token: collateral.address,
       owner: this.sdk.accountAddress,
-      spender: spotInstance.address,
+      spender: zapContract,
     });
 
     return this.sdk.utils.processTransactions(txs, {
       ...override,
       stateOverride: [...stateOverrideSpot],
+      prepend: [
+        ...(approveTx ? [approveTx] : []),
+        // this.sdk.utils._fromCall3ToTransactionData(grantPermissionTx),
+        ...(override.prepend || []),
+      ],
     });
   }
   /**
@@ -1617,7 +1667,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     ];
   }
 
-  public async createAccountAndDeposit(data: ModifyCollateral, override: OverrideParamsWrite = {}) {
+  public async createAccountAndDeposit(data: CreateAccountAndDeposit, override: OverrideParamsWrite = {}) {
     const txs = await this._createAccountAndDeposit(data);
     const { resolvedMarketId: spotCollateralId } = await this.sdk.spot.resolveMarket(data.collateralMarketIdOrName);
     const synthCollateral = await this.sdk.spot.getMarket(spotCollateralId);
@@ -1649,6 +1699,97 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       ...override,
       stateOverride: [...stateOverrideZap],
       prepend: [this.sdk.utils._fromCallDataToTransactionData(approveTx)],
+    });
+  }
+
+  protected async _createAccountAndDepositMany({
+    tokens,
+    sTokens,
+    amounts,
+    collateralIds,
+    accountId: _accountId,
+  }: {
+    tokens: string[];
+    sTokens: string[];
+    amounts: bigint[];
+    collateralIds: MarketIdOrName[];
+    accountId?: bigint;
+  }) {
+    const accountId = _accountId || generateRandomAccountId();
+
+    const data = encodeFunctionData({
+      abi: SYNTHETIX_ZAP_ABI,
+      functionName: 'createAccountAndDeposits',
+      args: [accountId, tokens, sTokens, amounts, collateralIds],
+    });
+
+    const zapContract = SYNTHETIX_ZAP[this.sdk.rpcConfig.chainId];
+
+    return [
+      {
+        target: zapContract,
+        callData: data,
+        value: 0n,
+        requireSuccess: true,
+      },
+    ];
+  }
+
+  public async createAccountAndDepositMany(data: CreateAccountAndDepositMany, override: OverrideParamsWrite = {}) {
+    const collateralsPromise = data.collateralMarketIdOrNames.map(async (collateralId) => {
+      const { resolvedMarketId } = await this.sdk.spot.resolveMarket(collateralId);
+      const synthCollateral = await this.sdk.spot.getMarket(resolvedMarketId);
+
+      const collateral = await this.sdk.contracts.getCollateralInstance(
+        (synthCollateral.marketName ?? 'Unresolved Market').replace('s', ''),
+      );
+
+      return {
+        synthCollateral,
+        collateral,
+        resolvedMarketId,
+      };
+    });
+
+    const collaterals = await Promise.all(collateralsPromise);
+
+    const formattedAmountsPromise = data.amounts.map(async (amount, index) => {
+      return await this.formatSize(amount, collaterals[index].resolvedMarketId);
+    });
+    const formattedAmounts = await Promise.all(formattedAmountsPromise);
+
+    const zapContract = SYNTHETIX_ZAP[this.sdk.rpcConfig.chainId];
+
+    const stateOverrideZap = collaterals.map((collateral) =>
+      erc20StateOverrideBalanceAndAllowance({
+        token: collateral.collateral.address,
+        owner: this.sdk.accountAddress,
+        spender: zapContract,
+      }),
+    );
+
+    const approveTxs = collaterals.map((collateral, index) => ({
+      to: collateral.collateral.address,
+      data: encodeFunctionData({
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [zapContract, formattedAmounts[index]],
+      }),
+      value: '0',
+    }));
+    console.log('=== approveTxs', approveTxs);
+
+    const txs = await this._createAccountAndDepositMany({
+      tokens: collaterals.map((collateral) => collateral.collateral.address),
+      sTokens: collaterals.map((collateral) => collateral.synthCollateral.contractAddress),
+      amounts: formattedAmounts,
+      collateralIds: data.collateralMarketIdOrNames,
+    });
+
+    return this.sdk.utils.processTransactions(txs, {
+      ...override,
+      stateOverride: [...stateOverrideZap].flat(),
+      prepend: approveTxs,
     });
   }
 
