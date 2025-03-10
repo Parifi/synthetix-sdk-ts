@@ -430,4 +430,68 @@ export const SYNTHETIX_ZAP_ABI = [
     outputs: [{ name: '', type: 'uint128', internalType: 'uint128' }],
     stateMutability: 'nonpayable',
   },
+
+  {
+    inputs: [
+      {
+        internalType: 'uint128',
+        name: 'accountId',
+        type: 'uint128',
+      },
+      {
+        internalType: 'contract IERC20[]',
+        name: 'token',
+        type: 'address[]',
+      },
+      {
+        internalType: 'contract IERC20[]',
+        name: 'sToken',
+        type: 'address[]',
+      },
+      {
+        internalType: 'uint256[]',
+        name: 'amount',
+        type: 'uint256[]',
+      },
+      {
+        internalType: 'uint128[]',
+        name: 'collateralId',
+        type: 'uint128[]',
+      },
+    ],
+    stateMutability: 'nonpayable',
+    type: 'function',
+    name: 'createAccountAndDeposits',
+    outputs: [{ internalType: 'uint128', name: '', type: 'uint128' }],
+  },
+
+  {
+    type: 'function',
+    name: 'deposit',
+    inputs: [
+      { name: 'accountId', type: 'uint128', internalType: 'uint128' },
+      { name: 'token', type: 'address', internalType: 'contract IERC20' },
+      { name: 'sToken', type: 'address', internalType: 'contract IERC20' },
+      { name: 'amount', type: 'uint256', internalType: 'uint256' },
+      { name: 'collateralId', type: 'uint128', internalType: 'uint128' },
+    ],
+    stateMutability: 'nonpayable',
+  },
+
+  {
+    type: 'function',
+    name: 'withdraw',
+    inputs: [
+      { name: 'accountId', type: 'uint128', internalType: 'uint128' },
+      {
+        name: 'token',
+        type: 'address',
+        internalType: 'contract IERC20',
+      },
+      { name: 'amount', type: 'int256', internalType: 'int256' },
+      { name: 'collateralId', type: 'uint128', internalType: 'uint128' },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
 ];

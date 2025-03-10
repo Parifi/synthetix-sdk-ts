@@ -612,11 +612,15 @@ export class Utils {
         })) ?? undefined)
       : [];
 
-    const txs = [...oracleCalls, ...data];
+    const txs = [
+      ...(!override.useMultiCall ? (override.prepend || []).map((a) => this._fromTransactionDataToCall3(a, true)) : []),
+      ...oracleCalls,
+      ...data,
+    ];
     if (!override.useMultiCall && !override.submit) return txs.map(this.sdk.utils._fromCall3ToTransactionData);
 
     const tx = await this.sdk.utils.writeErc7412({ calls: txs }, override);
-    if (!override.submit) return [...(override.prepend ? override.prepend : []), tx];
+    if (!override.submit) return [...(override.prepend || []), tx];
 
     return this.sdk.executeTransaction(this.sdk.utils._fromTransactionDataToCallData(tx));
   }
