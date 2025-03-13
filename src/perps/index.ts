@@ -720,7 +720,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const maxLiquidationReward = requiredMarginsResponse.at(2) as bigint;
 
     const collateralAmountsRecord: Record<number, number> = [];
-    // let debt = 0;
+    let debt = 0;
     if (this.isMulticollateralEnabled) {
       const fNames: string[] = []; // Function names
       const aList: unknown[] = []; // Argument list
@@ -742,7 +742,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
       // returns and array of collateral ids(uint256[] memory)
       const collateralIds = response.at(0) as bigint[];
-      // debt = convertWeiToEther(response.at(1) as bigint);
+      debt = convertWeiToEther(response.at(1) as bigint);
 
       // 'debt' function is only available for markets with Multicollateral enabled
       if (collateralIds.length != 0) {
@@ -768,7 +768,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const marginInfo: CollateralData = {
       totalCollateralValue: convertWeiToEther(totalCollateralValue),
       collateralBalances: collateralAmountsRecord,
-      debt: 0,
+      debt,
       availableMargin: convertWeiToEther(availableMargin),
       withdrawableMargin: convertWeiToEther(withdrawableMargin),
       initialMarginRequirement: convertWeiToEther(requiredInitialMargin),
