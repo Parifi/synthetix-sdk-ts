@@ -494,4 +494,58 @@ export const SYNTHETIX_ZAP_ABI = [
     outputs: [],
     stateMutability: 'nonpayable',
   },
+  {
+    type: 'function',
+    name: 'createAccountDepositAndCommit',
+    inputs: [
+      { name: 'accountId', type: 'uint128', internalType: 'uint128' },
+      {
+        name: 'token',
+        type: 'address',
+        internalType: 'contract IERC20',
+      },
+      {
+        name: 'sToken',
+        type: 'address',
+        internalType: 'contract IERC20',
+      },
+      { name: 'amount', type: 'uint256', internalType: 'uint256' },
+      {
+        name: 'collateralId',
+        type: 'uint128',
+        internalType: 'uint128',
+      },
+      {
+        name: 'commit',
+        type: 'tuple',
+        internalType: 'struct SynthetixZap.Commit',
+        components: [
+          {
+            name: 'marketId',
+            type: 'uint128',
+            internalType: 'uint128',
+          },
+          { name: 'sizeDelta', type: 'int128', internalType: 'int128' },
+          {
+            name: 'settlementStrategyId',
+            type: 'uint128',
+            internalType: 'uint128',
+          },
+          {
+            name: 'acceptablePrice',
+            type: 'uint256',
+            internalType: 'uint256',
+          },
+          {
+            name: 'trackingCode',
+            type: 'bytes32',
+            internalType: 'bytes32',
+          },
+          { name: 'referrer', type: 'address', internalType: 'address' },
+        ],
+      },
+    ],
+    outputs: [{ name: '', type: 'uint128', internalType: 'uint128' }],
+    stateMutability: 'nonpayable',
+  },
 ];
