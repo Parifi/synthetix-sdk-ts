@@ -32,6 +32,7 @@ import * as RewardsDistributorForSpartanCouncilPoolUSDCAndromeda from '@syntheti
 import * as SNXTokenAndromeda from '@synthetixio/v3-contracts/8453-andromeda/SNXToken.json';
 import * as SynthToken_sStataUSDCAndromeda from '@synthetixio/v3-contracts/8453-andromeda/SynthToken_sStataUSDC.json';
 import { erc20Abi } from 'viem';
+import { ZAP_ABI } from '../../abis/zap';
 
 export type ABI = Record<string, any>[];
 
@@ -81,5 +82,6 @@ export const abiMappingBase = {
     RewardsDistributorForSpartanCouncilPoolUSDC: (RewardsDistributorForSpartanCouncilPoolUSDCAndromeda as any).default,
     SNXToken: (SNXTokenAndromeda as any).default,
     SynthToken_sStataUSDC: (SynthToken_sStataUSDCAndromeda as any).default,
+    SynthZap: ZAP_ABI,
   },
 };

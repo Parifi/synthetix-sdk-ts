@@ -25,6 +25,7 @@ import {
   CommitOrder,
   CreateAccountAndDeposit,
   CreateAccountAndDepositMany,
+  CreateAccountDepositAndCreateOrder,
   CreateIsolateOrder,
   GetPermissions,
   GetPerpsQuote,
@@ -720,7 +721,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const maxLiquidationReward = requiredMarginsResponse.at(2) as bigint;
 
     const collateralAmountsRecord: Record<number, number> = [];
-    // let debt = 0;
+    let debt = 0;
     if (this.isMulticollateralEnabled) {
       const fNames: string[] = []; // Function names
       const aList: unknown[] = []; // Argument list
@@ -742,7 +743,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
       // returns and array of collateral ids(uint256[] memory)
       const collateralIds = response.at(0) as bigint[];
-      // debt = convertWeiToEther(response.at(1) as bigint);
+      debt = convertWeiToEther(response.at(1) as bigint);
 
       // 'debt' function is only available for markets with Multicollateral enabled
       if (collateralIds.length != 0) {
@@ -768,7 +769,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const marginInfo: CollateralData = {
       totalCollateralValue: convertWeiToEther(totalCollateralValue),
       collateralBalances: collateralAmountsRecord,
-      debt: 0,
+      debt,
       availableMargin: convertWeiToEther(availableMargin),
       withdrawableMargin: convertWeiToEther(withdrawableMargin),
       initialMarginRequirement: convertWeiToEther(requiredInitialMargin),
@@ -1667,6 +1668,62 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     ];
   }
 
+  protected async _createAccountDepositAndCommit({
+    amount,
+    collateralMarketIdOrName,
+    accountId: _accountId,
+    order: rawOrder,
+  }: CreateAccountDepositAndCreateOrder) {
+    const accountId = _accountId || generateRandomAccountId();
+
+    const { resolvedMarketId: spotCollateralId } = await this.sdk.spot.resolveMarket(collateralMarketIdOrName);
+    const { resolvedMarketId: perpsMarketId } = await this.resolveMarket(rawOrder.marketIdOrName);
+    const formattedCollateral = await this.formatSize(amount, spotCollateralId);
+
+    const synthCollateral = await this.sdk.spot.getMarket(spotCollateralId);
+
+    // Remove Synthetix asset's `s` from market name.
+    // For example, remove `s` from `sUSDe` to get `USDe`
+    const collateral = await this.sdk.contracts.getCollateralInstance(
+      (synthCollateral.marketName ?? 'Unresolved Market').replace('s', ''),
+    );
+
+    const isShort = rawOrder.size < 0 ? -1 : 1;
+
+    const order = {
+      marketId: perpsMarketId,
+      sizeDelta: (await this.formatSize(Math.abs(rawOrder.size), perpsMarketId)) * BigInt(isShort),
+      settlementStrategyId: rawOrder.settlementStrategyId || 0,
+      acceptablePrice: convertEtherToWei(rawOrder.acceptablePrice),
+      trackingCode: rawOrder.trackingCode,
+      referrer: rawOrder.referrer,
+    };
+
+    const data = encodeFunctionData({
+      abi: SYNTHETIX_ZAP_ABI,
+      functionName: 'createAccountDepositAndCommit',
+      args: [
+        accountId,
+        collateral.address,
+        synthCollateral.contractAddress,
+        formattedCollateral,
+        spotCollateralId,
+        order,
+      ],
+    });
+
+    const zapContract = SYNTHETIX_ZAP[this.sdk.rpcConfig.chainId];
+
+    return [
+      {
+        target: zapContract,
+        callData: data,
+        value: 0n,
+        requireSuccess: true,
+      },
+    ];
+  }
+
   public async createAccountAndDeposit(data: CreateAccountAndDeposit, override: OverrideParamsWrite = {}) {
     const txs = await this._createAccountAndDeposit(data);
     const { resolvedMarketId: spotCollateralId } = await this.sdk.spot.resolveMarket(data.collateralMarketIdOrName);
@@ -1837,22 +1894,21 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     };
 
     // 1. create and deposit
-    const createAndDepositTx = await this._createAccountAndDeposit({
+    const createAndDepositTx = await this._createAccountDepositAndCommit({
       amount: collateralAmount,
       collateralMarketIdOrName: spotCollateralId,
       accountId,
+      order: {
+        size,
+        settlementStrategyId,
+        marketIdOrName,
+        acceptablePrice: desiredFillPrice,
+        trackingCode: this.sdk.trackingCode,
+        referrer: this.sdk.referrer,
+      },
     });
 
-    const commitOrderCall = await this.buildCommitOrder({
-      size: size,
-      settlementStrategyId,
-      marketIdOrName,
-      accountId,
-      desiredFillPrice,
-      maxPriceImpact,
-    });
-
-    const rawTxs = [...createAndDepositTx, commitOrderCall].flat();
+    const rawTxs = [...createAndDepositTx].flat();
 
     const stateOverrideSpot = erc20StateOverrideBalanceAndAllowance({
       token: collateral.address,
