@@ -1,6 +1,6 @@
 {
   "name": "@parifi/synthetix-sdk-ts",
-  "version": "0.4.29",
+  "version": "0.4.30",
   "description": "A Typescript SDK for interactions with the Synthetix protocol",
   "files": [
     "dist",
