@@ -1866,7 +1866,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       settlementStrategyId = 0,
       accountId = generateRandomAccountId(),
       desiredFillPrice,
-      maxPriceImpact,
+      // maxPriceImpact,
       collateralMarketId,
     }: CreateIsolateOrder,
     override: OverrideParamsWrite = {},
@@ -2017,7 +2017,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       user: zapInstance.address,
     });
 
-    const amount = await this.formatSize(params.collateralAmount, resolvedMarketId);
+    const amount = await this.formatSize(params.collateralAmount, 18);
 
     const swapMaxAmountIn = amount;
 
