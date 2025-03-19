@@ -1866,7 +1866,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       settlementStrategyId = 0,
       accountId = generateRandomAccountId(),
       desiredFillPrice,
-      // maxPriceImpact,
+      maxPriceImpact,
       collateralMarketId,
     }: CreateIsolateOrder,
     override: OverrideParamsWrite = {},
@@ -1892,6 +1892,17 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
 
       value: '0',
     };
+
+    let acceptablePrice = desiredFillPrice;
+
+    if (!acceptablePrice) {
+      const isShort = size < 0 ? -1 : 1;
+      const { resolvedMarketId } = await this.sdk.spot.resolveMarket(marketIdOrName);
+      const updatedMaxPriceImpact = maxPriceImpact ?? this.sdk.maxPriceImpact;
+      const market = await this.getMarket(resolvedMarketId);
+      const priceImpact = 1 + (isShort * updatedMaxPriceImpact) / 100;
+      acceptablePrice = (market.indexPrice ?? 0) * priceImpact;
+    }
 
     // 1. create and deposit
     const createAndDepositTx = await this._createAccountDepositAndCommit({
