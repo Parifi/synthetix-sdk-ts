@@ -1913,7 +1913,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
         size,
         settlementStrategyId,
         marketIdOrName,
-        acceptablePrice: desiredFillPrice,
+        acceptablePrice,
         trackingCode: this.sdk.trackingCode,
         referrer: this.sdk.referrer,
       },
