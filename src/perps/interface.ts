@@ -6,7 +6,7 @@ export type PayDebtAndWithdraw = {
   collateralAmount: number;
   receiver: Address;
   minToReceive: number;
-  path: string;
+  path?: string;
   collateral: Address;
 };
 
@@ -135,7 +135,7 @@ export interface SettlementStrategyResponse {
   settlementDelay?: bigint;
   settlementWindowDuration?: bigint;
   priceVerificationContract?: string;
-  feedId?: string
+  feedId?: string;
   settlementReward?: bigint;
   disabled?: boolean;
   commitmentPriceDelay?: bigint;

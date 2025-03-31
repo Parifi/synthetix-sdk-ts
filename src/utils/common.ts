@@ -1,7 +1,9 @@
-import { formatEther, maxUint128, parseEther } from 'viem';
+import { Address, formatEther, maxUint128, parseEther } from 'viem';
+
 import { mainnet, base, optimism, arbitrum, baseSepolia, arbitrumSepolia, Chain } from 'viem/chains';
 import { randomBytes } from 'crypto';
 import { publicRpcEndpoints } from '../constants';
+import { ZAP_BY_CHAIN } from '../contracts/addreses/zap';
 
 export function getPublicRpcEndpoint(chainId: number) {
   return publicRpcEndpoints[chainId];
@@ -72,4 +74,79 @@ export function generateRandomAccountId(): bigint {
  */
 export const batchArray = <T>(arr: T[], batchSize: number): T[][] => {
   return arr.reduce((acc, _, i) => (i % batchSize ? acc : [...acc, arr.slice(i, i + batchSize)]), [] as T[][]);
+};
+
+export type QuoteParams = {
+  fromChain: number;
+  fromToken: Address;
+  toToken: Address;
+  fromAmount: string;
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type FetcherArgs = Omit<RequestInit, 'body'> & { body?: any };
+
+export const fetcher = (
+  url: string,
+  init: FetcherArgs = {
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  },
+) =>
+  fetch(url, {
+    ...init,
+    body: JSON.stringify(init.body),
+    headers: init.headers,
+    method: init.body && !init.method ? 'POST' : init.method,
+  });
+
+const odoFetcher = async (url: string, options: FetcherArgs) => {
+  return fetcher(`https://api.odos.xyz/sor${url}`, options);
+};
+
+const assemblePath = async (user: string, pathId: string) => {
+  const response = await odoFetcher(`/assemble`, {
+    body: {
+      userAddr: user,
+      pathId,
+    },
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) return '';
+  const data = (await response.json()) as { transaction: { data: string } };
+
+  return data.transaction.data;
+};
+
+export const getOdosPath = async (quoteParams: QuoteParams) => {
+  const data = {
+    chainId: quoteParams.fromChain,
+    inputTokens: [{ tokenAddress: quoteParams.fromToken, amount: quoteParams.fromAmount }],
+    outputTokens: [{ tokenAddress: quoteParams.toToken, proportion: 1 }],
+    // slippageLimitPercent: 1,
+    // zap contract
+    userAddr: ZAP_BY_CHAIN[quoteParams.fromChain],
+  };
+
+  // return TEST_DATA;
+
+  const response = await odoFetcher('/quote/v2', {
+    body: data,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) return { path: '' };
+
+  const quote = (await response.json()) as { pathId: string };
+  const quoteId = quote.pathId;
+
+  const path = await assemblePath(data.userAddr, quoteId);
+
+  return { path };
 };
