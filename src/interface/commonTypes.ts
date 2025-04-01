@@ -1,4 +1,4 @@
-import { Address, Hash } from 'viem';
+import { Address, Hash, StateMapping, StateOverride } from 'viem';
 import { Call3Value } from './contractTypes';
 
 export type TransactionData = {
@@ -14,6 +14,7 @@ export type OverrideParamsWrite = {
   submit?: boolean;
   account?: Address;
   prepend?: TransactionData[];
+  stateOverride?: { address: Address; stateDiff: StateMapping }[];
   // staticCall?: boolean;
   // txDelay?: number;
   // maxTries?: number;

@@ -406,3 +406,146 @@ export const ZAP_ABI = [
     type: 'function',
   },
 ];
+
+export const SYNTHETIX_ZAP_ABI = [
+  {
+    type: 'constructor',
+    inputs: [
+      { name: 'perps', type: 'address', internalType: 'address' },
+      { name: 'spot', type: 'address', internalType: 'address' },
+      { name: 'account', type: 'address', internalType: 'address' },
+    ],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'createAccountAndDeposit',
+    inputs: [
+      { name: 'accountId', type: 'uint128', internalType: 'uint128' },
+      { name: 'token', type: 'address', internalType: 'contract IERC20' },
+      { name: 'sToken', type: 'address', internalType: 'contract IERC20' },
+      { name: 'amount', type: 'uint256', internalType: 'uint256' },
+      { name: 'collateralId', type: 'uint128', internalType: 'uint128' },
+    ],
+    outputs: [{ name: '', type: 'uint128', internalType: 'uint128' }],
+    stateMutability: 'nonpayable',
+  },
+
+  {
+    inputs: [
+      {
+        internalType: 'uint128',
+        name: 'accountId',
+        type: 'uint128',
+      },
+      {
+        internalType: 'contract IERC20[]',
+        name: 'token',
+        type: 'address[]',
+      },
+      {
+        internalType: 'contract IERC20[]',
+        name: 'sToken',
+        type: 'address[]',
+      },
+      {
+        internalType: 'uint256[]',
+        name: 'amount',
+        type: 'uint256[]',
+      },
+      {
+        internalType: 'uint128[]',
+        name: 'collateralId',
+        type: 'uint128[]',
+      },
+    ],
+    stateMutability: 'nonpayable',
+    type: 'function',
+    name: 'createAccountAndDeposits',
+    outputs: [{ internalType: 'uint128', name: '', type: 'uint128' }],
+  },
+
+  {
+    type: 'function',
+    name: 'deposit',
+    inputs: [
+      { name: 'accountId', type: 'uint128', internalType: 'uint128' },
+      { name: 'token', type: 'address', internalType: 'contract IERC20' },
+      { name: 'sToken', type: 'address', internalType: 'contract IERC20' },
+      { name: 'amount', type: 'uint256', internalType: 'uint256' },
+      { name: 'collateralId', type: 'uint128', internalType: 'uint128' },
+    ],
+    stateMutability: 'nonpayable',
+  },
+
+  {
+    type: 'function',
+    name: 'withdraw',
+    inputs: [
+      { name: 'accountId', type: 'uint128', internalType: 'uint128' },
+      {
+        name: 'token',
+        type: 'address',
+        internalType: 'contract IERC20',
+      },
+      { name: 'amount', type: 'int256', internalType: 'int256' },
+      { name: 'collateralId', type: 'uint128', internalType: 'uint128' },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'createAccountDepositAndCommit',
+    inputs: [
+      { name: 'accountId', type: 'uint128', internalType: 'uint128' },
+      {
+        name: 'token',
+        type: 'address',
+        internalType: 'contract IERC20',
+      },
+      {
+        name: 'sToken',
+        type: 'address',
+        internalType: 'contract IERC20',
+      },
+      { name: 'amount', type: 'uint256', internalType: 'uint256' },
+      {
+        name: 'collateralId',
+        type: 'uint128',
+        internalType: 'uint128',
+      },
+      {
+        name: 'commit',
+        type: 'tuple',
+        internalType: 'struct SynthetixZap.Commit',
+        components: [
+          {
+            name: 'marketId',
+            type: 'uint128',
+            internalType: 'uint128',
+          },
+          { name: 'sizeDelta', type: 'int128', internalType: 'int128' },
+          {
+            name: 'settlementStrategyId',
+            type: 'uint128',
+            internalType: 'uint128',
+          },
+          {
+            name: 'acceptablePrice',
+            type: 'uint256',
+            internalType: 'uint256',
+          },
+          {
+            name: 'trackingCode',
+            type: 'bytes32',
+            internalType: 'bytes32',
+          },
+          { name: 'referrer', type: 'address', internalType: 'address' },
+        ],
+      },
+    ],
+    outputs: [{ name: '', type: 'uint128', internalType: 'uint128' }],
+    stateMutability: 'nonpayable',
+  },
+];

@@ -35,6 +35,20 @@ export type ModifyCollateral = {
   accountId?: bigint;
 };
 
+export type CreateAccountDepositAndCreateOrder = {
+  amount: number;
+  collateralMarketIdOrName: MarketIdOrName;
+  accountId?: bigint;
+  order: {
+    marketIdOrName: MarketIdOrName;
+    size: number;
+    settlementStrategyId?: number;
+    acceptablePrice?: number;
+    trackingCode?: string;
+    referrer?: string;
+  };
+};
+
 export type CreateIsolateOrder = {
   collateralAmount: number;
   collateralMarketId: number;
@@ -58,4 +72,16 @@ export type GetPerpsQuote = {
 export type PayDebt = {
   accountId?: bigint;
   amount: number;
+};
+
+export type CreateAccountAndDeposit = {
+  amount: number;
+  collateralMarketIdOrName: MarketIdOrName;
+  accountId?: bigint;
+};
+
+export type CreateAccountAndDepositMany = {
+  amounts: number[];
+  collateralMarketIdOrNames: MarketIdOrName[];
+  accountId?: bigint;
 };
