@@ -1,5 +1,6 @@
 export const DEFAULT_NETWORK_ID = 8453;
 
+export const DEFAULT_DECIMALS = 18;
 export const DEFAULT_SLIPPAGE = 2.0;
 export const DEFAULT_GAS_MULTIPLIER = 2.0;
 

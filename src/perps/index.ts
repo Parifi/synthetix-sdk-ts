@@ -1,4 +1,4 @@
-import { encodeFunctionData, erc20Abi, formatEther, getAbiItem, Hex } from 'viem';
+import { encodeFunctionData, erc20Abi, formatEther, formatUnits, getAbiItem, Hex } from 'viem';
 import { SynthetixSdk } from '..';
 import {
   CollateralData,
@@ -47,6 +47,7 @@ import { MetadataResponse, PythPriceId } from '../interface/Markets';
 import { erc20StateOverrideBalanceAndAllowance } from '../utils/override';
 import { SYNTHETIX_ZAP_ABI } from '../contracts/abis/zap';
 import { SYNTHETIX_ZAP } from '../contracts/addreses/zap';
+import { DEFAULT_DECIMALS } from '../constants';
 
 /**
  * Class for interacting with Synthetix Perps V3 contracts
@@ -1156,6 +1157,13 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     return convertWeiToEther(debt);
   }
 
+  /**
+   * Fetch Position and related margin details from contracts
+   * @param accountId The id of the account to get the debt for
+   * @param marketIdOrName Market
+   * @param override override params for the call
+   * @returns Formatted values in decimal numbers for position and margin data
+   */
   protected async _getPositionData(accountId: bigint, marketIdOrName: MarketIdOrName, override?: OverrideParamsRead) {
     if (!accountId) throw new Error('Account ID is required');
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
@@ -1190,37 +1198,19 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
       override,
     );
 
+    const availableMargin = multicallResponse.at(0) as bigint;
+    const requiredMaintenanceMargin = (multicallResponse.at(1) as bigint[]).at(1) as bigint;
+    const requiredInitialMargin = (multicallResponse.at(1) as bigint[]).at(0) as bigint;
+    const positionSize = multicallResponse.at(2) as bigint;
+    const indexPrice = multicallResponse.at(3) as bigint;
+
     return {
-      availableMargin: multicallResponse.at(0) as bigint,
-      requiredMaintenanceMargin: (multicallResponse.at(1) as bigint[]).at(1) as bigint,
-      requiredInitialMargin: (multicallResponse.at(1) as bigint[]).at(0) as bigint,
-      positionSize: multicallResponse.at(2) as bigint,
-      indexPrice: multicallResponse.at(3) as bigint,
+      availableMargin: Number(formatUnits(availableMargin, DEFAULT_DECIMALS)),
+      requiredMaintenanceMargin: Number(formatUnits(requiredMaintenanceMargin, DEFAULT_DECIMALS)),
+      requiredInitialMargin: Number(formatUnits(requiredInitialMargin, DEFAULT_DECIMALS)),
+      positionSize: Number(formatUnits(positionSize, DEFAULT_DECIMALS)),
+      indexPrice: Number(formatUnits(indexPrice, DEFAULT_DECIMALS)),
     };
-  }
-
-  public async calculateApproxLiquidationPrice({
-    collateralAmount,
-    marketIdOrName,
-    sizeAmount,
-    accountId,
-    collateralIdOrName,
-  }: {
-    collateralAmount: number;
-    marketIdOrName: MarketIdOrName;
-    sizeAmount: number;
-    accountId: bigint;
-    collateralIdOrName: MarketIdOrName;
-  }) {
-    const { requiredMaintenanceMargin, indexPrice } = await this._getPositionData(accountId, marketIdOrName);
-
-    const amount = await this.formatSize(collateralAmount, marketIdOrName);
-    const size = await this.sdk.spot.formatSize(sizeAmount, collateralIdOrName);
-
-    const healthFactor = (amount * 100n) / size;
-    const liquidationPrice = requiredMaintenanceMargin - amount / size + indexPrice;
-
-    return { healthFactor, liquidationPrice };
   }
 
   /**
@@ -1235,22 +1225,29 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     marketIdOrName: MarketIdOrName,
     accountId = this.defaultAccountId,
     override?: OverrideParamsRead,
-  ): Promise<{ healthFactor: bigint; liquidationPrice: bigint }> {
+  ): Promise<{ healthFactor: number; liquidationPrice: number }> {
     if (!accountId) throw new Error('Account ID is required');
 
-    const { availableMargin, requiredMaintenanceMargin, positionSize, indexPrice } = await this._getPositionData(
+    const { positionSize, availableMargin, requiredMaintenanceMargin, indexPrice } = await this._getPositionData(
       accountId,
       marketIdOrName,
       override,
     );
 
-    const healthFactor = (availableMargin * 100n) / (requiredMaintenanceMargin + 1n);
+    const healthFactor = (availableMargin * 100) / (requiredMaintenanceMargin + 1);
 
-    if (positionSize == 0n) {
-      return { healthFactor, liquidationPrice: 0n };
+    // For invalid position, return current market price
+    if (positionSize == 0) return { healthFactor, liquidationPrice: indexPrice };
+
+    const lossPerToken = (requiredMaintenanceMargin - availableMargin) / positionSize;
+
+    let liquidationPrice;
+    if (positionSize > 0) {
+      liquidationPrice = indexPrice - lossPerToken;
+    } else {
+      liquidationPrice = indexPrice + lossPerToken;
     }
 
-    const liquidationPrice = (requiredMaintenanceMargin - availableMargin) / positionSize + indexPrice;
     return { healthFactor, liquidationPrice };
   }
 
@@ -1259,12 +1256,14 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
    * @param {bigint} accountId The id of the account to calculate health factor.
    * If not provided, the default account is used.
    * @returns healthFactor percentage;
+   * @returns availableMargin Formatted available margin in USD;
+   * @returns requiredMaintenanceMargin Formatted required maintenance margin in USD
    * healthFactor = (available margin * 100) / maintenance margin
    */
   public async getHealthFactor(
     accountId = this.defaultAccountId,
     override?: OverrideParamsRead,
-  ): Promise<{ healthFactor: bigint; availableMargin: bigint; requiredMaintenanceMargin: bigint }> {
+  ): Promise<{ healthFactor: number; availableMargin: number; requiredMaintenanceMargin: number }> {
     if (!accountId) throw new Error('Account ID is required');
     const marketProxy = await this.sdk.contracts.getPerpsMarketProxyInstance();
 
@@ -1290,14 +1289,14 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     );
 
     // 0. Available Margin
-    const availableMargin = multicallResponse.at(0) as bigint;
+    const availableMargin = Number(formatUnits(multicallResponse.at(0) as bigint, DEFAULT_DECIMALS));
 
     // 1. Required margin
     // returns (uint256 requiredInitialMargin,uint256 requiredMaintenanceMargin,uint256 maxLiquidationReward)
     const requiredMarginsResponse = multicallResponse.at(1) as bigint[];
-    const requiredMaintenanceMargin = requiredMarginsResponse.at(1) as bigint;
+    const requiredMaintenanceMargin = Number(formatUnits(requiredMarginsResponse.at(1) as bigint, DEFAULT_DECIMALS));
 
-    const healthFactor = (availableMargin * 100n) / (requiredMaintenanceMargin + 1n);
+    const healthFactor = (availableMargin * 100) / (requiredMaintenanceMargin + 1);
     return { healthFactor, availableMargin, requiredMaintenanceMargin };
   }
 
