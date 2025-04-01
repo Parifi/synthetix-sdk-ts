@@ -17,7 +17,14 @@ import {
   SettlementStrategyResponse,
   SpotMarketData,
 } from './interface';
-import { batchArray, convertEtherToWei, convertWeiToEther, generateRandomAccountId, sleep } from '../utils';
+import {
+  batchArray,
+  convertEtherToWei,
+  convertWeiToEther,
+  generateRandomAccountId,
+  getOdosPath,
+  sleep,
+} from '../utils';
 import { Call3Value } from '../interface/contractTypes';
 import { MarketIdOrName, OverrideParamsRead, OverrideParamsWrite, WriteReturnType } from '../interface/commonTypes';
 import {
@@ -2033,6 +2040,17 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     const swapMaxAmountIn = amount;
 
     const minAmount = await this.formatSize(params.minToReceive, resolvedMarketId);
+
+    params.path =
+      params.path ??
+      (
+        await getOdosPath({
+          fromToken: params.collateral,
+          fromChain: this.sdk.rpcConfig.chainId,
+          toToken: (await this.sdk.contracts.getCollateralInstance('USDC')).address,
+          fromAmount: amount.toString(),
+        })
+      ).path;
 
     const unwindTx = {
       target: zapInstance.address,
