@@ -1240,7 +1240,13 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     if (positionSize == 0) return { healthFactor, liquidationPrice: indexPrice };
 
     const lossPerToken = (requiredMaintenanceMargin - availableMargin) / positionSize;
-    const liquidationPrice = indexPrice - lossPerToken;
+
+    let liquidationPrice;
+    if (positionSize > 0) {
+      liquidationPrice = indexPrice - lossPerToken;
+    } else {
+      liquidationPrice = indexPrice + lossPerToken;
+    }
 
     return { healthFactor, liquidationPrice };
   }
