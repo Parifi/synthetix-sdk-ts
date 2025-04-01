@@ -123,16 +123,16 @@ const assemblePath = async (user: string, pathId: string) => {
 };
 
 export const getOdosPath = async (quoteParams: QuoteParams) => {
+  if (!quoteParams.fromToken || !quoteParams.toToken || !quoteParams.fromAmount) {
+    throw new Error('Missing required parameters for Odos path generation');
+  }
+
   const data = {
     chainId: quoteParams.fromChain,
     inputTokens: [{ tokenAddress: quoteParams.fromToken, amount: quoteParams.fromAmount }],
     outputTokens: [{ tokenAddress: quoteParams.toToken, proportion: 1 }],
-    // slippageLimitPercent: 1,
-    // zap contract
     userAddr: ZAP_BY_CHAIN[quoteParams.fromChain],
   };
-
-  // return TEST_DATA;
 
   const response = await odoFetcher('/quote/v2', {
     body: data,
@@ -141,12 +141,22 @@ export const getOdosPath = async (quoteParams: QuoteParams) => {
     },
   });
 
-  if (!response.ok) return { path: '' };
+  if (!response.ok) {
+    console.error(`Failed to get Odos quote: ${response.status} ${response.statusText}`);
+    return { path: '' };
+  }
 
   const quote = (await response.json()) as { pathId: string };
+  if (!quote?.pathId) {
+    console.error('Invalid response from Odos API: missing pathId');
+    return { path: '' };
+  }
   const quoteId = quote.pathId;
 
   const path = await assemblePath(data.userAddr, quoteId);
+  if (!path) {
+    console.error('Failed to assemble path from pathId');
+  }
 
   return { path };
 };
