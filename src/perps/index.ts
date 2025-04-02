@@ -1239,7 +1239,7 @@ export class Perps extends Market<MarketData> implements PerpsRepository {
     // For invalid position, return current market price
     if (positionSize == 0) return { healthFactor, liquidationPrice: indexPrice };
 
-    const lossPerToken = (requiredMaintenanceMargin - availableMargin) / positionSize;
+    const lossPerToken = Math.abs((requiredMaintenanceMargin - availableMargin) / positionSize);
 
     let liquidationPrice;
     if (positionSize > 0) {
