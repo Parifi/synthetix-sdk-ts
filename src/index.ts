@@ -25,7 +25,8 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { Spot } from './spot';
 import { DEFAULT_REFERRER, DEFAULT_TRACKING_CODE } from './constants';
 export { generateRandomAccountId } from './utils';
-import {  ILogObj, Logger } from 'tslog';
+import { ILogObj, Logger } from 'tslog';
+import { RewardDistribution } from './rewardDistribution';
 
 /**
  * The main class for interacting with the Synthetix protocol. The class
@@ -66,6 +67,7 @@ export class SynthetixSdk {
   pyth: Pyth;
   perps: Perps;
   spot: Spot;
+  rewardDistribution: RewardDistribution;
 
   public initialized: boolean = false;
 
@@ -78,6 +80,7 @@ export class SynthetixSdk {
     this.pyth = new Pyth(this, pythConfig);
     this.perps = new Perps(this);
     this.spot = new Spot(this);
+    this.rewardDistribution = new RewardDistribution(this);
 
     this.trackingCode = partnerConfig?.trackingCode ?? DEFAULT_TRACKING_CODE;
     this.referrer = partnerConfig?.referrer ?? DEFAULT_REFERRER;

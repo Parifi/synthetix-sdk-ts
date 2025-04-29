@@ -9,7 +9,6 @@ export class RewardDistribution {
 
   constructor(synthetixSdk: SynthetixSdk) {
     this.sdk = synthetixSdk;
-    this.tree = StandardMerkleTree.build();
   }
 
   async getTree(tokenSymbol: string) {
