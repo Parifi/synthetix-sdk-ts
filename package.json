@@ -57,6 +57,7 @@
     "typescript-eslint": "^8.2.0"
   },
   "dependencies": {
+    "@openzeppelin/merkle-tree": "^1.0.8",
     "@pythnetwork/pyth-evm-js": "^1.68.0",
     "@synthetixio/v3-contracts": "7.18.0",
     "axios": "^1.7.5",

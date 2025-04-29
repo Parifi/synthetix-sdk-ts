@@ -1,4 +1,6 @@
 import { SynthetixSdk } from '..';
+import { REWARD_DISTRIBUTOR_ABI } from './abis/rewardDistributor';
+import { REWARD_DISTRIBUTOR_ADDRESSES } from './addreses/rewardDistributor';
 import { ZAP_BY_CHAIN } from './addreses/zap';
 import { dynamicImportAbi, dynamicImportMeta } from './helpers';
 import { erc20Abi, getContract, Hex } from 'viem';
@@ -233,5 +235,22 @@ export class Contracts {
         `Unsupported chain ${this.sdk.rpcConfig.chainId} or preset ${this.sdk.rpcConfig.preset} for CollateralToken_${symbol}`,
       );
     }
+  }
+
+  getRewardDistributorInstance(symbol: string) {
+    symbol = symbol.toLowerCase();
+    const distributorAddress = REWARD_DISTRIBUTOR_ADDRESSES[this.sdk.rpcConfig.chainId][symbol];
+
+    if (!distributorAddress) {
+      throw new Error(`RewardDistributor_${symbol} not found in meta`);
+    }
+
+    const rewardDistributorInstance = getContract({
+      address: distributorAddress,
+      abi: REWARD_DISTRIBUTOR_ABI,
+      client: this.sdk.publicClient,
+    });
+
+    return rewardDistributorInstance;
   }
 }
