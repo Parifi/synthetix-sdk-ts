@@ -1,4 +1,4 @@
 // symbol
-export const USERS_REWARDS: Record<string, { address: string; amount: string }[]> = {
-  prf: [],
+export const USERS_REWARDS: Record<string, Record<number, { address: string; amount: string }[]>> = {
+  prf: { 1: [] },
 };
